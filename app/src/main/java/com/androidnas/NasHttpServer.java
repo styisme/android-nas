@@ -22,53 +22,7 @@ public class NasHttpServer extends NanoHTTPD {
     @Override
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
-        String method = session.getMethod().name();
         try {
-            // WebDAV 支持 (网络邻居)
-            if ("OPTIONS".equals(method)) {
-                Response res = newFixedLengthResponse(Response.Status.OK, "text/plain", "");
-                res.addHeader("DAV", "1,2");
-                res.addHeader("Allow", "OPTIONS, GET, HEAD, POST, DELETE, PROPFIND, PUT, MKCOL");
-                return res;
-            }
-            if ("PROPFIND".equals(method)) {
-                File file = safeFile(uri);
-                if (file == null || !file.exists()) return newFixedLengthResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found");
-                String xml = buildWebDavXml(file, uri);
-                Response res = newFixedLengthResponse(Response.Status.OK, "application/xml; charset=utf-8", xml);
-                res.addHeader("DAV", "1,2");
-                return res;
-            }
-            if ("PUT".equals(method)) {
-                File file = safeFile(uri);
-                if (file != null) {
-                    Map<String, String> files = new HashMap<String, String>();
-                    session.parseBody(files);
-                    String tmpFilePath = files.get("content");
-                    if (tmpFilePath != null) {
-                        copy(new File(tmpFilePath), file);
-                        new File(tmpFilePath).delete();
-                    }
-                    return newFixedLengthResponse(Response.Status.CREATED, "text/plain", "Created");
-                }
-                return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "Forbidden");
-            }
-            if ("MKCOL".equals(method)) {
-                File file = safeFile(uri);
-                if (file != null) {
-                    if (file.mkdirs()) return newFixedLengthResponse(Response.Status.CREATED, "text/plain", "Created");
-                }
-                return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "Forbidden");
-            }
-            if ("DELETE".equals(method)) {
-                File file = safeFile(uri);
-                if (file != null && !file.getAbsolutePath().equals(ROOT)) {
-                    if (deleteRecursive(file)) return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK");
-                }
-                return newFixedLengthResponse(Response.Status.FORBIDDEN, "text/plain", "Forbidden");
-            }
-
-            // 常规 Web UI 与 API
             if ("/".equals(uri) || "/index.html".equals(uri)) {
                 InputStream is = getClass().getClassLoader().getResourceAsStream("assets/index.html");
                 if (is == null) return text(Response.Status.INTERNAL_ERROR, "UI not found");
@@ -179,50 +133,6 @@ public class NasHttpServer extends NanoHTTPD {
         }
 
         return text(Response.Status.NOT_FOUND, "Not found");
-    }
-
-    private String buildWebDavXml(File file, String uri) {
-        String displayName = file.getName();
-        if (displayName.isEmpty()) displayName = "SDCard";
-        boolean isDir = file.isDirectory();
-        String type = isDir ? "<D:collection/>" : "";
-        String xml = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n" +
-                "<D:multistatus xmlns:D=\"DAV:\">\n" +
-                "  <D:response>\n" +
-                "    <D:href>" + uri + "</D:href>\n" +
-                "    <D:propstat>\n" +
-                "      <D:prop>\n" +
-                "        <D:displayname>" + displayName + "</D:displayname>\n" +
-                "        <D:getcontentlength>" + file.length() + "</D:getcontentlength>\n" +
-                "        <D:getlastmodified>" + new Date(file.lastModified()).toGMTString() + "</D:getlastmodified>\n" +
-                "        <D:resourcetype>" + type + "</D:resourcetype>\n" +
-                "      </D:prop>\n" +
-                "      <D:status>HTTP/1.1 200 OK</D:status>\n" +
-                "    </D:propstat>\n" +
-                "  </D:response>\n";
-        if (isDir) {
-            File[] children = file.listFiles();
-            if (children != null) {
-                for (File child : children) {
-                    String childUri = uri.endsWith("/") ? uri + child.getName() : uri + "/" + child.getName();
-                    String childType = child.isDirectory() ? "<D:collection/>" : "";
-                    xml += "  <D:response>\n" +
-                           "    <D:href>" + childUri + "</D:href>\n" +
-                           "    <D:propstat>\n" +
-                           "      <D:prop>\n" +
-                           "        <D:displayname>" + child.getName() + "</D:displayname>\n" +
-                           "        <D:getcontentlength>" + child.length() + "</D:getcontentlength>\n" +
-                           "        <D:getlastmodified>" + new Date(child.lastModified()).toGMTString() + "</D:getlastmodified>\n" +
-                           "        <D:resourcetype>" + childType + "</D:resourcetype>\n" +
-                           "      </D:prop>\n" +
-                           "      <D:status>HTTP/1.1 200 OK</D:status>\n" +
-                           "    </D:propstat>\n" +
-                           "  </D:response>\n";
-                }
-            }
-        }
-        xml += "</D:multistatus>";
-        return xml;
     }
 
     private Response text(Response.Status status, String msg) {
