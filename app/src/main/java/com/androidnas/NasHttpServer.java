@@ -23,6 +23,22 @@ public class NasHttpServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         try {
+            // 支持客户端上传 (PUT)
+            if (Method.PUT.equals(session.getMethod())) {
+                File targetFile = safeFile(uri);
+                if (targetFile != null) {
+                    if (targetFile.getParentFile() != null) targetFile.getParentFile().mkdirs();
+                    try (InputStream is = session.getInputStream();
+                         FileOutputStream fos = new FileOutputStream(targetFile)) {
+                        byte[] buf = new byte[8192];
+                        int len;
+                        while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
+                    }
+                    return newFixedLengthResponse(Response.Status.CREATED, "text/plain", "Created");
+                }
+                return text(Response.Status.FORBIDDEN, "Forbidden");
+            }
+
             if ("/".equals(uri) || "/index.html".equals(uri)) {
                 InputStream is = getClass().getClassLoader().getResourceAsStream("assets/index.html");
                 if (is == null) return text(Response.Status.INTERNAL_ERROR, "UI not found");

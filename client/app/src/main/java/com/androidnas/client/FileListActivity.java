@@ -1,14 +1,20 @@
 package com.androidnas.client;
 
 import android.Manifest;
+import android.app.Activity;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.OpenableColumns;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -18,6 +24,7 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -44,6 +51,8 @@ public class FileListActivity extends AppCompatActivity {
     private FileAdapter adapter;
     private List<FileItem> files = new ArrayList<>();
     private OkHttpClient client = new OkHttpClient();
+
+    private ActivityResultLauncher<Intent> filePickerLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -90,12 +99,95 @@ public class FileListActivity extends AppCompatActivity {
         adapter = new FileAdapter();
         recyclerView.setAdapter(adapter);
 
+        // 悬浮按钮用于上传
+        FloatingActionButton fab = findViewById(R.id.fabUpload);
+        fab.setOnClickListener(v -> openFilePicker());
+
+        // 初始化文件选择器
+        filePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                    Uri uri = result.getData().getData();
+                    if (uri != null) uploadFile(uri);
+                }
+            }
+        );
+
         // 请求存储权限用于下载
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 100);
         }
 
         loadFiles();
+    }
+
+    private void openFilePicker() {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        filePickerLauncher.launch(Intent.createChooser(intent, "选择要上传的文件"));
+    }
+
+    private void uploadFile(Uri uri) {
+        String fileName = getFileName(uri);
+        if (fileName == null) fileName = "upload_" + System.currentTimeMillis();
+
+        Toast.makeText(this, "开始上传 " + fileName, Toast.LENGTH_SHORT).show();
+        String finalFileName = fileName;
+
+        new Thread(() -> {
+            try {
+                InputStream is = getContentResolver().openInputStream(uri);
+                if (is == null) return;
+
+                // 统一使用 WebDAV 的 PUT 方法上传
+                String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + finalFileName;
+                RequestBody body = new RequestBody() {
+                    @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
+                    @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
+                        byte[] buf = new byte[8192];
+                        int len;
+                        while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
+                    }
+                };
+
+                Request.Builder builder = new Request.Builder().url(targetUrl).put(body);
+                if (authHeader != null) builder.header("Authorization", authHeader);
+
+                Response response = client.newCall(builder.build()).execute();
+                is.close();
+
+                if (response.isSuccessful()) {
+                    runOnUiThread(() -> {
+                        Toast.makeText(this, "上传成功", Toast.LENGTH_SHORT).show();
+                        loadFiles();
+                    });
+                } else {
+                    throw new Exception("HTTP " + response.code());
+                }
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "上传失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    private String getFileName(Uri uri) {
+        String result = null;
+        if (uri.getScheme().equals("content")) {
+            try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (index >= 0) result = cursor.getString(index);
+                }
+            }
+        }
+        if (result == null) {
+            result = uri.getPath();
+            int cut = result.lastIndexOf('/');
+            if (cut != -1) result = result.substring(cut + 1);
+        }
+        return result;
     }
 
     private void updateTitle() {
@@ -117,7 +209,7 @@ public class FileListActivity extends AppCompatActivity {
             } catch (Exception e) {
                 String msg = e.getMessage();
                 if (msg != null && msg.contains("Failed to connect")) {
-                    msg = "无法连接，如果是同一台手机测试请用 127.0.0.1";
+                    msg = "无法连接，请检查服务端是否正常运行";
                 }
                 String finalMsg = msg;
                 runOnUiThread(() -> Toast.makeText(this, "加载失败: " + finalMsg, Toast.LENGTH_LONG).show());
@@ -143,6 +235,8 @@ public class FileListActivity extends AppCompatActivity {
                 String path = currentPath.endsWith("/") ? currentPath + name : currentPath + "/" + name;
                 files.add(new FileItem(name, path, dir, size));
             }
+        } else {
+            throw new Exception("HTTP " + response.code());
         }
     }
 
@@ -165,36 +259,27 @@ public class FileListActivity extends AppCompatActivity {
         }
     }
 
-    // 摒弃脆弱的 XML 解析器，使用正则提取（最稳定）
     private void parseWebDavXml(String xml) {
         Pattern responsePattern = Pattern.compile("<D:response>(.*?)</D:response>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
         Matcher responseMatcher = responsePattern.matcher(xml);
-
         Pattern hrefPattern = Pattern.compile("<D:href>(.*?)</D:href>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
         Pattern isDirPattern = Pattern.compile("<D:collection\\s*/>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
         Pattern sizePattern = Pattern.compile("<D:getcontentlength>(.*?)</D:getcontentlength>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
 
         while (responseMatcher.find()) {
             String responseBlock = responseMatcher.group(1);
-            
             Matcher hrefMatcher = hrefPattern.matcher(responseBlock);
             if (!hrefMatcher.find()) continue;
             String href = hrefMatcher.group(1);
             if (href.startsWith("http")) href = href.replace(baseUrl, "");
-            
             String name = href.substring(href.lastIndexOf("/") + 1);
-            if (name.isEmpty()) {
-                // 过滤掉父目录自身
-                continue;
-            }
-
+            if (name.isEmpty()) continue;
             boolean isDir = isDirPattern.matcher(responseBlock).find();
             long size = 0;
             Matcher sizeMatcher = sizePattern.matcher(responseBlock);
             if (sizeMatcher.find()) {
                 try { size = Long.parseLong(sizeMatcher.group(1)); } catch (Exception ignored) {}
             }
-
             files.add(new FileItem(name, href, isDir, size));
         }
     }

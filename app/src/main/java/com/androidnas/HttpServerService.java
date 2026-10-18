@@ -14,6 +14,7 @@ public class HttpServerService extends Service {
     public static final int WEBDAV_PORT = 8081;
     private static final int NOTIFICATION_ID = 1001;
     private static volatile boolean running = false;
+    public static volatile String lastError = "";
 
     public static boolean isRunning() {
         return running;
@@ -26,19 +27,23 @@ public class HttpServerService extends Service {
     public void onCreate() {
         super.onCreate();
         goForeground();
+        lastError = "";
         try {
             server = new NasHttpServer(PORT);
             server.start();
-            
+        } catch (Exception e) {
+            lastError += "网页服务启动失败: " + e.getMessage() + "\\n";
+        }
+
+        try {
             String rootDir = Environment.getExternalStorageDirectory().getAbsolutePath();
             webDavServer = new WebDavServer(rootDir);
             webDavServer.startServer(WEBDAV_PORT);
-            
-            running = true;
         } catch (Exception e) {
-            e.printStackTrace();
-            running = false;
+            lastError += "网络邻居启动失败(端口被占): " + e.getMessage() + "\\n";
         }
+        
+        running = lastError.isEmpty();
     }
 
     private void goForeground() {
@@ -67,15 +72,11 @@ public class HttpServerService extends Service {
                     java.lang.reflect.Method method = n.getClass().getMethod("setLatestEventInfo",
                             android.content.Context.class, CharSequence.class, CharSequence.class, PendingIntent.class);
                     method.invoke(n, this, "Android NAS", "网页服务与网络邻居运行中", pi);
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
+                } catch (Exception e) { e.printStackTrace(); }
                 n.flags |= Notification.FLAG_ONGOING_EVENT;
             }
             startForeground(NOTIFICATION_ID, n);
-        } catch (Throwable t) {
-            t.printStackTrace();
-        }
+        } catch (Throwable t) { t.printStackTrace(); }
     }
 
     @Override

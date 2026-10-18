@@ -39,11 +39,9 @@ public class MainActivity extends Activity {
         toggleBtn = (Button) findViewById(R.id.toggleBtn);
         listView = (ListView) findViewById(R.id.listView);
         
-        // 动态添加存储空间显示
         storageView = new TextView(this);
         storageView.setTextSize(14);
         storageView.setTextColor(0xFF666666);
-        storageView.setPadding(0, 8, 0, 8);
         LinearLayout rootLayout = (LinearLayout) findViewById(R.id.main_layout);
         if (rootLayout != null) rootLayout.addView(storageView, 3);
 
@@ -89,8 +87,14 @@ public class MainActivity extends Activity {
         statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
         toggleBtn.setText(running ? "停止服务" : "启动服务");
         String ip = getIpAddress();
-        ipView.setText("网页管理: http://" + ip + ":" + HttpServerService.PORT + 
-                       "\n网络邻居(WebDAV): http://" + ip + ":" + HttpServerService.WEBDAV_PORT);
+        
+        String text = "网页管理: http://" + ip + ":" + HttpServerService.PORT + 
+                      "\n网络邻居(WebDAV): http://" + ip + ":" + HttpServerService.WEBDAV_PORT;
+        
+        if (!running && HttpServerService.lastError != null && !HttpServerService.lastError.isEmpty()) {
+            text += "\n\n⚠️ 错误提示：\n" + HttpServerService.lastError;
+        }
+        ipView.setText(text);
     }
 
     private String getIpAddress() {
@@ -111,9 +115,7 @@ public class MainActivity extends Activity {
             long bytesAvailable = (long)stat.getBlockSize() * (long)stat.getAvailableBlocks();
             long bytesTotal = (long)stat.getBlockSize() * (long)stat.getBlockCount();
             storageView.setText("存储空间: 可用 " + formatSize(bytesAvailable) + " / 总计 " + formatSize(bytesTotal));
-        } catch (Throwable t) {
-            storageView.setText("");
-        }
+        } catch (Throwable t) { storageView.setText(""); }
 
         items.clear();
         File[] files = currentDir.listFiles();
@@ -197,14 +199,17 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("属性").setMessage(info).setPositiveButton("确定", null).show();
     }
 
-    @Override public boolean onCreateOptionsMenu(Menu menu) { menu.add(0, 1, 0, "新建文件夹");
+    @Override public boolean onCreateOptionsMenu(Menu menu) { 
+        menu.add(0, 1, 0, "新建文件夹"); 
         menu.add(0, 2, 0, "关于");
-        return true; }
+        return true; 
+    }
+    
     @Override public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == 2) {
             new AlertDialog.Builder(this)
                 .setTitle("关于 Android NAS")
-                .setMessage("版本: v1.1.0\n\n一个极简的局域网 WebDAV 与网页文件管理服务器。\n支持 Android 2.2 及以上系统。")
+                .setMessage("版本: v1.2.0\n\n一个极简的局域网 WebDAV 与网页文件管理服务器。")
                 .setPositiveButton("确定", null)
                 .show();
             return true;
