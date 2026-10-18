@@ -8,10 +8,10 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -24,6 +24,8 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 
@@ -124,50 +126,74 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showAddDeviceDialog() {
+        // 使用 ScrollView 包裹，防止内容过多或键盘弹出时被遮挡
+        ScrollView scrollView = new ScrollView(this);
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(48, 24, 48, 24);
+        layout.setPadding(48, 32, 48, 16);
+        scrollView.addView(layout);
 
-        EditText etName = new EditText(this);
-        etName.setHint("设备名称");
-        layout.addView(etName);
+        // 设备名称
+        TextInputLayout tilName = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilName.setHint("设备名称");
+        tilName.setHintEnabled(true);
+        TextInputEditText etName = new TextInputEditText(this);
+        tilName.addView(etName);
+        layout.addView(tilName);
 
-        EditText etUrl = new EditText(this);
-        etUrl.setHint("地址 (如: 192.168.1.100:8080)");
-        layout.addView(etUrl);
+        // 地址
+        TextInputLayout tilUrl = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilUrl.setHint("地址 (如 192.168.1.100:8080)");
+        tilUrl.setHintEnabled(true);
+        TextInputEditText etUrl = new TextInputEditText(this);
+        tilUrl.addView(etUrl);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.topMargin = 32;
+        layout.addView(tilUrl, params);
 
+        // 类型选择
         RadioGroup rgType = new RadioGroup(this);
+        rgType.setOrientation(RadioGroup.VERTICAL);
         RadioButton rbAndroid = new RadioButton(this);
-        rbAndroid.setText("Android NAS 客户端");
+        rbAndroid.setText("Android NAS (走原生接口)");
         rbAndroid.setId(View.generateViewId());
         rbAndroid.setChecked(true);
         RadioButton rbOther = new RadioButton(this);
-        rbOther.setText("外部 NAS (WebDAV 协议)");
+        rbOther.setText("外部 NAS (走 WebDAV 协议)");
         rbOther.setId(View.generateViewId());
         rgType.addView(rbAndroid);
         rgType.addView(rbOther);
-        layout.addView(rgType);
+        LinearLayout.LayoutParams rgParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        rgParams.topMargin = 24;
+        layout.addView(rgType, rgParams);
 
-        EditText etUser = new EditText(this);
-        etUser.setHint("账号 (仅外部 NAS 需要)");
-        layout.addView(etUser);
-        
-        EditText etPass = new EditText(this);
-        etPass.setHint("密码 (仅外部 NAS 需要)");
-        layout.addView(etPass);
+        // 账号密码 (仅外部NAS需要)
+        TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilUser.setHint("账号 (外部 NAS 选填)");
+        TextInputEditText etUser = new TextInputEditText(this);
+        tilUser.addView(etUser);
+        layout.addView(tilUser, params);
+
+        TextInputLayout tilPass = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilPass.setHint("密码 (外部 NAS 选填)");
+        TextInputEditText etPass = new TextInputEditText(this);
+        tilPass.addView(etPass);
+        layout.addView(tilPass, params);
 
         new MaterialAlertDialogBuilder(this)
             .setTitle("添加设备")
-            .setView(layout)
+            .setView(scrollView)
             .setPositiveButton("添加", (dialog, which) -> {
-                String name = etName.getText().toString();
-                String url = etUrl.getText().toString().trim();
+                String name = etName.getText() != null ? etName.getText().toString() : "";
+                String url = etUrl.getText() != null ? etUrl.getText().toString().trim() : "";
                 if (name.isEmpty() || url.isEmpty()) return;
                 if (!url.startsWith("http")) url = "http://" + url;
                 
                 boolean isAndroid = rgType.getCheckedRadioButtonId() == rbAndroid.getId();
-                String user = etUser.getText().toString();
-                String pass = etPass.getText().toString();
+                String user = etUser.getText() != null ? etUser.getText().toString() : "";
+                String pass = etPass.getText() != null ? etPass.getText().toString() : "";
                 
                 devices.add(new NasDevice(name, url, isAndroid, user, pass));
                 saveDevices();

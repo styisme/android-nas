@@ -17,6 +17,7 @@ import com.google.android.material.appbar.MaterialToolbar;
 import org.xmlpull.v1.XmlPullParser;
 
 import java.io.StringReader;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -43,6 +44,14 @@ public class FileListActivity extends AppCompatActivity {
         setContentView(R.layout.activity_file_list);
 
         baseUrl = getIntent().getStringExtra("url");
+        // 清理首尾多余的斜杠
+        if (baseUrl != null) {
+            baseUrl = baseUrl.trim();
+            if (baseUrl.endsWith("/")) {
+                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
+            }
+        }
+
         isAndroidNas = getIntent().getBooleanExtra("isAndroidNas", true);
         String user = getIntent().getStringExtra("username");
         String pass = getIntent().getStringExtra("password");
@@ -82,19 +91,29 @@ public class FileListActivity extends AppCompatActivity {
     private void loadFiles() {
         files.clear();
         adapter.notifyDataSetChanged();
+        
         new Thread(() -> {
             try {
                 if (isAndroidNas) loadAndroidNasFiles();
                 else loadWebDavFiles();
                 runOnUiThread(() -> adapter.notifyDataSetChanged());
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "加载失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                e.printStackTrace();
+                String msg = e.getMessage();
+                if (msg != null && msg.contains("Failed to connect")) {
+                    msg = "无法连接，如果是同一台手机测试请用 127.0.0.1，或检查是否在同一WiFi";
+                }
+                String finalMsg = msg;
+                runOnUiThread(() -> Toast.makeText(this, "加载失败: " + finalMsg, Toast.LENGTH_LONG).show());
             }
         }).start();
     }
 
     private void loadAndroidNasFiles() throws Exception {
-        String apiUrl = baseUrl + "/api/list?path=" + currentPath;
+        // 修复 URL 拼接，对路径进行 URLEncode
+        String encodedPath = URLEncoder.encode(currentPath, "UTF-8");
+        String apiUrl = baseUrl + "/api/list?path=" + encodedPath;
+        
         Request request = new Request.Builder().url(apiUrl).build();
         Response response = client.newCall(request).execute();
         if (response.isSuccessful() && response.body() != null) {
@@ -109,6 +128,8 @@ public class FileListActivity extends AppCompatActivity {
                 String path = currentPath.endsWith("/") ? currentPath + name : currentPath + "/" + name;
                 files.add(new FileItem(name, path, dir, size));
             }
+        } else {
+            throw new Exception("服务器返回错误: " + response.code());
         }
     }
 
