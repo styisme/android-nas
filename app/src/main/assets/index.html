@@ -33,7 +33,6 @@
 
 <script>
 var currentPath = '/';
-
 function refresh() {
     fetch('/api/list?path=' + encodeURIComponent(currentPath))
         .then(function (r) { return r.json(); })
@@ -60,16 +59,9 @@ function refresh() {
                 list.appendChild(div);
             });
         })
-        .catch(function () {
-            document.getElementById('msg').textContent = '列表加载失败';
-        });
+        .catch(function () { document.getElementById('msg').textContent = '列表加载失败'; });
 }
-
-function enterDir(path) {
-    currentPath = path;
-    refresh();
-}
-
+function enterDir(path) { currentPath = path; refresh(); }
 function goUp() {
     if (currentPath === '/' || currentPath === '') return;
     var parts = currentPath.replace(/\/$/, '').split('/');
@@ -77,30 +69,23 @@ function goUp() {
     currentPath = parts.join('/') || '/';
     refresh();
 }
-
 function formatSize(n) {
     if (n < 1024) return n + ' B';
     if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
     return (n / 1024 / 1024).toFixed(1) + ' MB';
 }
-
 function escapeHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-
 document.getElementById('uploadForm').onsubmit = function (e) {
     e.preventDefault();
     var input = document.getElementById('fileInput');
     var file = input.files[0];
     if (!file) return;
-
     var fd = new FormData();
     fd.append('file', file, file.name);
     fd.append('path', currentPath);
-
     document.getElementById('msg').textContent = '上传中…';
-
     fetch('/api/upload', { method: 'POST', body: fd })
         .then(function (r) { return r.text(); })
         .then(function (txt) {
@@ -108,11 +93,8 @@ document.getElementById('uploadForm').onsubmit = function (e) {
             input.value = '';
             refresh();
         })
-        .catch(function () {
-            document.getElementById('msg').textContent = '上传失败';
-        });
+        .catch(function () { document.getElementById('msg').textContent = '上传失败'; });
 };
-
 refresh();
 </script>
 </body>

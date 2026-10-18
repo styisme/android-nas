@@ -12,33 +12,16 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.BaseAdapter;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.ListView;
-import android.widget.TextView;
-import android.widget.Toast;
-
+import android.widget.*;
 import java.io.File;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.List;
-import java.util.Locale;
+import java.util.*;
 
 public class MainActivity extends Activity {
-
-    private static final String ROOT =
-            Environment.getExternalStorageDirectory().getAbsolutePath();
-
+    private static final String ROOT = Environment.getExternalStorageDirectory().getAbsolutePath();
     private File currentDir;
     private ListView listView;
-    private TextView pathView;
-    private TextView statusView;
-    private TextView ipView;
+    private TextView pathView, statusView, ipView;
     private Button toggleBtn;
     private FileAdapter adapter;
     private final List<File> items = new ArrayList<File>();
@@ -49,78 +32,47 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         currentDir = new File(ROOT);
-
         pathView = (TextView) findViewById(R.id.pathView);
         statusView = (TextView) findViewById(R.id.statusView);
         ipView = (TextView) findViewById(R.id.ipView);
         toggleBtn = (Button) findViewById(R.id.toggleBtn);
         listView = (ListView) findViewById(R.id.listView);
-
         adapter = new FileAdapter();
         listView.setAdapter(adapter);
 
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+            @Override public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 File f = items.get(position);
-                if (f.isDirectory()) {
-                    currentDir = f;
-                    refresh();
-                } else {
-                    showFileMenu(f);
-                }
+                if (f.isDirectory()) { currentDir = f; refresh(); }
+                else showFileMenu(f);
             }
         });
-
         listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
-            @Override
-            public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+            @Override public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
                 showFileMenu(items.get(position));
                 return true;
             }
         });
-
         toggleBtn.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if (HttpServerService.isRunning()) {
-                    stopService(new Intent(MainActivity.this, HttpServerService.class));
-                } else {
-                    startService(new Intent(MainActivity.this, HttpServerService.class));
-                }
+            @Override public void onClick(View v) {
+                if (HttpServerService.isRunning()) stopService(new Intent(MainActivity.this, HttpServerService.class));
+                else startService(new Intent(MainActivity.this, HttpServerService.class));
                 updateServiceStatus();
             }
         });
-
         findViewById(R.id.upBtn).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
+            @Override public void onClick(View v) {
                 File parent = currentDir.getParentFile();
-                if (parent != null && parent.getAbsolutePath().startsWith(ROOT)) {
-                    currentDir = parent;
-                    refresh();
-                }
+                if (parent != null && parent.getAbsolutePath().startsWith(ROOT)) { currentDir = parent; refresh(); }
             }
         });
-
         findViewById(R.id.refreshBtn).setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                refresh();
-            }
+            @Override public void onClick(View v) { refresh(); }
         });
-
-        if (!HttpServerService.isRunning()) {
-            startService(new Intent(this, HttpServerService.class));
-        }
+        if (!HttpServerService.isRunning()) startService(new Intent(this, HttpServerService.class));
     }
 
-    @Override
-    protected void onResume() {
-        super.onResume();
-        updateServiceStatus();
-        refresh();
-    }
+    @Override protected void onResume() { super.onResume(); updateServiceStatus(); refresh(); }
 
     private void updateServiceStatus() {
         boolean running = HttpServerService.isRunning();
@@ -134,26 +86,18 @@ public class MainActivity extends Activity {
             WifiManager wm = (WifiManager) getSystemService(WIFI_SERVICE);
             int ip = wm.getConnectionInfo().getIpAddress();
             if (ip == 0) return "<手机IP>";
-            return String.format(Locale.US, "%d.%d.%d.%d",
-                    (ip & 0xff), (ip >> 8 & 0xff), (ip >> 16 & 0xff), (ip >> 24 & 0xff));
-        } catch (Throwable t) {
-            return "<手机IP>";
-        }
+            return String.format(Locale.US, "%d.%d.%d.%d", (ip & 0xff), (ip >> 8 & 0xff), (ip >> 16 & 0xff), (ip >> 24 & 0xff));
+        } catch (Throwable t) { return "<手机IP>"; }
     }
 
     private void refresh() {
-        if (!currentDir.exists() || !currentDir.isDirectory()) {
-            currentDir = new File(ROOT);
-        }
+        if (!currentDir.exists() || !currentDir.isDirectory()) currentDir = new File(ROOT);
         pathView.setText(currentDir.getAbsolutePath().replace(ROOT, "/"));
         items.clear();
         File[] files = currentDir.listFiles();
-        if (files != null) {
-            Collections.addAll(items, files);
-        }
+        if (files != null) Collections.addAll(items, files);
         Collections.sort(items, new Comparator<File>() {
-            @Override
-            public int compare(File a, File b) {
+            @Override public int compare(File a, File b) {
                 if (a.isDirectory() && !b.isDirectory()) return -1;
                 if (!a.isDirectory() && b.isDirectory()) return 1;
                 return a.getName().compareToIgnoreCase(b.getName());
@@ -164,20 +108,16 @@ public class MainActivity extends Activity {
 
     private void showFileMenu(final File f) {
         final String[] actions = new String[]{"打开", "重命名", "删除", "属性"};
-        new AlertDialog.Builder(this)
-                .setTitle(f.getName())
-                .setItems(actions, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        switch (which) {
-                            case 0: openFile(f); break;
-                            case 1: renameFile(f); break;
-                            case 2: deleteFile(f); break;
-                            case 3: showInfo(f); break;
-                        }
-                    }
-                })
-                .show();
+        new AlertDialog.Builder(this).setTitle(f.getName()).setItems(actions, new DialogInterface.OnClickListener() {
+            @Override public void onClick(DialogInterface dialog, int which) {
+                switch (which) {
+                    case 0: openFile(f); break;
+                    case 1: renameFile(f); break;
+                    case 2: deleteFile(f); break;
+                    case 3: showInfo(f); break;
+                }
+            }
+        }).show();
     }
 
     private void openFile(File f) {
@@ -185,116 +125,63 @@ public class MainActivity extends Activity {
             Intent i = new Intent(Intent.ACTION_VIEW);
             i.setDataAndType(Uri.fromFile(f), getMimeType(f.getName()));
             startActivity(i);
-        } catch (Exception e) {
-            Toast.makeText(this, "无法打开：无可用应用", Toast.LENGTH_SHORT).show();
-        }
+        } catch (Exception e) { Toast.makeText(this, "无法打开", Toast.LENGTH_SHORT).show(); }
     }
 
     private void renameFile(final File f) {
         final EditText input = new EditText(this);
         input.setText(f.getName());
-        new AlertDialog.Builder(this)
-                .setTitle("重命名")
-                .setView(input)
-                .setPositiveButton("确定", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        String name = input.getText().toString().trim();
-                        if (name.length() == 0) return;
-                        File target = new File(f.getParentFile(), name);
-                        if (target.exists()) {
-                            Toast.makeText(MainActivity.this, "目标已存在", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
-                        if (f.renameTo(target)) {
-                            refresh();
-                        } else {
-                            Toast.makeText(MainActivity.this, "重命名失败", Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        new AlertDialog.Builder(this).setTitle("重命名").setView(input).setPositiveButton("确定", new DialogInterface.OnClickListener() {
+            @Override public void onClick(DialogInterface dialog, int which) {
+                String name = input.getText().toString().trim();
+                if (name.length() == 0) return;
+                File target = new File(f.getParentFile(), name);
+                if (target.exists()) { Toast.makeText(MainActivity.this, "目标已存在", Toast.LENGTH_SHORT).show(); return; }
+                if (f.renameTo(target)) refresh();
+                else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
+            }
+        }).setNegativeButton("取消", null).show();
     }
 
     private void deleteFile(final File f) {
-        new AlertDialog.Builder(this)
-                .setTitle("删除")
-                .setMessage("确定删除 " + f.getName() + " 吗？")
-                .setPositiveButton("删除", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        if (deleteRecursive(f)) {
-                            refresh();
-                        } else {
-                            Toast.makeText(MainActivity.this, "删除失败", Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
+        new AlertDialog.Builder(this).setTitle("删除").setMessage("确定删除 " + f.getName() + "？").setPositiveButton("删除", new DialogInterface.OnClickListener() {
+            @Override public void onClick(DialogInterface dialog, int which) {
+                if (deleteRecursive(f)) refresh();
+                else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
+            }
+        }).setNegativeButton("取消", null).show();
     }
 
     private boolean deleteRecursive(File f) {
         if (f.isDirectory()) {
             File[] children = f.listFiles();
-            if (children != null) {
-                for (File c : children) {
-                    if (!deleteRecursive(c)) return false;
-                }
-            }
+            if (children != null) for (File c : children) if (!deleteRecursive(c)) return false;
         }
         return f.delete();
     }
 
     private void showInfo(File f) {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US);
-        String info = "路径：" + f.getAbsolutePath() + "\n"
-                + "大小：" + formatSize(f.length()) + "\n"
-                + "修改时间：" + sdf.format(f.lastModified()) + "\n"
-                + "类型：" + (f.isDirectory() ? "目录" : "文件");
-        new AlertDialog.Builder(this)
-                .setTitle("属性")
-                .setMessage(info)
-                .setPositiveButton("确定", null)
-                .show();
+        String info = "路径：" + f.getAbsolutePath() + "\n大小：" + formatSize(f.length()) + "\n修改时间：" + sdf.format(f.lastModified());
+        new AlertDialog.Builder(this).setTitle("属性").setMessage(info).setPositiveButton("确定", null).show();
     }
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        menu.add(0, 1, 0, "新建文件夹");
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
+    @Override public boolean onCreateOptionsMenu(Menu menu) { menu.add(0, 1, 0, "新建文件夹"); return true; }
+    @Override public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == 1) {
-            createFolder();
+            final EditText input = new EditText(this);
+            new AlertDialog.Builder(this).setTitle("新建文件夹").setView(input).setPositiveButton("创建", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface dialog, int which) {
+                    String name = input.getText().toString().trim();
+                    if (name.length() == 0) return;
+                    File target = new File(currentDir, name);
+                    if (target.mkdirs()) refresh();
+                    else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
+                }
+            }).setNegativeButton("取消", null).show();
             return true;
         }
         return super.onOptionsItemSelected(item);
-    }
-
-    private void createFolder() {
-        final EditText input = new EditText(this);
-        new AlertDialog.Builder(this)
-                .setTitle("新建文件夹")
-                .setView(input)
-                .setPositiveButton("创建", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        String name = input.getText().toString().trim();
-                        if (name.length() == 0) return;
-                        File target = new File(currentDir, name);
-                        if (target.mkdirs()) {
-                            refresh();
-                        } else {
-                            Toast.makeText(MainActivity.this, "创建失败", Toast.LENGTH_SHORT).show();
-                        }
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
     }
 
     private String formatSize(long n) {
@@ -316,52 +203,26 @@ public class MainActivity extends Activity {
     }
 
     private class FileAdapter extends BaseAdapter {
-        @Override
-        public int getCount() { return items.size(); }
-
-        @Override
-        public Object getItem(int position) { return items.get(position); }
-
-        @Override
-        public long getItemId(int position) { return position; }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
+        @Override public int getCount() { return items.size(); }
+        @Override public Object getItem(int position) { return items.get(position); }
+        @Override public long getItemId(int position) { return position; }
+        @Override public View getView(int position, View convertView, ViewGroup parent) {
             ViewHolder holder;
             if (convertView == null) {
                 LinearLayout layout = new LinearLayout(MainActivity.this);
                 layout.setOrientation(LinearLayout.VERTICAL);
                 layout.setPadding(16, 12, 16, 12);
-
                 holder = new ViewHolder();
-                holder.name = new TextView(MainActivity.this);
-                holder.name.setTextSize(16);
-                holder.detail = new TextView(MainActivity.this);
-                holder.detail.setTextSize(12);
-                holder.detail.setTextColor(0xFF888888);
-
-                layout.addView(holder.name);
-                layout.addView(holder.detail);
-                layout.setTag(holder);
+                holder.name = new TextView(MainActivity.this); holder.name.setTextSize(16);
+                holder.detail = new TextView(MainActivity.this); holder.detail.setTextSize(12); holder.detail.setTextColor(0xFF888888);
+                layout.addView(holder.name); layout.addView(holder.detail); layout.setTag(holder);
                 convertView = layout;
-            } else {
-                holder = (ViewHolder) convertView.getTag();
-            }
-
+            } else holder = (ViewHolder) convertView.getTag();
             File f = items.get(position);
-            if (f.isDirectory()) {
-                holder.name.setText("📁 " + f.getName());
-                holder.detail.setText("目录");
-            } else {
-                holder.name.setText("📄 " + f.getName());
-                holder.detail.setText(formatSize(f.length()));
-            }
+            if (f.isDirectory()) { holder.name.setText("📁 " + f.getName()); holder.detail.setText("目录"); }
+            else { holder.name.setText("📄 " + f.getName()); holder.detail.setText(formatSize(f.length())); }
             return convertView;
         }
     }
-
-    private static class ViewHolder {
-        TextView name;
-        TextView detail;
-    }
+    private static class ViewHolder { TextView name, detail; }
 }

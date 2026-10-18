@@ -39,7 +39,16 @@ jobs:
           rm -rf app/build build || true
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --no-daemon --stacktrace --info
+        run: |
+          set -o pipefail
+          ./gradlew assembleDebug --no-daemon --stacktrace --info 2>&1 | tee build.log
+
+      - name: Upload Build Log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
