@@ -2,8 +2,9 @@ package com.androidnas;
 
 import android.app.Activity;
 import android.app.AlertDialog;
-import android.content.DialogInterface;
+import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -28,6 +29,7 @@ public class MainActivity extends Activity {
     private ListView listView;
     private TextView pathView, statusView, ipView, storageView;
     private Button toggleBtn;
+    private CheckBox cbAuth, cbHttps;
     private FileAdapter adapter;
     private final List<File> items = new ArrayList<File>();
 
@@ -36,39 +38,54 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        AuthManager.init(this);
         currentDir = new File(ROOT);
         pathView = (TextView) findViewById(R.id.pathView);
         statusView = (TextView) findViewById(R.id.statusView);
         ipView = (TextView) findViewById(R.id.ipView);
         toggleBtn = (Button) findViewById(R.id.toggleBtn);
         listView = (ListView) findViewById(R.id.listView);
+        cbAuth = (CheckBox) findViewById(R.id.cbAuth);
+        cbHttps = (CheckBox) findViewById(R.id.cbHttps);
+
+        // 读取保存的配置
+        SharedPreferences sp = getSharedPreferences("nas_auth", Context.MODE_PRIVATE);
+        cbAuth.setChecked(sp.getBoolean("auth_enabled", true));
+        cbHttps.setChecked(sp.getBoolean("https_enabled", false)); // 默认关，老设备稳定优先
+
+        // 开关事件
+        cbAuth.setOnCheckedChangeListener((v, isChecked) -> {
+            AuthManager.setAuthEnabled(this, isChecked);
+            restartServiceIfRunning();
+        });
+        cbHttps.setOnCheckedChangeListener((v, isChecked) -> {
+            sp.edit().putBoolean("https_enabled", isChecked).apply();
+            restartServiceIfRunning();
+        });
         
         storageView = new TextView(this);
         storageView.setTextSize(14);
         storageView.setTextColor(0xFF666666);
         LinearLayout rootLayout = (LinearLayout) findViewById(R.id.main_layout);
-        if (rootLayout != null) rootLayout.addView(storageView, 3);
+        // 将存储信息插到开关下方
+        if (rootLayout != null) rootLayout.addView(storageView, 4);
 
         adapter = new FileAdapter();
         listView.setAdapter(adapter);
 
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
-                File f = items.get(position);
-                if (f.isDirectory()) { currentDir = f; refresh(); }
-                else showFileMenu(f);
-            }
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            File f = items.get(position);
+            if (f.isDirectory()) { currentDir = f; refresh(); }
+            else showFileMenu(f);
         });
         
-        toggleBtn.setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                if (HttpServerService.isRunning()) stopService(new Intent(MainActivity.this, HttpServerService.class));
-                else {
-                    startService(new Intent(MainActivity.this, HttpServerService.class));
-                    checkBatteryOptimization();
-                }
-                updateServiceStatus();
+        toggleBtn.setOnClickListener(v -> {
+            if (HttpServerService.isRunning()) stopService(new Intent(MainActivity.this, HttpServerService.class));
+            else {
+                startService(new Intent(MainActivity.this, HttpServerService.class));
+                checkBatteryOptimization();
             }
+            updateServiceStatus();
         });
         
         findViewById(R.id.upBtn).setOnClickListener(v -> {
@@ -80,6 +97,17 @@ public class MainActivity extends Activity {
         if (!HttpServerService.isRunning()) {
             startService(new Intent(this, HttpServerService.class));
             checkBatteryOptimization();
+        }
+    }
+    
+    private void restartServiceIfRunning() {
+        if (HttpServerService.isRunning()) {
+            stopService(new Intent(this, HttpServerService.class));
+            new android.os.Handler().postDelayed(() -> {
+                startService(new Intent(MainActivity.this, HttpServerService.class));
+                updateServiceStatus();
+            }, 500);
+            Toast.makeText(this, "配置已保存，正在重启服务", Toast.LENGTH_SHORT).show();
         }
     }
     
@@ -107,14 +135,21 @@ public class MainActivity extends Activity {
 
     private void updateServiceStatus() {
         boolean running = HttpServerService.isRunning();
-        statusView.setText(running ? "服务状态：运行中 (已加密)" : "服务状态：已停止");
+        statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
         toggleBtn.setText(running ? "停止服务" : "启动服务");
         String ip = getIpAddress();
         
-        String text = "网页(HTTP): http://" + ip + ":" + HttpServerService.PORT + 
-                      "\n网页(HTTPS): https://" + ip + ":" + HttpServerService.HTTPS_PORT + 
-                      "\n网络邻居(WebDAV): http://" + ip + ":" + HttpServerService.WEBDAV_PORT + 
-                      "\n账号/密码: " + AuthManager.getAuthInfo();
+        String text = "网页(HTTP): http://" + ip + ":" + HttpServerService.PORT;
+        if (cbHttps.isChecked()) {
+            text += "\n网页(HTTPS): https://" + ip + ":" + HttpServerService.HTTPS_PORT;
+        }
+        text += "\n网络邻居: http://" + ip + ":" + HttpServerService.WEBDAV_PORT;
+        
+        if (cbAuth.isChecked()) {
+            text += "\n账号/密码: " + AuthManager.getAuthInfo();
+        } else {
+            text += "\n(当前无密码保护)";
+        }
         
         if (!running && HttpServerService.lastError != null && !HttpServerService.lastError.isEmpty()) {
             text += "\n\n⚠️ 错误提示：\n" + HttpServerService.lastError;
@@ -253,7 +288,7 @@ public class MainActivity extends Activity {
         layout.addView(etPass);
 
         new AlertDialog.Builder(this)
-            .setTitle("修改网页与 WebDAV 密码")
+            .setTitle("修改密码")
             .setView(layout)
             .setPositiveButton("保存", (dialog, which) -> {
                 String u = etUser.getText().toString().trim();

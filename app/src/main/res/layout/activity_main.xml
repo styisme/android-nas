@@ -22,6 +22,26 @@
         android:textColor="#666666"
         android:text="网页管理: -\n网络邻居: -" />
 
+    <!-- 新增的安全选项开关 -->
+    <LinearLayout
+        android:layout_width="fill_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="4dp">
+        <CheckBox
+            android:id="@+id/cbAuth"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="账号验证" />
+        <CheckBox
+            android:id="@+id/cbHttps"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="HTTPS加密" />
+    </LinearLayout>
+
     <LinearLayout
         android:layout_width="fill_parent"
         android:layout_height="wrap_content"
