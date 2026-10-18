@@ -64,8 +64,6 @@ public class MainActivity extends AppCompatActivity {
         loadDevices();
         swipeRefresh.setOnRefreshListener(this::autoScan);
         fab.setOnClickListener(v -> showAddDeviceDialog());
-        
-        if (devices.isEmpty()) autoScan();
     }
 
     private void loadDevices() {
@@ -101,7 +99,8 @@ public class MainActivity extends AppCompatActivity {
                             HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                             conn.setConnectTimeout(300);
                             conn.setReadTimeout(300);
-                            if (conn.getResponseCode() == 200) {
+                            // 扫描时如果返回 401 也视为找到了 NAS
+                            if (conn.getResponseCode() == 200 || conn.getResponseCode() == 401) {
                                 runOnUiThread(() -> addScannedDevice(targetIp));
                             }
                         } catch (Exception ignored) {}
@@ -120,31 +119,27 @@ public class MainActivity extends AppCompatActivity {
 
     private void addScannedDevice(String ip) {
         for (NasDevice d : devices) if (d.url.contains(ip)) return;
-        devices.add(new NasDevice("Android NAS (" + ip + ")", "http://" + ip + ":8080", true, null, null));
+        // 扫描出来的设备默认带上 admin/admin 账号，用户可在连接时修改
+        devices.add(new NasDevice("Android NAS (" + ip + ")", "http://" + ip + ":8080", true, "admin", "admin"));
         saveDevices();
         adapter.notifyDataSetChanged();
     }
 
     private void showAddDeviceDialog() {
-        // 使用 ScrollView 包裹，防止内容过多或键盘弹出时被遮挡
         ScrollView scrollView = new ScrollView(this);
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(48, 32, 48, 16);
         scrollView.addView(layout);
 
-        // 设备名称
         TextInputLayout tilName = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
         tilName.setHint("设备名称");
-        tilName.setHintEnabled(true);
         TextInputEditText etName = new TextInputEditText(this);
         tilName.addView(etName);
         layout.addView(tilName);
 
-        // 地址
         TextInputLayout tilUrl = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
         tilUrl.setHint("地址 (如 192.168.1.100:8080)");
-        tilUrl.setHintEnabled(true);
         TextInputEditText etUrl = new TextInputEditText(this);
         tilUrl.addView(etUrl);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
@@ -152,32 +147,25 @@ public class MainActivity extends AppCompatActivity {
         params.topMargin = 32;
         layout.addView(tilUrl, params);
 
-        // 类型选择
         RadioGroup rgType = new RadioGroup(this);
-        rgType.setOrientation(RadioGroup.VERTICAL);
         RadioButton rbAndroid = new RadioButton(this);
-        rbAndroid.setText("Android NAS (走原生接口)");
+        rbAndroid.setText("Android NAS (原生接口)");
         rbAndroid.setId(View.generateViewId());
         rbAndroid.setChecked(true);
         RadioButton rbOther = new RadioButton(this);
-        rbOther.setText("外部 NAS (走 WebDAV 协议)");
+        rbOther.setText("外部 NAS (WebDAV)");
         rbOther.setId(View.generateViewId());
-        rgType.addView(rbAndroid);
-        rgType.addView(rbOther);
-        LinearLayout.LayoutParams rgParams = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        rgParams.topMargin = 24;
-        layout.addView(rgType, rgParams);
+        rgType.addView(rbAndroid); rgType.addView(rbOther);
+        layout.addView(rgType, params);
 
-        // 账号密码 (仅外部NAS需要)
         TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilUser.setHint("账号 (外部 NAS 选填)");
+        tilUser.setHint("账号");
         TextInputEditText etUser = new TextInputEditText(this);
         tilUser.addView(etUser);
         layout.addView(tilUser, params);
 
         TextInputLayout tilPass = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilPass.setHint("密码 (外部 NAS 选填)");
+        tilPass.setHint("密码");
         TextInputEditText etPass = new TextInputEditText(this);
         tilPass.addView(etPass);
         layout.addView(tilPass, params);
@@ -249,10 +237,7 @@ public class MainActivity extends AppCompatActivity {
             View btnDelete;
             VH(View v) { 
                 super(v); 
-                tvName = v.findViewById(R.id.tvName); 
-                tvIcon = v.findViewById(R.id.tvIcon); 
-                tvIp = v.findViewById(R.id.tvIp); 
-                btnDelete = v.findViewById(R.id.btnDelete);
+                tvName = v.findViewById(R.id.tvName); tvIcon = v.findViewById(R.id.tvIcon); tvIp = v.findViewById(R.id.tvIp); btnDelete = v.findViewById(R.id.btnDelete);
             }
         }
     }

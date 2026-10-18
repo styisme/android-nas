@@ -3,12 +3,22 @@ package com.androidnas;
 import android.os.Environment;
 import java.io.*;
 import java.util.*;
+import javax.net.ssl.SSLServerSocketFactory;
 import fi.iki.elonen.NanoHTTPD;
 
 public class NasHttpServer extends NanoHTTPD {
     private static final String ROOT = Environment.getExternalStorageDirectory().getAbsolutePath();
+    private boolean isSecure;
+    private SSLServerSocketFactory sslFactory;
 
-    public NasHttpServer(int port) { super(port); }
+    public NasHttpServer(int port, boolean isSecure, SSLServerSocketFactory sslFactory) {
+        super(port);
+        this.isSecure = isSecure;
+        this.sslFactory = sslFactory;
+        if (isSecure && sslFactory != null) {
+            makeSecure(sslFactory, null);
+        }
+    }
 
     private File safeFile(String path) throws IOException {
         if (path == null) path = "/";
@@ -22,8 +32,20 @@ public class NasHttpServer extends NanoHTTPD {
     @Override
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
+        String method = session.getMethod().name();
+
+        // --- 身份校验拦截 ---
+        // 允许 CORS 预检请求，允许网页加载根目录以触发浏览器原生弹窗
+        if (!Method.OPTIONS.equals(session.getMethod())) {
+            String authHeader = session.getHeaders().get("authorization");
+            if (!AuthManager.verify(authHeader)) {
+                Response res = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain; charset=utf-8", "401 Unauthorized - 请输入正确的账号密码");
+                res.addHeader("WWW-Authenticate", "Basic realm=\"Android NAS\"");
+                return res;
+            }
+        }
+
         try {
-            // 支持客户端上传 (PUT)
             if (Method.PUT.equals(session.getMethod())) {
                 File targetFile = safeFile(uri);
                 if (targetFile != null) {
@@ -47,7 +69,6 @@ public class NasHttpServer extends NanoHTTPD {
 
             if ("/api/list".equals(uri)) {
                 String path = session.getParms().get("path");
-                if (path == null || path.isEmpty()) path = "/";
                 File dir = safeFile(path);
                 if (dir == null || !dir.exists() || !dir.isDirectory()) return text(Response.Status.NOT_FOUND, "Not found");
                 return newFixedLengthResponse(Response.Status.OK, "application/json", buildJson(dir, path));
@@ -67,7 +88,7 @@ public class NasHttpServer extends NanoHTTPD {
                 String path = session.getParms().get("path");
                 File file = safeFile(path);
                 if (file == null || !file.exists() || file.isDirectory()) return text(Response.Status.NOT_FOUND, "Not found");
-                if (file.length() > 1024 * 1024) return text(Response.Status.BAD_REQUEST, "文件太大，不支持预览");
+                if (file.length() > 1024 * 1024) return text(Response.Status.BAD_REQUEST, "文件太大");
                 BufferedReader reader = new BufferedReader(new FileReader(file));
                 StringBuilder sb = new StringBuilder();
                 String line;
@@ -147,7 +168,6 @@ public class NasHttpServer extends NanoHTTPD {
         } catch (Exception e) {
             return text(Response.Status.INTERNAL_ERROR, "Error: " + e.getMessage());
         }
-
         return text(Response.Status.NOT_FOUND, "Not found");
     }
 
@@ -160,8 +180,7 @@ public class NasHttpServer extends NanoHTTPD {
         File[] files = dir.listFiles();
         if (files != null) Collections.addAll(children, files);
         Collections.sort(children, new Comparator<File>() {
-            @Override
-            public int compare(File a, File b) {
+            @Override public int compare(File a, File b) {
                 if (a.isDirectory() && !b.isDirectory()) return -1;
                 if (!a.isDirectory() && b.isDirectory()) return 1;
                 return a.getName().compareToIgnoreCase(b.getName());

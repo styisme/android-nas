@@ -12,6 +12,7 @@ import android.os.Environment;
 import android.os.PowerManager;
 import android.os.StatFs;
 import android.provider.Settings;
+import android.text.InputType;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -61,9 +62,8 @@ public class MainActivity extends Activity {
         
         toggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                if (HttpServerService.isRunning()) {
-                    stopService(new Intent(MainActivity.this, HttpServerService.class));
-                } else {
+                if (HttpServerService.isRunning()) stopService(new Intent(MainActivity.this, HttpServerService.class));
+                else {
                     startService(new Intent(MainActivity.this, HttpServerService.class));
                     checkBatteryOptimization();
                 }
@@ -71,15 +71,11 @@ public class MainActivity extends Activity {
             }
         });
         
-        findViewById(R.id.upBtn).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) {
-                File parent = currentDir.getParentFile();
-                if (parent != null && parent.getAbsolutePath().startsWith(ROOT)) { currentDir = parent; refresh(); }
-            }
+        findViewById(R.id.upBtn).setOnClickListener(v -> {
+            File parent = currentDir.getParentFile();
+            if (parent != null && parent.getAbsolutePath().startsWith(ROOT)) { currentDir = parent; refresh(); }
         });
-        findViewById(R.id.refreshBtn).setOnClickListener(new View.OnClickListener() {
-            @Override public void onClick(View v) { refresh(); }
-        });
+        findViewById(R.id.refreshBtn).setOnClickListener(v -> refresh());
         
         if (!HttpServerService.isRunning()) {
             startService(new Intent(this, HttpServerService.class));
@@ -87,26 +83,19 @@ public class MainActivity extends Activity {
         }
     }
     
-    // 引导用户关闭电池优化，防止后台被杀
     private void checkBatteryOptimization() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
                 new AlertDialog.Builder(this)
                     .setTitle("后台保活提示")
-                    .setMessage("为了保证 NAS 服务在息屏后不断网，请允许本应用忽略电池优化。\n\n如果系统有“锁屏清理”或“省电策略”，请将本应用设为“无限制”或“允许后台运行”。")
-                    .setPositiveButton("去设置", new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            try {
-                                Intent intent = new Intent();
-                                intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
-                                intent.setData(Uri.parse("package:" + getPackageName()));
-                                startActivity(intent);
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }
+                    .setMessage("为保证 NAS 服务在息屏后不断网，请允许忽略电池优化。")
+                    .setPositiveButton("去设置", (dialog, which) -> {
+                        try {
+                            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                            intent.setData(Uri.parse("package:" + getPackageName()));
+                            startActivity(intent);
+                        } catch (Exception e) { e.printStackTrace(); }
                     })
                     .setNegativeButton("暂不", null)
                     .show();
@@ -118,12 +107,14 @@ public class MainActivity extends Activity {
 
     private void updateServiceStatus() {
         boolean running = HttpServerService.isRunning();
-        statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
+        statusView.setText(running ? "服务状态：运行中 (已加密)" : "服务状态：已停止");
         toggleBtn.setText(running ? "停止服务" : "启动服务");
         String ip = getIpAddress();
         
-        String text = "网页管理: http://" + ip + ":" + HttpServerService.PORT + 
-                      "\n网络邻居(WebDAV): http://" + ip + ":" + HttpServerService.WEBDAV_PORT;
+        String text = "网页(HTTP): http://" + ip + ":" + HttpServerService.PORT + 
+                      "\n网页(HTTPS): https://" + ip + ":" + HttpServerService.HTTPS_PORT + 
+                      "\n网络邻居(WebDAV): http://" + ip + ":" + HttpServerService.WEBDAV_PORT + 
+                      "\n账号/密码: " + AuthManager.getAuthInfo();
         
         if (!running && HttpServerService.lastError != null && !HttpServerService.lastError.isEmpty()) {
             text += "\n\n⚠️ 错误提示：\n" + HttpServerService.lastError;
@@ -154,27 +145,23 @@ public class MainActivity extends Activity {
         items.clear();
         File[] files = currentDir.listFiles();
         if (files != null) Collections.addAll(items, files);
-        Collections.sort(items, new Comparator<File>() {
-            @Override public int compare(File a, File b) {
-                if (a.isDirectory() && !b.isDirectory()) return -1;
-                if (!a.isDirectory() && b.isDirectory()) return 1;
-                return a.getName().compareToIgnoreCase(b.getName());
-            }
+        Collections.sort(items, (a, b) -> {
+            if (a.isDirectory() && !b.isDirectory()) return -1;
+            if (!a.isDirectory() && b.isDirectory()) return 1;
+            return a.getName().compareToIgnoreCase(b.getName());
         });
         adapter.notifyDataSetChanged();
     }
 
     private void showFileMenu(final File f) {
         final String[] actions = f.isDirectory() ? new String[]{"重命名", "删除", "属性"} : new String[]{"打开", "分享", "重命名", "删除", "属性"};
-        new AlertDialog.Builder(this).setTitle(f.getName()).setItems(actions, new DialogInterface.OnClickListener() {
-            @Override public void onClick(DialogInterface dialog, int which) {
-                String action = actions[which];
-                if (action.equals("打开")) openFile(f);
-                else if (action.equals("分享")) shareFile(f);
-                else if (action.equals("重命名")) renameFile(f);
-                else if (action.equals("删除")) deleteFile(f);
-                else if (action.equals("属性")) showInfo(f);
-            }
+        new AlertDialog.Builder(this).setTitle(f.getName()).setItems(actions, (dialog, which) -> {
+            String action = actions[which];
+            if (action.equals("打开")) openFile(f);
+            else if (action.equals("分享")) shareFile(f);
+            else if (action.equals("重命名")) renameFile(f);
+            else if (action.equals("删除")) deleteFile(f);
+            else if (action.equals("属性")) showInfo(f);
         }).show();
     }
 
@@ -198,24 +185,18 @@ public class MainActivity extends Activity {
     private void renameFile(final File f) {
         final EditText input = new EditText(this);
         input.setText(f.getName());
-        new AlertDialog.Builder(this).setTitle("重命名").setView(input).setPositiveButton("确定", new DialogInterface.OnClickListener() {
-            @Override public void onClick(DialogInterface dialog, int which) {
-                String name = input.getText().toString().trim();
-                if (name.length() == 0) return;
-                File target = new File(f.getParentFile(), name);
-                if (target.exists()) { Toast.makeText(MainActivity.this, "目标已存在", Toast.LENGTH_SHORT).show(); return; }
-                if (f.renameTo(target)) refresh();
-                else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
-            }
+        new AlertDialog.Builder(this).setTitle("重命名").setView(input).setPositiveButton("确定", (dialog, which) -> {
+            String name = input.getText().toString().trim();
+            if (name.length() == 0) return;
+            File target = new File(f.getParentFile(), name);
+            if (target.exists()) { Toast.makeText(MainActivity.this, "目标已存在", Toast.LENGTH_SHORT).show(); return; }
+            if (f.renameTo(target)) refresh(); else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
         }).setNegativeButton("取消", null).show();
     }
 
     private void deleteFile(final File f) {
-        new AlertDialog.Builder(this).setTitle("删除").setMessage("确定删除 " + f.getName() + "？").setPositiveButton("删除", new DialogInterface.OnClickListener() {
-            @Override public void onClick(DialogInterface dialog, int which) {
-                if (deleteRecursive(f)) refresh();
-                else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
-            }
+        new AlertDialog.Builder(this).setTitle("删除").setMessage("确定删除 " + f.getName() + "？").setPositiveButton("删除", (dialog, which) -> {
+            if (deleteRecursive(f)) refresh(); else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
         }).setNegativeButton("取消", null).show();
     }
 
@@ -231,6 +212,59 @@ public class MainActivity extends Activity {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US);
         String info = "路径：" + f.getAbsolutePath() + "\n大小：" + formatSize(f.length()) + "\n修改时间：" + sdf.format(f.lastModified());
         new AlertDialog.Builder(this).setTitle("属性").setMessage(info).setPositiveButton("确定", null).show();
+    }
+
+    @Override public boolean onCreateOptionsMenu(Menu menu) { 
+        menu.add(0, 1, 0, "新建文件夹"); 
+        menu.add(0, 2, 0, "修改密码");
+        return true; 
+    }
+    
+    @Override public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == 2) {
+            showChangePasswordDialog();
+            return true;
+        }
+        if (item.getItemId() == 1) {
+            final EditText input = new EditText(this);
+            new AlertDialog.Builder(this).setTitle("新建文件夹").setView(input).setPositiveButton("创建", (dialog, which) -> {
+                String name = input.getText().toString().trim();
+                if (name.length() == 0) return;
+                File target = new File(currentDir, name);
+                if (target.mkdirs()) refresh(); else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
+            }).setNegativeButton("取消", null).show();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    private void showChangePasswordDialog() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(48, 24, 48, 24);
+
+        EditText etUser = new EditText(this);
+        etUser.setHint("新账号");
+        layout.addView(etUser);
+
+        EditText etPass = new EditText(this);
+        etPass.setHint("新密码");
+        etPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        layout.addView(etPass);
+
+        new AlertDialog.Builder(this)
+            .setTitle("修改网页与 WebDAV 密码")
+            .setView(layout)
+            .setPositiveButton("保存", (dialog, which) -> {
+                String u = etUser.getText().toString().trim();
+                String p = etPass.getText().toString().trim();
+                if (u.isEmpty() || p.isEmpty()) return;
+                AuthManager.setAuth(this, u, p);
+                Toast.makeText(this, "密码已更新", Toast.LENGTH_SHORT).show();
+                updateServiceStatus();
+            })
+            .setNegativeButton("取消", null)
+            .show();
     }
 
     private String formatSize(long n) {

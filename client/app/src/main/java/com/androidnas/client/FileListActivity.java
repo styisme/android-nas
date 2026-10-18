@@ -30,10 +30,19 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.URLEncoder;
+import java.security.cert.CertificateException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 import okhttp3.Credentials;
 import okhttp3.MediaType;
@@ -50,7 +59,7 @@ public class FileListActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
     private FileAdapter adapter;
     private List<FileItem> files = new ArrayList<>();
-    private OkHttpClient client = new OkHttpClient();
+    private OkHttpClient client;
 
     private ActivityResultLauncher<Intent> filePickerLauncher;
 
@@ -68,30 +77,27 @@ public class FileListActivity extends AppCompatActivity {
         isAndroidNas = getIntent().getBooleanExtra("isAndroidNas", true);
         String user = getIntent().getStringExtra("username");
         String pass = getIntent().getStringExtra("password");
+        if (user == null) user = "admin";
+        if (pass == null) pass = "admin";
 
-        if (user != null && !user.isEmpty()) {
-            authHeader = Credentials.basic(user, pass);
-        }
+        authHeader = Credentials.basic(user, pass);
+
+        // 信任自签名 HTTPS 证书的 OkHttp 客户端
+        client = getUnsafeOkHttpClient();
 
         MaterialToolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-        }
+        if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         updateTitle();
 
         toolbar.setNavigationOnClickListener(v -> {
             if (!currentPath.equals("/")) {
                 String[] parts = currentPath.split("/");
                 StringBuilder sb = new StringBuilder();
-                for (int i = 1; i < parts.length - 1; i++) {
-                    sb.append("/").append(parts[i]);
-                }
+                for (int i = 1; i < parts.length - 1; i++) sb.append("/").append(parts[i]);
                 currentPath = sb.length() == 0 ? "/" : sb.toString();
                 loadFiles();
-            } else {
-                finish();
-            }
+            } else finish();
         });
 
         recyclerView = findViewById(R.id.recyclerView);
@@ -99,11 +105,9 @@ public class FileListActivity extends AppCompatActivity {
         adapter = new FileAdapter();
         recyclerView.setAdapter(adapter);
 
-        // 悬浮按钮用于上传
         FloatingActionButton fab = findViewById(R.id.fabUpload);
         fab.setOnClickListener(v -> openFilePicker());
 
-        // 初始化文件选择器
         filePickerLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -114,12 +118,33 @@ public class FileListActivity extends AppCompatActivity {
             }
         );
 
-        // 请求存储权限用于下载
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 100);
         }
-
         loadFiles();
+    }
+
+    private OkHttpClient getUnsafeOkHttpClient() {
+        try {
+            final TrustManager[] trustAllCerts = new TrustManager[]{
+                new X509TrustManager() {
+                    @Override public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {}
+                    @Override public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {}
+                    @Override public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[]{}; }
+                }
+            };
+            final SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+            final SSLSocketFactory sslSocketFactory = sslContext.getSocketFactory();
+
+            return new OkHttpClient.Builder()
+                    .sslSocketFactory(sslSocketFactory, (X509TrustManager) trustAllCerts[0])
+                    .hostnameVerifier((hostname, session) -> true)
+                    .connectTimeout(10, TimeUnit.SECONDS)
+                    .build();
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void openFilePicker() {
@@ -132,7 +157,6 @@ public class FileListActivity extends AppCompatActivity {
     private void uploadFile(Uri uri) {
         String fileName = getFileName(uri);
         if (fileName == null) fileName = "upload_" + System.currentTimeMillis();
-
         Toast.makeText(this, "开始上传 " + fileName, Toast.LENGTH_SHORT).show();
         String finalFileName = fileName;
 
@@ -141,13 +165,11 @@ public class FileListActivity extends AppCompatActivity {
                 InputStream is = getContentResolver().openInputStream(uri);
                 if (is == null) return;
 
-                // 统一使用 WebDAV 的 PUT 方法上传
                 String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + finalFileName;
                 RequestBody body = new RequestBody() {
                     @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
                     @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
-                        byte[] buf = new byte[8192];
-                        int len;
+                        byte[] buf = new byte[8192]; int len;
                         while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
                     }
                 };
@@ -159,10 +181,7 @@ public class FileListActivity extends AppCompatActivity {
                 is.close();
 
                 if (response.isSuccessful()) {
-                    runOnUiThread(() -> {
-                        Toast.makeText(this, "上传成功", Toast.LENGTH_SHORT).show();
-                        loadFiles();
-                    });
+                    runOnUiThread(() -> { Toast.makeText(this, "上传成功", Toast.LENGTH_SHORT).show(); loadFiles(); });
                 } else {
                     throw new Exception("HTTP " + response.code());
                 }
@@ -191,9 +210,7 @@ public class FileListActivity extends AppCompatActivity {
     }
 
     private void updateTitle() {
-        if (getSupportActionBar() != null) {
-            getSupportActionBar().setTitle("文件管理: " + currentPath);
-        }
+        if (getSupportActionBar() != null) getSupportActionBar().setTitle("文件管理: " + currentPath);
     }
 
     private void loadFiles() {
@@ -208,8 +225,8 @@ public class FileListActivity extends AppCompatActivity {
                 runOnUiThread(() -> adapter.notifyDataSetChanged());
             } catch (Exception e) {
                 String msg = e.getMessage();
-                if (msg != null && msg.contains("Failed to connect")) {
-                    msg = "无法连接，请检查服务端是否正常运行";
+                if (msg != null && (msg.contains("Failed to connect") || msg.contains("Host is unresolved"))) {
+                    msg = "无法连接，请检查网络或密码是否正确";
                 }
                 String finalMsg = msg;
                 runOnUiThread(() -> Toast.makeText(this, "加载失败: " + finalMsg, Toast.LENGTH_LONG).show());
@@ -221,20 +238,22 @@ public class FileListActivity extends AppCompatActivity {
         String encodedPath = URLEncoder.encode(currentPath, "UTF-8");
         String apiUrl = baseUrl + "/api/list?path=" + encodedPath;
         
-        Request request = new Request.Builder().url(apiUrl).build();
-        Response response = client.newCall(request).execute();
+        Request.Builder builder = new Request.Builder().url(apiUrl);
+        if (authHeader != null) builder.header("Authorization", authHeader);
+        Response response = client.newCall(builder.build()).execute();
+        
         if (response.isSuccessful() && response.body() != null) {
             String json = response.body().string();
             org.json.JSONObject obj = new org.json.JSONObject(json);
             org.json.JSONArray arr = obj.getJSONArray("files");
             for (int i = 0; i < arr.length(); i++) {
                 org.json.JSONObject f = arr.getJSONObject(i);
-                String name = f.getString("name");
-                boolean dir = f.getBoolean("dir");
-                long size = f.getLong("size");
-                String path = currentPath.endsWith("/") ? currentPath + name : currentPath + "/" + name;
-                files.add(new FileItem(name, path, dir, size));
+                files.add(new FileItem(f.getString("name"), 
+                        currentPath.endsWith("/") ? currentPath + f.getString("name") : currentPath + "/" + f.getString("name"),
+                        f.getBoolean("dir"), f.getLong("size")));
             }
+        } else if (response.code() == 401) {
+            throw new Exception("账号或密码错误");
         } else {
             throw new Exception("HTTP " + response.code());
         }
@@ -250,10 +269,11 @@ public class FileListActivity extends AppCompatActivity {
                 .header("Depth", "1");
         if (authHeader != null) builder.header("Authorization", authHeader);
         Response response = client.newCall(builder.build()).execute();
+        
         if (response.isSuccessful() && response.body() != null) {
             parseWebDavXml(response.body().string());
         } else if (response.code() == 401) {
-            throw new Exception("需要认证或密码错误");
+            throw new Exception("账号或密码错误");
         } else {
             throw new Exception("WebDAV 连接失败: " + response.code());
         }
@@ -297,8 +317,7 @@ public class FileListActivity extends AppCompatActivity {
                     File dest = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), f.name);
                     try (InputStream is = response.body().byteStream();
                          FileOutputStream fos = new FileOutputStream(dest)) {
-                        byte[] buf = new byte[8192];
-                        int len;
+                        byte[] buf = new byte[8192]; int len;
                         while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
                     }
                     runOnUiThread(() -> Toast.makeText(this, "下载成功: " + dest.getAbsolutePath(), Toast.LENGTH_LONG).show());
@@ -336,18 +355,13 @@ public class FileListActivity extends AppCompatActivity {
                     new MaterialAlertDialogBuilder(FileListActivity.this)
                         .setTitle(f.name)
                         .setItems(new String[]{"下载", "查看属性"}, (dialog, which) -> {
-                            if (which == 0) {
-                                downloadFile(f);
-                            } else {
+                            if (which == 0) downloadFile(f);
+                            else {
                                 String info = "路径: " + f.path + "\n大小: " + formatSize(f.size);
                                 new MaterialAlertDialogBuilder(FileListActivity.this)
-                                    .setTitle("属性")
-                                    .setMessage(info)
-                                    .setPositiveButton("确定", null)
-                                    .show();
+                                    .setTitle("属性").setMessage(info).setPositiveButton("确定", null).show();
                             }
-                        })
-                        .show();
+                        }).show();
                 }
             });
         }
