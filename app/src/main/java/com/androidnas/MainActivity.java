@@ -39,7 +39,6 @@ public class MainActivity extends Activity {
         toggleBtn = (Button) findViewById(R.id.toggleBtn);
         listView = (ListView) findViewById(R.id.listView);
         
-        // 动态添加一个用于显示存储空间的 TextView
         storageView = new TextView(this);
         storageView.setTextSize(14);
         storageView.setTextColor(0xFF666666);
@@ -87,7 +86,9 @@ public class MainActivity extends Activity {
         boolean running = HttpServerService.isRunning();
         statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
         toggleBtn.setText(running ? "停止服务" : "启动服务");
-        ipView.setText("访问地址：http://" + getIpAddress() + ":" + HttpServerService.PORT);
+        String ip = getIpAddress();
+        ipView.setText("网页管理: http://" + ip + ":" + HttpServerService.PORT + 
+                       "\n网络邻居(WebDAV): http://" + ip + ":" + HttpServerService.WEBDAV_PORT);
     }
 
     private String getIpAddress() {
@@ -103,7 +104,6 @@ public class MainActivity extends Activity {
         if (!currentDir.exists() || !currentDir.isDirectory()) currentDir = new File(ROOT);
         pathView.setText(currentDir.getAbsolutePath().replace(ROOT, "/"));
         
-        // 更新存储空间
         try {
             StatFs stat = new StatFs(Environment.getExternalStorageDirectory().getPath());
             long bytesAvailable = (long)stat.getBlockSize() * (long)stat.getAvailableBlocks();

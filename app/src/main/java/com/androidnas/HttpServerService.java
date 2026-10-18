@@ -6,10 +6,12 @@ import android.app.Service;
 import android.content.Intent;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.Environment;
 
 public class HttpServerService extends Service {
 
     public static final int PORT = 8080;
+    public static final int WEBDAV_PORT = 8081;
     private static final int NOTIFICATION_ID = 1001;
     private static volatile boolean running = false;
 
@@ -18,6 +20,7 @@ public class HttpServerService extends Service {
     }
 
     private NasHttpServer server;
+    private WebDavServer webDavServer;
 
     @Override
     public void onCreate() {
@@ -26,6 +29,11 @@ public class HttpServerService extends Service {
         try {
             server = new NasHttpServer(PORT);
             server.start();
+            
+            String rootDir = Environment.getExternalStorageDirectory().getAbsolutePath();
+            webDavServer = new WebDavServer(rootDir);
+            webDavServer.startServer(WEBDAV_PORT);
+            
             running = true;
         } catch (Exception e) {
             e.printStackTrace();
@@ -43,23 +51,22 @@ public class HttpServerService extends Service {
             if (Build.VERSION.SDK_INT >= 16) {
                 n = new Notification.Builder(this)
                         .setContentTitle("Android NAS")
-                        .setContentText("文件服务运行中 (端口 " + PORT + ")")
+                        .setContentText("网页服务与网络邻居运行中")
                         .setSmallIcon(android.R.drawable.stat_sys_download_done)
                         .setContentIntent(pi).setOngoing(true).build();
             } else if (Build.VERSION.SDK_INT >= 11) {
                 n = new Notification.Builder(this)
                         .setContentTitle("Android NAS")
-                        .setContentText("文件服务运行中 (端口 " + PORT + ")")
+                        .setContentText("网页服务与网络邻居运行中")
                         .setSmallIcon(android.R.drawable.stat_sys_download_done)
                         .setContentIntent(pi).setOngoing(true).getNotification();
             } else {
                 n = new Notification(android.R.drawable.stat_sys_download_done,
                         "Android NAS 运行中", System.currentTimeMillis());
-                // 高版本 SDK 移除了 setLatestEventInfo，使用反射调用以兼容 Android 2.2
                 try {
                     java.lang.reflect.Method method = n.getClass().getMethod("setLatestEventInfo",
                             android.content.Context.class, CharSequence.class, CharSequence.class, PendingIntent.class);
-                    method.invoke(n, this, "Android NAS", "文件服务运行中 (端口 " + PORT + ")", pi);
+                    method.invoke(n, this, "Android NAS", "网页服务与网络邻居运行中", pi);
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
@@ -79,6 +86,7 @@ public class HttpServerService extends Service {
     @Override
     public void onDestroy() {
         if (server != null) server.stop();
+        if (webDavServer != null) webDavServer.stopServer();
         running = false;
         try { stopForeground(true); } catch (Throwable ignored) {}
         super.onDestroy();
