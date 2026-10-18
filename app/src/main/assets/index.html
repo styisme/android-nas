@@ -17,19 +17,43 @@
             --md-sys-color-error: #B3261E;
             --md-sys-color-outline: #79747E;
         }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --md-sys-color-primary: #D0BCFF;
+                --md-sys-color-on-primary: #381E72;
+                --md-sys-color-primary-container: #4F378B;
+                --md-sys-color-on-primary-container: #EADDFF;
+                --md-sys-color-surface: #141218;
+                --md-sys-color-on-surface: #E6E0E9;
+                --md-sys-color-surface-variant: #49454F;
+                --md-sys-color-on-surface-variant: #CAC4D0;
+                --md-sys-color-error: #F2B8B5;
+                --md-sys-color-outline: #938F99;
+            }
+        }
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); padding-bottom: 80px; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); padding-bottom: 80px; transition: background 0.3s; }
         
-        /* Top App Bar */
-        header { background-color: var(--md-sys-color-surface); padding: 16px; position: sticky; top: 0; z-index: 10; display: flex; align-items: center; }
-        header h1 { margin: 0; font-size: 22px; font-weight: 400; }
+        header { background-color: var(--md-sys-color-surface); padding: 16px; position: sticky; top: 0; z-index: 10; display: flex; align-items: center; border-bottom: 1px solid var(--md-sys-color-surface-variant); }
+        header h1 { margin: 0; font-size: 22px; font-weight: 400; flex: 1; }
         
-        /* Cards */
-        .card { background-color: var(--md-sys-color-surface); border-radius: 24px; padding: 16px; margin: 0 16px 16px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06); transition: box-shadow 0.3s ease; }
-        
+        .drop-zone { 
+            margin: 16px; padding: 32px; 
+            border: 2px dashed var(--md-sys-color-outline); 
+            border-radius: 24px; 
+            text-align: center; 
+            color: var(--md-sys-color-on-surface-variant);
+            transition: all 0.2s;
+        }
+        .drop-zone.dragover { 
+            background-color: var(--md-sys-color-primary-container); 
+            border-color: var(--md-sys-color-primary); 
+            color: var(--md-sys-color-on-primary-container); 
+        }
+
+        .card { background-color: var(--md-sys-color-surface); border-radius: 24px; padding: 16px; margin: 0 16px 16px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
         #path { font-size: 14px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px; word-break: break-all; }
         
-        /* List Items */
         .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--md-sys-color-surface-variant); }
         .item:last-child { border-bottom: none; }
         .item-info { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
@@ -37,38 +61,58 @@
         .dir-name { color: var(--md-sys-color-primary); font-weight: 500; cursor: pointer; }
         .size { font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px; }
         
-        /* Buttons */
         .btn { background: transparent; color: var(--md-sys-color-primary); border: none; padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s; }
         .btn:hover { background: var(--md-sys-color-primary-container); }
         .btn-red { color: var(--md-sys-color-error); }
         .btn-red:hover { background: #F9DEDC; }
         
-        /* FAB */
-        .fab { position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px; border-radius: 16px; background-color: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; font-size: 24px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 8px rgba(0,0,0,0.2); cursor: pointer; transition: transform 0.2s; z-index: 20; }
+        .fab { position: fixed; bottom: 24px; right: 24px; width: 64px; height: 64px; border-radius: 20px; background-color: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; font-size: 28px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 8px rgba(0,0,0,0.2); cursor: pointer; transition: transform 0.2s; z-index: 20; }
         .fab:active { transform: scale(0.92); }
 
-        /* Toolbar */
         .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
         
-        /* Modals */
         .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 30; align-items: center; justify-content: center; }
         .modal-content { background: var(--md-sys-color-surface); padding: 24px; border-radius: 28px; width: 90%; max-width: 500px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         .modal-content h3 { margin-top: 0; font-weight: 400; }
         
-        /* Inputs */
         input[type="text"] { width: 100%; padding: 12px 16px; margin: 16px 0; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; background: transparent; color: var(--md-sys-color-on-surface); font-size: 16px; box-sizing: border-box; }
         input[type="text"]:focus { outline: 2px solid var(--md-sys-color-primary); border-color: transparent; }
         textarea { width: 100%; height: 250px; padding: 12px; margin: 16px 0; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; font-family: monospace; box-sizing: border-box; background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); }
         
-        /* Hidden file input */
         #fileInput { display: none; }
+
+        /* 上传进度条 */
+        #uploadProgress {
+            display: none;
+            position: fixed; top: 70px; left: 16px; right: 16px;
+            background: var(--md-sys-color-primary-container);
+            color: var(--md-sys-color-on-primary-container);
+            padding: 16px; border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 40;
+        }
+        .progress-bar-bg {
+            width: 100%; height: 8px; background: var(--md-sys-color-surface-variant);
+            border-radius: 4px; margin-top: 8px; overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%; background: var(--md-sys-color-primary); width: 0%;
+            transition: width 0.2s;
+        }
     </style>
 </head>
 <body>
 <header>
     <h1>Android NAS</h1>
-    <button class="btn" style="margin-left:auto;" onclick="showAbout()">关于</button>
+    <button class="btn" onclick="showAbout()">关于</button>
 </header>
+
+<!-- 拖拽上传区域 -->
+<div class="drop-zone" id="dropZone">
+    <div style="font-size: 32px; margin-bottom: 8px;">📤</div>
+    <div>点击此处或拖拽文件到此处上传</div>
+    <div style="font-size: 12px; margin-top: 4px;">(自动保存到当前目录)</div>
+</div>
 
 <div class="card">
     <div id="path">/</div>
@@ -80,22 +124,20 @@
     <div id="list"></div>
 </div>
 
-<!-- FAB 按钮用于上传 -->
 <button class="fab" onclick="document.getElementById('fileInput').click()">+</button>
 <input type="file" id="fileInput" multiple>
 
-<!-- 关于弹窗 -->
-<div id="aboutModal" class="modal">
-    <div class="modal-content">
-        <h3>关于 Android NAS</h3>
-        <p>版本: v1.1.0</p>
-        <p>一个极简的局域网 WebDAV 与网页文件管理服务器。</p>
-        <p>支持 Android 2.2 及以上系统。</p>
-        <div style="text-align: right; margin-top: 16px;">
-            <button class="btn" onclick="closeModal('aboutModal')">确定</button>
-        </div>
+<!-- 上传进度面板 -->
+<div id="uploadProgress">
+    <div style="display: flex; justify-content: space-between;">
+        <span>正在上传...</span>
+        <span id="progressText">0%</span>
+    </div>
+    <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progressFill"></div>
     </div>
 </div>
+
 <!-- 新建文件夹弹窗 -->
 <div id="mkdirModal" class="modal">
     <div class="modal-content">
@@ -120,10 +162,26 @@
     </div>
 </div>
 
+<!-- 关于弹窗 -->
+<div id="aboutModal" class="modal">
+    <div class="modal-content">
+        <h3>关于 Android NAS</h3>
+        <p>版本: v1.2.0</p>
+        <p>一个极简的局域网 WebDAV 与网页文件管理服务器。</p>
+        <p>支持 Android 2.2 及以上系统。</p>
+        <div style="text-align: right; margin-top: 16px;">
+            <button class="btn" onclick="closeModal('aboutModal')">确定</button>
+        </div>
+    </div>
+</div>
+
 <script>
 var currentPath = '/';
 var editingFile = '';
+var dropZone = document.getElementById('dropZone');
+var fileInput = document.getElementById('fileInput');
 
+// 刷新列表
 function refresh() {
     fetch('/api/list?path=' + encodeURIComponent(currentPath))
         .then(function (r) { return r.json(); })
@@ -175,8 +233,8 @@ function goUp() {
     refresh();
 }
 
-function showAbout() { document.getElementById("aboutModal").style.display = "flex"; }
 function showMkdir() { document.getElementById('mkdirModal').style.display = 'flex'; }
+function showAbout() { document.getElementById('aboutModal').style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
 function doMkdir() {
@@ -231,30 +289,78 @@ function escapeHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-document.getElementById('fileInput').onchange = function () {
-    var input = this;
-    if (!input.files.length) return;
+// 通用上传函数
+function uploadFiles(files) {
+    if (!files.length) return;
     
     var fd = new FormData();
-    for (var i = 0; i < input.files.length; i++) {
-        fd.append('file', input.files[i], input.files[i].name);
+    for (var i = 0; i < files.length; i++) {
+        fd.append('file', files[i], files[i].name);
     }
     fd.append('path', currentPath);
 
-    var pathEl = document.getElementById('path');
-    var originalText = pathEl.textContent;
-    pathEl.textContent = '正在上传 ' + input.files.length + ' 个文件...';
+    var progressPanel = document.getElementById('uploadProgress');
+    var progressFill = document.getElementById('progressFill');
+    var progressText = document.getElementById('progressText');
+    
+    progressPanel.style.display = 'block';
+    progressFill.style.width = '0%';
+    progressText.textContent = '0%';
 
-    fetch('/api/upload', { method: 'POST', body: fd })
-        .then(function (r) { return r.text(); })
-        .then(function (txt) {
-            input.value = '';
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload', true);
+
+    // 监听上传进度
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            var percent = Math.round((e.loaded / e.total) * 100);
+            progressFill.style.width = percent + '%';
+            progressText.textContent = percent + '%';
+        }
+    };
+
+    xhr.onload = function() {
+        progressPanel.style.display = 'none';
+        fileInput.value = '';
+        if (xhr.status === 200) {
             refresh();
-        })
-        .catch(function () { 
-            pathEl.textContent = originalText;
-            alert('上传失败'); 
-        });
+        } else {
+            alert('上传失败: ' + xhr.responseText);
+        }
+    };
+
+    xhr.onerror = function() {
+        progressPanel.style.display = 'none';
+        alert('网络错误，上传中断');
+    };
+
+    xhr.send(fd);
+}
+
+// 绑定 FAB 按钮事件
+fileInput.onchange = function () {
+    uploadFiles(this.files);
+};
+
+// 点击 DropZone 触发文件选择
+dropZone.onclick = function() {
+    fileInput.click();
+};
+
+// 绑定拖拽事件
+dropZone.ondragover = function(e) {
+    e.preventDefault();
+    this.classList.add('dragover');
+};
+dropZone.ondragleave = function() {
+    this.classList.remove('dragover');
+};
+dropZone.ondrop = function(e) {
+    e.preventDefault();
+    this.classList.remove('dragover');
+    if (e.dataTransfer.files.length) {
+        uploadFiles(e.dataTransfer.files);
+    }
 };
 
 refresh();
