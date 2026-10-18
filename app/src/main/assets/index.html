@@ -67,6 +67,7 @@
 <body>
 <header>
     <h1>Android NAS</h1>
+    <button class="btn" style="margin-left:auto;" onclick="showAbout()">关于</button>
 </header>
 
 <div class="card">
@@ -83,6 +84,18 @@
 <button class="fab" onclick="document.getElementById('fileInput').click()">+</button>
 <input type="file" id="fileInput" multiple>
 
+<!-- 关于弹窗 -->
+<div id="aboutModal" class="modal">
+    <div class="modal-content">
+        <h3>关于 Android NAS</h3>
+        <p>版本: v1.1.0</p>
+        <p>一个极简的局域网 WebDAV 与网页文件管理服务器。</p>
+        <p>支持 Android 2.2 及以上系统。</p>
+        <div style="text-align: right; margin-top: 16px;">
+            <button class="btn" onclick="closeModal('aboutModal')">确定</button>
+        </div>
+    </div>
+</div>
 <!-- 新建文件夹弹窗 -->
 <div id="mkdirModal" class="modal">
     <div class="modal-content">
@@ -162,6 +175,7 @@ function goUp() {
     refresh();
 }
 
+function showAbout() { document.getElementById("aboutModal").style.display = "flex"; }
 function showMkdir() { document.getElementById('mkdirModal').style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 

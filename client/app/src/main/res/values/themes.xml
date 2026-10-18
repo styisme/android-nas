@@ -1,0 +1,9 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.NASClient" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- 默认主色调，在 Android 12+ 会被动态取色覆盖 -->
+        <item name="colorPrimary">#6750A4</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#EADDFF</item>
+        <item name="colorOnPrimaryContainer">#21005D</item>
+    </style>
+</resources>

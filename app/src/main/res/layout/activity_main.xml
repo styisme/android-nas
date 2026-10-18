@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/main_layout"
     android:layout_width="fill_parent"
     android:layout_height="fill_parent"
     android:orientation="vertical"
@@ -19,7 +20,7 @@
         android:layout_height="wrap_content"
         android:textSize="14sp"
         android:textColor="#666666"
-        android:text="访问地址：-" />
+        android:text="网页管理: -\n网络邻居: -" />
 
     <LinearLayout
         android:layout_width="fill_parent"

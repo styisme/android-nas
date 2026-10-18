@@ -39,9 +39,11 @@ public class MainActivity extends Activity {
         toggleBtn = (Button) findViewById(R.id.toggleBtn);
         listView = (ListView) findViewById(R.id.listView);
         
+        // 动态添加存储空间显示
         storageView = new TextView(this);
         storageView.setTextSize(14);
         storageView.setTextColor(0xFF666666);
+        storageView.setPadding(0, 8, 0, 8);
         LinearLayout rootLayout = (LinearLayout) findViewById(R.id.main_layout);
         if (rootLayout != null) rootLayout.addView(storageView, 3);
 
@@ -195,8 +197,18 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("属性").setMessage(info).setPositiveButton("确定", null).show();
     }
 
-    @Override public boolean onCreateOptionsMenu(Menu menu) { menu.add(0, 1, 0, "新建文件夹"); return true; }
+    @Override public boolean onCreateOptionsMenu(Menu menu) { menu.add(0, 1, 0, "新建文件夹");
+        menu.add(0, 2, 0, "关于");
+        return true; }
     @Override public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == 2) {
+            new AlertDialog.Builder(this)
+                .setTitle("关于 Android NAS")
+                .setMessage("版本: v1.1.0\n\n一个极简的局域网 WebDAV 与网页文件管理服务器。\n支持 Android 2.2 及以上系统。")
+                .setPositiveButton("确定", null)
+                .show();
+            return true;
+        }
         if (item.getItemId() == 1) {
             final EditText input = new EditText(this);
             new AlertDialog.Builder(this).setTitle("新建文件夹").setView(input).setPositiveButton("创建", new DialogInterface.OnClickListener() {
