@@ -6,9 +6,12 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.PowerManager;
 import android.os.StatFs;
+import android.provider.Settings;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -55,19 +58,19 @@ public class MainActivity extends Activity {
                 else showFileMenu(f);
             }
         });
-        listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
-            @Override public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
-                showFileMenu(items.get(position));
-                return true;
-            }
-        });
+        
         toggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                if (HttpServerService.isRunning()) stopService(new Intent(MainActivity.this, HttpServerService.class));
-                else startService(new Intent(MainActivity.this, HttpServerService.class));
+                if (HttpServerService.isRunning()) {
+                    stopService(new Intent(MainActivity.this, HttpServerService.class));
+                } else {
+                    startService(new Intent(MainActivity.this, HttpServerService.class));
+                    checkBatteryOptimization();
+                }
                 updateServiceStatus();
             }
         });
+        
         findViewById(R.id.upBtn).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
                 File parent = currentDir.getParentFile();
@@ -77,7 +80,38 @@ public class MainActivity extends Activity {
         findViewById(R.id.refreshBtn).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { refresh(); }
         });
-        if (!HttpServerService.isRunning()) startService(new Intent(this, HttpServerService.class));
+        
+        if (!HttpServerService.isRunning()) {
+            startService(new Intent(this, HttpServerService.class));
+            checkBatteryOptimization();
+        }
+    }
+    
+    // 引导用户关闭电池优化，防止后台被杀
+    private void checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                new AlertDialog.Builder(this)
+                    .setTitle("后台保活提示")
+                    .setMessage("为了保证 NAS 服务在息屏后不断网，请允许本应用忽略电池优化。\n\n如果系统有“锁屏清理”或“省电策略”，请将本应用设为“无限制”或“允许后台运行”。")
+                    .setPositiveButton("去设置", new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            try {
+                                Intent intent = new Intent();
+                                intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                                intent.setData(Uri.parse("package:" + getPackageName()));
+                                startActivity(intent);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    })
+                    .setNegativeButton("暂不", null)
+                    .show();
+            }
+        }
     }
 
     @Override protected void onResume() { super.onResume(); updateServiceStatus(); refresh(); }
@@ -197,37 +231,6 @@ public class MainActivity extends Activity {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US);
         String info = "路径：" + f.getAbsolutePath() + "\n大小：" + formatSize(f.length()) + "\n修改时间：" + sdf.format(f.lastModified());
         new AlertDialog.Builder(this).setTitle("属性").setMessage(info).setPositiveButton("确定", null).show();
-    }
-
-    @Override public boolean onCreateOptionsMenu(Menu menu) { 
-        menu.add(0, 1, 0, "新建文件夹"); 
-        menu.add(0, 2, 0, "关于");
-        return true; 
-    }
-    
-    @Override public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == 2) {
-            new AlertDialog.Builder(this)
-                .setTitle("关于 Android NAS")
-                .setMessage("版本: v1.2.0\n\n一个极简的局域网 WebDAV 与网页文件管理服务器。")
-                .setPositiveButton("确定", null)
-                .show();
-            return true;
-        }
-        if (item.getItemId() == 1) {
-            final EditText input = new EditText(this);
-            new AlertDialog.Builder(this).setTitle("新建文件夹").setView(input).setPositiveButton("创建", new DialogInterface.OnClickListener() {
-                @Override public void onClick(DialogInterface dialog, int which) {
-                    String name = input.getText().toString().trim();
-                    if (name.length() == 0) return;
-                    File target = new File(currentDir, name);
-                    if (target.mkdirs()) refresh();
-                    else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
-                }
-            }).setNegativeButton("取消", null).show();
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
     }
 
     private String formatSize(long n) {
