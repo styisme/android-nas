@@ -5,34 +5,72 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Android NAS</title>
     <style>
-        body { font-family: sans-serif; margin: 16px; }
-        #path { color: #666; margin-bottom: 8px; word-break: break-all; }
-        .item { padding: 8px 0; border-bottom: 1px solid #eee; }
-        .dir { color: #1a73e8; cursor: pointer; }
-        .file { color: #333; }
-        .size { color: #999; font-size: 12px; margin-left: 12px; }
-        .toolbar { margin: 12px 0; }
-        input[type=file] { margin-top: 8px; }
+        body { font-family: -apple-system, sans-serif; margin: 0; padding: 16px; background: #f5f6f8; color: #333; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .card { background: #fff; border-radius: 8px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        #path { font-weight: bold; color: #1a73e8; word-break: break-all; margin-bottom: 12px; }
+        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
+        .item:last-child { border-bottom: none; }
+        .dir { color: #1a73e8; cursor: pointer; font-weight: 500; }
+        .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .size { color: #999; font-size: 12px; margin: 0 12px; }
+        .btn { background: #1a73e8; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; margin-left: 6px; }
+        .btn-red { background: #d93025; }
+        .btn-gray { background: #e0e0e0; color: #333; }
+        .toolbar { margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10; }
+        .modal-content { background: #fff; margin: 10% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px; }
+        textarea { width: 100%; height: 300px; margin: 12px 0; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; box-sizing: border-box; }
+        input[type="text"] { width: 100%; padding: 8px; margin: 12px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
     </style>
 </head>
 <body>
-<h3>📁 Android NAS</h3>
-<div id="path">/</div>
-<div class="toolbar">
-    <button onclick="goUp()">⬆ 上级目录</button>
-    <button onclick="refresh()">🔄 刷新</button>
+<div class="header">
+    <h2>📁 Android NAS</h2>
 </div>
-<div id="list"></div>
+<div class="card">
+    <div id="path">/</div>
+    <div class="toolbar">
+        <button class="btn btn-gray" onclick="goUp()">⬆ 上级目录</button>
+        <button class="btn btn-gray" onclick="refresh()">🔄 刷新</button>
+        <button class="btn" onclick="showMkdir()">📁 新建文件夹</button>
+    </div>
+    <div id="list"></div>
+</div>
 
-<h4>上传文件到当前目录</h4>
-<form id="uploadForm">
-    <input type="file" name="file" id="fileInput">
-    <button type="submit">上传</button>
-</form>
-<p id="msg"></p>
+<div class="card" style="margin-top: 16px;">
+    <h4 style="margin-top: 0;">上传文件到当前目录</h4>
+    <form id="uploadForm">
+        <input type="file" name="file" id="fileInput" multiple>
+        <button type="submit" class="btn" style="margin-top: 8px;">上传</button>
+    </form>
+    <p id="msg" style="color: #1a73e8; font-size: 14px;"></p>
+</div>
+
+<!-- 新建文件夹弹窗 -->
+<div id="mkdirModal" class="modal">
+    <div class="modal-content">
+        <h3>新建文件夹</h3>
+        <input type="text" id="newDirName" placeholder="输入文件夹名称">
+        <button class="btn" onclick="doMkdir()">创建</button>
+        <button class="btn btn-gray" onclick="closeModal('mkdirModal')">取消</button>
+    </div>
+</div>
+
+<!-- 文本编辑弹窗 -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <h3>编辑文件: <span id="editFileName"></span></h3>
+        <textarea id="editContent"></textarea>
+        <button class="btn" onclick="doSave()">保存</button>
+        <button class="btn btn-gray" onclick="closeModal('editModal')">取消</button>
+    </div>
+</div>
 
 <script>
 var currentPath = '/';
+var editingFile = '';
+
 function refresh() {
     fetch('/api/list?path=' + encodeURIComponent(currentPath))
         .then(function (r) { return r.json(); })
@@ -44,23 +82,42 @@ function refresh() {
                 var div = document.createElement('div');
                 div.className = 'item';
                 var full = (currentPath.endsWith('/') ? currentPath : currentPath + '/') + f.name;
+                
+                var nameSpan = document.createElement('div');
+                nameSpan.className = 'name';
                 if (f.dir) {
-                    var span = document.createElement('span');
-                    span.className = 'dir';
-                    span.textContent = '📁 ' + f.name;
-                    span.onclick = function () { enterDir(full); };
-                    div.appendChild(span);
+                    nameSpan.innerHTML = '<span class="dir">📁 ' + escapeHtml(f.name) + '</span>';
+                    nameSpan.onclick = function () { enterDir(full); };
                 } else {
-                    div.innerHTML =
-                        '<span class="file">📄 ' + escapeHtml(f.name) + '</span>' +
-                        '<span class="size">' + formatSize(f.size) + '</span> ' +
-                        '<a href="/api/download?path=' + encodeURIComponent(full) + '">下载</a>';
+                    var icon = f.isImg ? '🖼️ ' : '📄 ';
+                    nameSpan.innerHTML = '<span>' + icon + escapeHtml(f.name) + '</span>';
                 }
+                div.appendChild(nameSpan);
+
+                var sizeSpan = document.createElement('span');
+                sizeSpan.className = 'size';
+                sizeSpan.textContent = f.dir ? '' : formatSize(f.size);
+                div.appendChild(sizeSpan);
+
+                var actionDiv = document.createElement('div');
+                if (!f.dir) {
+                    if (f.isImg) {
+                        actionDiv.innerHTML += '<a href="/api/download?path=' + encodeURIComponent(full) + '" target="_blank" class="btn btn-gray" style="text-decoration:none;">预览</a>';
+                    }
+                    if (f.isTxt) {
+                        actionDiv.innerHTML += '<button class="btn btn-gray" onclick="editFile(\'' + encodeURIComponent(full) + '\', \'' + escapeHtml(f.name) + '\')">编辑</button>';
+                    }
+                    actionDiv.innerHTML += '<a href="/api/download?path=' + encodeURIComponent(full) + '" class="btn">下载</a>';
+                }
+                actionDiv.innerHTML += '<button class="btn btn-red" onclick="delFile(\'' + encodeURIComponent(full) + '\')">删除</button>';
+                div.appendChild(actionDiv);
+
                 list.appendChild(div);
             });
         })
         .catch(function () { document.getElementById('msg').textContent = '列表加载失败'; });
 }
+
 function enterDir(path) { currentPath = path; refresh(); }
 function goUp() {
     if (currentPath === '/' || currentPath === '') return;
@@ -69,32 +126,85 @@ function goUp() {
     currentPath = parts.join('/') || '/';
     refresh();
 }
+
+function showMkdir() { document.getElementById('mkdirModal').style.display = 'block'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function doMkdir() {
+    var name = document.getElementById('newDirName').value;
+    if (!name) return;
+    var fd = new FormData();
+    fd.append('path', currentPath);
+    fd.append('name', name);
+    fetch('/api/mkdir', { method: 'POST', body: fd }).then(function() {
+        closeModal('mkdirModal');
+        document.getElementById('newDirName').value = '';
+        refresh();
+    });
+}
+
+function delFile(encodedPath) {
+    if (!confirm('确定删除吗？此操作不可恢复。')) return;
+    var fd = new FormData();
+    fd.append('path', decodeURIComponent(encodedPath));
+    fetch('/api/delete', { method: 'POST', body: fd }).then(function() { refresh(); });
+}
+
+function editFile(encodedPath, name) {
+    editingFile = decodeURIComponent(encodedPath);
+    document.getElementById('editFileName').textContent = name;
+    document.getElementById('editContent').value = '加载中...';
+    document.getElementById('editModal').style.display = 'block';
+    
+    fetch('/api/preview?path=' + encodedPath)
+        .then(function(r) { return r.text(); })
+        .then(function(txt) { document.getElementById('editContent').value = txt; });
+}
+
+function doSave() {
+    var content = document.getElementById('editContent').value;
+    var fd = new FormData();
+    fd.append('path', editingFile);
+    fd.append('content', content);
+    fetch('/api/save', { method: 'POST', body: fd }).then(function() {
+        closeModal('editModal');
+        document.getElementById('msg').textContent = '保存成功';
+        refresh();
+    });
+}
+
 function formatSize(n) {
     if (n < 1024) return n + ' B';
     if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
     return (n / 1024 / 1024).toFixed(1) + ' MB';
 }
+
 function escapeHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
 document.getElementById('uploadForm').onsubmit = function (e) {
     e.preventDefault();
     var input = document.getElementById('fileInput');
-    var file = input.files[0];
-    if (!file) return;
+    if (!input.files.length) return;
+    
     var fd = new FormData();
-    fd.append('file', file, file.name);
+    for (var i = 0; i < input.files.length; i++) {
+        fd.append('file', input.files[i], input.files[i].name);
+    }
     fd.append('path', currentPath);
-    document.getElementById('msg').textContent = '上传中…';
+
+    document.getElementById('msg').textContent = '上传中（' + input.files.length + ' 个文件）...';
     fetch('/api/upload', { method: 'POST', body: fd })
         .then(function (r) { return r.text(); })
         .then(function (txt) {
-            document.getElementById('msg').textContent = txt;
+            document.getElementById('msg').textContent = '上传完成！';
             input.value = '';
             refresh();
         })
         .catch(function () { document.getElementById('msg').textContent = '上传失败'; });
 };
+
 refresh();
 </script>
 </body>

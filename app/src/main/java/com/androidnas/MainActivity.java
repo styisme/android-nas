@@ -8,6 +8,7 @@ import android.net.Uri;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.StatFs;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -21,7 +22,7 @@ public class MainActivity extends Activity {
     private static final String ROOT = Environment.getExternalStorageDirectory().getAbsolutePath();
     private File currentDir;
     private ListView listView;
-    private TextView pathView, statusView, ipView;
+    private TextView pathView, statusView, ipView, storageView;
     private Button toggleBtn;
     private FileAdapter adapter;
     private final List<File> items = new ArrayList<File>();
@@ -37,6 +38,14 @@ public class MainActivity extends Activity {
         ipView = (TextView) findViewById(R.id.ipView);
         toggleBtn = (Button) findViewById(R.id.toggleBtn);
         listView = (ListView) findViewById(R.id.listView);
+        
+        // 动态添加一个用于显示存储空间的 TextView
+        storageView = new TextView(this);
+        storageView.setTextSize(14);
+        storageView.setTextColor(0xFF666666);
+        LinearLayout rootLayout = (LinearLayout) findViewById(R.id.main_layout);
+        if (rootLayout != null) rootLayout.addView(storageView, 3);
+
         adapter = new FileAdapter();
         listView.setAdapter(adapter);
 
@@ -93,6 +102,17 @@ public class MainActivity extends Activity {
     private void refresh() {
         if (!currentDir.exists() || !currentDir.isDirectory()) currentDir = new File(ROOT);
         pathView.setText(currentDir.getAbsolutePath().replace(ROOT, "/"));
+        
+        // 更新存储空间
+        try {
+            StatFs stat = new StatFs(Environment.getExternalStorageDirectory().getPath());
+            long bytesAvailable = (long)stat.getBlockSize() * (long)stat.getAvailableBlocks();
+            long bytesTotal = (long)stat.getBlockSize() * (long)stat.getBlockCount();
+            storageView.setText("存储空间: 可用 " + formatSize(bytesAvailable) + " / 总计 " + formatSize(bytesTotal));
+        } catch (Throwable t) {
+            storageView.setText("");
+        }
+
         items.clear();
         File[] files = currentDir.listFiles();
         if (files != null) Collections.addAll(items, files);
@@ -107,15 +127,15 @@ public class MainActivity extends Activity {
     }
 
     private void showFileMenu(final File f) {
-        final String[] actions = new String[]{"打开", "重命名", "删除", "属性"};
+        final String[] actions = f.isDirectory() ? new String[]{"重命名", "删除", "属性"} : new String[]{"打开", "分享", "重命名", "删除", "属性"};
         new AlertDialog.Builder(this).setTitle(f.getName()).setItems(actions, new DialogInterface.OnClickListener() {
             @Override public void onClick(DialogInterface dialog, int which) {
-                switch (which) {
-                    case 0: openFile(f); break;
-                    case 1: renameFile(f); break;
-                    case 2: deleteFile(f); break;
-                    case 3: showInfo(f); break;
-                }
+                String action = actions[which];
+                if (action.equals("打开")) openFile(f);
+                else if (action.equals("分享")) shareFile(f);
+                else if (action.equals("重命名")) renameFile(f);
+                else if (action.equals("删除")) deleteFile(f);
+                else if (action.equals("属性")) showInfo(f);
             }
         }).show();
     }
@@ -126,6 +146,15 @@ public class MainActivity extends Activity {
             i.setDataAndType(Uri.fromFile(f), getMimeType(f.getName()));
             startActivity(i);
         } catch (Exception e) { Toast.makeText(this, "无法打开", Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void shareFile(File f) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType(getMimeType(f.getName()));
+            intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(f));
+            startActivity(Intent.createChooser(intent, "分享文件"));
+        } catch (Exception e) { Toast.makeText(this, "分享失败", Toast.LENGTH_SHORT).show(); }
     }
 
     private void renameFile(final File f) {
@@ -187,7 +216,8 @@ public class MainActivity extends Activity {
     private String formatSize(long n) {
         if (n < 1024) return n + " B";
         if (n < 1024 * 1024) return String.format(Locale.US, "%.1f KB", n / 1024.0);
-        return String.format(Locale.US, "%.1f MB", n / 1024.0 / 1024.0);
+        if (n < 1024 * 1024 * 1024) return String.format(Locale.US, "%.1f MB", n / 1024.0 / 1024.0);
+        return String.format(Locale.US, "%.1f GB", n / 1024.0 / 1024.0 / 1024.0);
     }
 
     private String getMimeType(String name) {
