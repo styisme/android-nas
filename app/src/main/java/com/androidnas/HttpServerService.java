@@ -55,7 +55,14 @@ public class HttpServerService extends Service {
             } else {
                 n = new Notification(android.R.drawable.stat_sys_download_done,
                         "Android NAS 运行中", System.currentTimeMillis());
-                n.setLatestEventInfo(this, "Android NAS", "文件服务运行中 (端口 " + PORT + ")", pi);
+                // 高版本 SDK 移除了 setLatestEventInfo，使用反射调用以兼容 Android 2.2
+                try {
+                    java.lang.reflect.Method method = n.getClass().getMethod("setLatestEventInfo",
+                            android.content.Context.class, CharSequence.class, CharSequence.class, PendingIntent.class);
+                    method.invoke(n, this, "Android NAS", "文件服务运行中 (端口 " + PORT + ")", pi);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
                 n.flags |= Notification.FLAG_ONGOING_EVENT;
             }
             startForeground(NOTIFICATION_ID, n);
