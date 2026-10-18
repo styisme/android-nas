@@ -109,7 +109,10 @@ public class NasHttpServer extends NanoHTTPD {
         return sb.toString();
     }
 
-    private String escape(String s) { return s.replace("\\", "\\\\").replace("\"", "\\\""); }
+    private String escape(String s) {
+        return s.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
     private void copy(File src, File dst) throws IOException {
         InputStream in = new FileInputStream(src);
         FileOutputStream out = new FileOutputStream(dst);
