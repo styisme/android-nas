@@ -1,7 +1,9 @@
 package com.androidnas.client;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
-import android.util.Xml;
+import android.os.Environment;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -9,17 +11,22 @@ import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
-import org.xmlpull.v1.XmlPullParser;
-
-import java.io.StringReader;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import okhttp3.Credentials;
 import okhttp3.MediaType;
@@ -44,12 +51,9 @@ public class FileListActivity extends AppCompatActivity {
         setContentView(R.layout.activity_file_list);
 
         baseUrl = getIntent().getStringExtra("url");
-        // 清理首尾多余的斜杠
         if (baseUrl != null) {
             baseUrl = baseUrl.trim();
-            if (baseUrl.endsWith("/")) {
-                baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
-            }
+            if (baseUrl.endsWith("/")) baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
 
         isAndroidNas = getIntent().getBooleanExtra("isAndroidNas", true);
@@ -64,8 +68,9 @@ public class FileListActivity extends AppCompatActivity {
         setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) {
             getSupportActionBar().setDisplayHomeAsUpEnabled(true);
-            getSupportActionBar().setTitle("文件管理");
         }
+        updateTitle();
+
         toolbar.setNavigationOnClickListener(v -> {
             if (!currentPath.equals("/")) {
                 String[] parts = currentPath.split("/");
@@ -85,23 +90,34 @@ public class FileListActivity extends AppCompatActivity {
         adapter = new FileAdapter();
         recyclerView.setAdapter(adapter);
 
+        // 请求存储权限用于下载
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, 100);
+        }
+
         loadFiles();
+    }
+
+    private void updateTitle() {
+        if (getSupportActionBar() != null) {
+            getSupportActionBar().setTitle("文件管理: " + currentPath);
+        }
     }
 
     private void loadFiles() {
         files.clear();
         adapter.notifyDataSetChanged();
-        
+        updateTitle();
+
         new Thread(() -> {
             try {
                 if (isAndroidNas) loadAndroidNasFiles();
                 else loadWebDavFiles();
                 runOnUiThread(() -> adapter.notifyDataSetChanged());
             } catch (Exception e) {
-                e.printStackTrace();
                 String msg = e.getMessage();
                 if (msg != null && msg.contains("Failed to connect")) {
-                    msg = "无法连接，如果是同一台手机测试请用 127.0.0.1，或检查是否在同一WiFi";
+                    msg = "无法连接，如果是同一台手机测试请用 127.0.0.1";
                 }
                 String finalMsg = msg;
                 runOnUiThread(() -> Toast.makeText(this, "加载失败: " + finalMsg, Toast.LENGTH_LONG).show());
@@ -110,7 +126,6 @@ public class FileListActivity extends AppCompatActivity {
     }
 
     private void loadAndroidNasFiles() throws Exception {
-        // 修复 URL 拼接，对路径进行 URLEncode
         String encodedPath = URLEncoder.encode(currentPath, "UTF-8");
         String apiUrl = baseUrl + "/api/list?path=" + encodedPath;
         
@@ -128,13 +143,12 @@ public class FileListActivity extends AppCompatActivity {
                 String path = currentPath.endsWith("/") ? currentPath + name : currentPath + "/" + name;
                 files.add(new FileItem(name, path, dir, size));
             }
-        } else {
-            throw new Exception("服务器返回错误: " + response.code());
         }
     }
 
     private void loadWebDavFiles() throws Exception {
         String url = baseUrl + currentPath;
+        if (!url.endsWith("/")) url += "/";
         String xmlBody = "<?xml version=\"1.0\"?><d:propfind xmlns:d=\"DAV:\"><d:prop><d:displayname/><d:resourcetype/><d:getcontentlength/></d:prop></d:propfind>";
         Request.Builder builder = new Request.Builder()
                 .url(url)
@@ -151,40 +165,65 @@ public class FileListActivity extends AppCompatActivity {
         }
     }
 
-    private void parseWebDavXml(String xml) throws Exception {
-        XmlPullParser parser = Xml.newPullParser();
-        parser.setInput(new StringReader(xml));
-        int eventType = parser.getEventType();
-        FileItem current = null;
-        String currentTag = "";
-        while (eventType != XmlPullParser.END_DOCUMENT) {
-            if (eventType == XmlPullParser.START_TAG) {
-                currentTag = parser.getName();
-                if (currentTag.equalsIgnoreCase("response")) {
-                    current = new FileItem("", "", false, 0);
-                } else if (currentTag.equalsIgnoreCase("href") && current != null) {
-                    String href = parser.nextText();
-                    String path = href;
-                    if (path.startsWith("http")) path = path.replace(baseUrl, "");
-                    String name = path.substring(path.lastIndexOf("/") + 1);
-                    if (name.isEmpty() && path.split("/").length > 1) continue;
-                    current.path = path;
-                    current.name = name;
-                } else if (currentTag.equalsIgnoreCase("collection") && current != null) {
-                    current.isDir = true;
-                } else if (currentTag.equalsIgnoreCase("getcontentlength") && current != null) {
-                    try { current.size = Long.parseLong(parser.nextText()); } catch (Exception ignored) {}
-                }
-            } else if (eventType == XmlPullParser.END_TAG) {
-                if (parser.getName().equalsIgnoreCase("response") && current != null) {
-                    if (!current.path.equals(currentPath) && !current.path.isEmpty() && !current.path.endsWith("/" + currentPath + "/")) {
-                        files.add(current);
-                    }
-                    current = null;
-                }
+    // 摒弃脆弱的 XML 解析器，使用正则提取（最稳定）
+    private void parseWebDavXml(String xml) {
+        Pattern responsePattern = Pattern.compile("<D:response>(.*?)</D:response>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Matcher responseMatcher = responsePattern.matcher(xml);
+
+        Pattern hrefPattern = Pattern.compile("<D:href>(.*?)</D:href>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern isDirPattern = Pattern.compile("<D:collection\\s*/>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern sizePattern = Pattern.compile("<D:getcontentlength>(.*?)</D:getcontentlength>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+
+        while (responseMatcher.find()) {
+            String responseBlock = responseMatcher.group(1);
+            
+            Matcher hrefMatcher = hrefPattern.matcher(responseBlock);
+            if (!hrefMatcher.find()) continue;
+            String href = hrefMatcher.group(1);
+            if (href.startsWith("http")) href = href.replace(baseUrl, "");
+            
+            String name = href.substring(href.lastIndexOf("/") + 1);
+            if (name.isEmpty()) {
+                // 过滤掉父目录自身
+                continue;
             }
-            eventType = parser.next();
+
+            boolean isDir = isDirPattern.matcher(responseBlock).find();
+            long size = 0;
+            Matcher sizeMatcher = sizePattern.matcher(responseBlock);
+            if (sizeMatcher.find()) {
+                try { size = Long.parseLong(sizeMatcher.group(1)); } catch (Exception ignored) {}
+            }
+
+            files.add(new FileItem(name, href, isDir, size));
         }
+    }
+
+    private void downloadFile(FileItem f) {
+        Toast.makeText(this, "开始下载 " + f.name, Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                String downloadUrl = baseUrl + f.path;
+                Request.Builder builder = new Request.Builder().url(downloadUrl);
+                if (authHeader != null) builder.header("Authorization", authHeader);
+                
+                Response response = client.newCall(builder.build()).execute();
+                if (response.isSuccessful() && response.body() != null) {
+                    File dest = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), f.name);
+                    try (InputStream is = response.body().byteStream();
+                         FileOutputStream fos = new FileOutputStream(dest)) {
+                        byte[] buf = new byte[8192];
+                        int len;
+                        while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
+                    }
+                    runOnUiThread(() -> Toast.makeText(this, "下载成功: " + dest.getAbsolutePath(), Toast.LENGTH_LONG).show());
+                } else {
+                    throw new Exception("HTTP " + response.code());
+                }
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "下载失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        }).start();
     }
 
     private String formatSize(long n) {
@@ -202,11 +241,28 @@ public class FileListActivity extends AppCompatActivity {
             holder.tvName.setText(f.name);
             holder.tvIcon.setText(f.isDir ? "📁" : "📄");
             holder.tvDetail.setText(f.isDir ? "文件夹" : formatSize(f.size));
+            
             holder.itemView.setOnClickListener(v -> {
                 if (f.isDir) {
                     currentPath = f.path;
                     if (!currentPath.endsWith("/")) currentPath += "/";
                     loadFiles();
+                } else {
+                    new MaterialAlertDialogBuilder(FileListActivity.this)
+                        .setTitle(f.name)
+                        .setItems(new String[]{"下载", "查看属性"}, (dialog, which) -> {
+                            if (which == 0) {
+                                downloadFile(f);
+                            } else {
+                                String info = "路径: " + f.path + "\n大小: " + formatSize(f.size);
+                                new MaterialAlertDialogBuilder(FileListActivity.this)
+                                    .setTitle("属性")
+                                    .setMessage(info)
+                                    .setPositiveButton("确定", null)
+                                    .show();
+                            }
+                        })
+                        .show();
                 }
             });
         }
