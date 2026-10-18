@@ -5,14 +5,14 @@
 ## AI 参与的具体部分
 
 - **服务端 (Server)**：
-  - `WebDavServer.java`：通过原生 `ServerSocket` 实现 WebDAV 协议的请求解析与 XML 响应生成。
-  - `NasHttpServer.java`：NanoHTTPD 的路由设计、JSON 构造、文件流处理。
-  - `index.html`：完整的 MD3 CSS 变量系统、响应式布局、AJAX 请求与弹窗交互逻辑。
+  - `WebDavServer.java`：通过原生 `ServerSocket` 从零实现了 WebDAV 协议的请求解析，包括 `PROPFIND` 的 XML 构造、`PUT` 的流式接收、`MKCOL` 的目录创建。
+  - `NasHttpServer.java`：NanoHTTPD 的路由设计、JSON 手动拼接、`PUT` 方法的拦截与流式处理。
+  - `index.html`：完整的 MD3 CSS 变量系统、响应式布局、拖拽上传逻辑、AJAX 请求与弹窗交互。
 
 - **客户端 (Client)**：
-  - Android 原生 UI 布局 (XML) 与基于 Material Design 3 的组件集成。
-  - `MainActivity.java`：局域网网段并发扫描算法（`ExecutorService` 线程池）。
-  - `FileListActivity.java`：OkHttp 请求拦截、正则表达式解析 WebDAV XML 响应。
+  - Android 原生 UI 布局 (XML) 与 Material Design 3 的 `TextInputLayout` 组件集成。
+  - `MainActivity.java`：局域网网段并发扫描算法（`ExecutorService` 与子网 IP 推导）。
+  - `FileListActivity.java`：OKHttp 网络请求拦截、正则表达式解析 WebDAV XML 响应、流式上传/下载。
   - `App.java`：Material You 动态取色 (`DynamicColors.applyToActivitiesIfAvailable`) 集成。
 
 - **工程配置**：
@@ -21,15 +21,15 @@
 ## 开发者（人类）负责的核心工作
 
 - **架构决策**：决定了“网页端+客户端+WebDAV”的三位一体方案。
-- **兼容性攻坚**：解决了 JDK 8 与 JDK 17 的冲突、旧版 AGP 与新版 SDK 的 XML 解析崩溃、NanoHTTPD 不支持原生 WebDAV 方法等致命问题。
-- **UI/UX 验收**：亲自测试并在真机上调整了弹窗被键盘遮挡、网络请求超时提示等细节。
+- **兼容性攻坚**：解决了服务端 JDK 8 与客户端 JDK 17 的环境冲突、旧版 AGP 与新版 SDK 的 XML 解析崩溃、NanoHTTPD 不支持原生 WebDAV 方法等致命问题。
+- **UI/UX 验收**：亲自测试并在真机上调整了弹窗被键盘遮挡、网络请求超时的 Toast 提示等细节。
 - **代码审查**：逐行审查了 AI 生成的网络请求代码，确保没有内存泄漏和未捕获的异常。
 
 ## 已知的局限性
 
 由于大量代码由 AI 生成，本项仍存在以下潜在风险：
-1. **极端边缘场景**：例如极小内存下的前台服务保活、某些特殊定制 ROM 的后台限制。
-2. **WebDAV 兼容性**：虽然已兼容群晖和标准协议，但面对极其特殊的私有云服务时，正则解析可能失效。
+1. **极端边缘场景**：例如极小内存下的前台服务保活、某些特殊定制 ROM（如鸿蒙、Flyme）的后台限制。
+2. **WebDAV 兼容性**：虽然已兼容群晖和标准协议，但面对极其特殊的私有云服务时，正则解析可能失效（虽然已做了兼容性回退处理）。
 3. **安全性**：WebDAV 传输目前基于 HTTP 明文，未实现 HTTPS/TLS 加密，仅建议在安全的内网使用。
 
 ## 协议

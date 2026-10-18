@@ -1,59 +1,51 @@
 # 贡献指南
 
-感谢参与 Android NAS 的开发！无论你是修复 Bug、提出新功能，还是优化文档，都非常欢迎。
+感谢参与 Android NAS 的开发！这是一个跨越了十年的技术栈缝合怪项目，我们采用轻量但明确的源代码管理规范。
 
 ## ⚠️ 关于 AI 生成代码
 
-本项目大量使用了大型语言模型（LLM）辅助编写。提交 PR 时，请务必遵守以下规范：
-1. 在 PR 描述中注明代码是否由 AI 生成。
-2. 提交前必须在模拟器或真机上跑通（请注明测试机型的 Android 版本）。
-3. 如果是修复 Bug，请附带复现步骤和错误日志。
+本项目的绝大多数代码由 AI 辅助生成。提交 PR 时请：
+1. 说明改动是否由 AI 生成。
+2. 人工验证过功能（至少在真机上跑过一次）。
+3. 如果你是用 AI 改的，请在 PR 描述里附上你使用的提示词（Prompt）。
 
 ## 📂 项目结构
 
-本仓库包含两个相互独立的工程：
-
 ```text
 android-nas/
-├── app/                         # 服务端 (Server)
+├── app/                         # 服务端源码
 │   └── src/main/
 │       ├── java/com/androidnas/
-│       │   ├── MainActivity.java        # 本地管理界面
-│       │   ├── HttpServerService.java   # 服务容器 (托管 8080/8081)
-│       │   ├── NasHttpServer.java       # NanoHTTPD 网页与 API
-│       │   ├── WebDavServer.java        # 原生 WebDAV 协议栈
+│       │   ├── MainActivity.java        # 服务端本地 UI
+│       │   ├── HttpServerService.java   # 前台服务（托管 8080/8081）
+│       │   ├── NasHttpServer.java       # NanoHTTPD (JSON API & Web)
+│       │   ├── WebDavServer.java        # 原生 Socket WebDAV 栈
 │       │   └── BootReceiver.java        # 开机广播
-│       ├── assets/index.html            # MD3 网页端
-│       └── res/                         # 布局、字符串
-├── client/                      # 客户端 (Client)
+│       └── assets/index.html            # MD3 网页端
+├── client/                      # 客户端源码
 │   └── src/main/
 │       ├── java/com/androidnas/client/
-│       │   ├── MainActivity.java        # 首页 (扫描/多设备)
-│       │   ├── FileListActivity.java    # 文件管理 (支持双协议)
-│       │   ├── SettingsActivity.java    # 设置中心
-│       │   ├── App.java                 # 动态取色初始化
-│       │   └── NasDevice.java           # 数据模型
-│       └── res/
+│       │   ├── MainActivity.java        # 首页 (局域网扫描/多设备)
+│       │   ├── FileListActivity.java    # 文件管理 (JSON/WebDAV 双协议)
+│       │   └── SettingsActivity.java    # 设置中心 (主题/暗黑模式)
+│       └── res/                         # MD3 布局与主题
 ├── .github/workflows/           # 双端独立 Actions
-│   ├── build.yml                # 构建服务端
-│   └── build-client.yml         # 构建客户端
-├── build.gradle                 # 服务端构建 (AGP 4.2.2)
-└── client/build.gradle          # 客户端构建 (AGP 7.4.2)
+└── docs/                        # 文档与说明
 ```
 
-## 🛠 本地编译环境
+## 🛠 本地编译环境隔离
 
-因为服务端要兼容极老的 Android 2.2，而客户端要使用最新的 MD3 库，所以两边的构建工具链完全不同，**请勿修改成一致**。
+因为服务端要兼容古老的 Android 2.2，而客户端要使用现代的 MD3 库，两边的构建工具链完全不同，**请绝对不要试图统一它们的版本**。
 
 ### 编译服务端
-- 环境：JDK 8, Gradle 6.7.1
+- 环境：JDK 8, Gradle 6.7.1, AGP 4.2.2
 - 命令：
   ```bash
   ./gradlew assembleDebug
   ```
 
 ### 编译客户端
-- 环境：JDK 11, Gradle 7.5
+- 环境：JDK 11, Gradle 7.5, AGP 7.4.2
 - 命令：
   ```bash
   cd client
@@ -62,11 +54,7 @@ android-nas/
 
 ## 📝 提交规范
 
-使用 `Conventional Commits` 规范：
-
-```text
-<type>(<scope>): <description>
-```
+采用 Conventional Commits 规范。写法：`<type>(<scope>): <description>`
 
 - `feat`: 新功能
 - `fix`: 修复 Bug
@@ -80,11 +68,11 @@ android-nas/
 - `web`: 网页端 (index.html)
 - `client`: 客户端代码
 - `ui`: 界面美化
-- `ci`: Actions 构建
+- `ci`: GitHub Actions
 
 ## 🚀 Pull Request 流程
 
-1. Fork 本仓库并新建分支 `feat/your-feature`。
-2. 编码并在本地验证（务必测试编译是否通过）。
-3. Push 到你的仓库，并向 `main` 分支发起 PR。
-4. 确保 GitHub Actions 双端构建均亮起绿灯。
+1. Fork 本仓库并从 `main` 分支新建功能分支，如 `feat/lan-speed-test`。
+2. 编码并在本地运行 `./gradlew assembleDebug` 验证编译。
+3. 在真机上测试通过（如涉及 UI，请附带截图）。
+4. Push 并提交 PR，确保 GitHub Actions 双端构建亮起绿灯。
