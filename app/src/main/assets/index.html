@@ -2,68 +2,108 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
     <title>Android NAS</title>
     <style>
-        body { font-family: -apple-system, sans-serif; margin: 0; padding: 16px; background: #f5f6f8; color: #333; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-        .card { background: #fff; border-radius: 8px; padding: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        #path { font-weight: bold; color: #1a73e8; word-break: break-all; margin-bottom: 12px; }
-        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #eee; }
+        :root {
+            --md-sys-color-primary: #6750A4;
+            --md-sys-color-on-primary: #FFFFFF;
+            --md-sys-color-primary-container: #EADDFF;
+            --md-sys-color-on-primary-container: #21005D;
+            --md-sys-color-surface: #FEF7FF;
+            --md-sys-color-on-surface: #1D1B20;
+            --md-sys-color-surface-variant: #E7E0EC;
+            --md-sys-color-on-surface-variant: #49454F;
+            --md-sys-color-error: #B3261E;
+            --md-sys-color-outline: #79747E;
+        }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); padding-bottom: 80px; }
+        
+        /* Top App Bar */
+        header { background-color: var(--md-sys-color-surface); padding: 16px; position: sticky; top: 0; z-index: 10; display: flex; align-items: center; }
+        header h1 { margin: 0; font-size: 22px; font-weight: 400; }
+        
+        /* Cards */
+        .card { background-color: var(--md-sys-color-surface); border-radius: 24px; padding: 16px; margin: 0 16px 16px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06); transition: box-shadow 0.3s ease; }
+        
+        #path { font-size: 14px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px; word-break: break-all; }
+        
+        /* List Items */
+        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--md-sys-color-surface-variant); }
         .item:last-child { border-bottom: none; }
-        .dir { color: #1a73e8; cursor: pointer; font-weight: 500; }
-        .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .size { color: #999; font-size: 12px; margin: 0 12px; }
-        .btn { background: #1a73e8; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; margin-left: 6px; }
-        .btn-red { background: #d93025; }
-        .btn-gray { background: #e0e0e0; color: #333; }
-        .toolbar { margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
-        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 10; }
-        .modal-content { background: #fff; margin: 10% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 600px; }
-        textarea { width: 100%; height: 300px; margin: 12px 0; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-family: monospace; box-sizing: border-box; }
-        input[type="text"] { width: 100%; padding: 8px; margin: 12px 0; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        .item-info { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+        .name { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .dir-name { color: var(--md-sys-color-primary); font-weight: 500; cursor: pointer; }
+        .size { font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px; }
+        
+        /* Buttons */
+        .btn { background: transparent; color: var(--md-sys-color-primary); border: none; padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s; }
+        .btn:hover { background: var(--md-sys-color-primary-container); }
+        .btn-red { color: var(--md-sys-color-error); }
+        .btn-red:hover { background: #F9DEDC; }
+        
+        /* FAB */
+        .fab { position: fixed; bottom: 24px; right: 24px; width: 56px; height: 56px; border-radius: 16px; background-color: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; font-size: 24px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 8px rgba(0,0,0,0.2); cursor: pointer; transition: transform 0.2s; z-index: 20; }
+        .fab:active { transform: scale(0.92); }
+
+        /* Toolbar */
+        .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+        
+        /* Modals */
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 30; align-items: center; justify-content: center; }
+        .modal-content { background: var(--md-sys-color-surface); padding: 24px; border-radius: 28px; width: 90%; max-width: 500px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .modal-content h3 { margin-top: 0; font-weight: 400; }
+        
+        /* Inputs */
+        input[type="text"] { width: 100%; padding: 12px 16px; margin: 16px 0; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; background: transparent; color: var(--md-sys-color-on-surface); font-size: 16px; box-sizing: border-box; }
+        input[type="text"]:focus { outline: 2px solid var(--md-sys-color-primary); border-color: transparent; }
+        textarea { width: 100%; height: 250px; padding: 12px; margin: 16px 0; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; font-family: monospace; box-sizing: border-box; background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); }
+        
+        /* Hidden file input */
+        #fileInput { display: none; }
     </style>
 </head>
 <body>
-<div class="header">
-    <h2>📁 Android NAS</h2>
-</div>
+<header>
+    <h1>Android NAS</h1>
+</header>
+
 <div class="card">
     <div id="path">/</div>
     <div class="toolbar">
-        <button class="btn btn-gray" onclick="goUp()">⬆ 上级目录</button>
-        <button class="btn btn-gray" onclick="refresh()">🔄 刷新</button>
+        <button class="btn" onclick="goUp()">⬆ 上级目录</button>
+        <button class="btn" onclick="refresh()">🔄 刷新</button>
         <button class="btn" onclick="showMkdir()">📁 新建文件夹</button>
     </div>
     <div id="list"></div>
 </div>
 
-<div class="card" style="margin-top: 16px;">
-    <h4 style="margin-top: 0;">上传文件到当前目录</h4>
-    <form id="uploadForm">
-        <input type="file" name="file" id="fileInput" multiple>
-        <button type="submit" class="btn" style="margin-top: 8px;">上传</button>
-    </form>
-    <p id="msg" style="color: #1a73e8; font-size: 14px;"></p>
-</div>
+<!-- FAB 按钮用于上传 -->
+<button class="fab" onclick="document.getElementById('fileInput').click()">+</button>
+<input type="file" id="fileInput" multiple>
 
 <!-- 新建文件夹弹窗 -->
 <div id="mkdirModal" class="modal">
     <div class="modal-content">
         <h3>新建文件夹</h3>
         <input type="text" id="newDirName" placeholder="输入文件夹名称">
-        <button class="btn" onclick="doMkdir()">创建</button>
-        <button class="btn btn-gray" onclick="closeModal('mkdirModal')">取消</button>
+        <div style="text-align: right; margin-top: 8px;">
+            <button class="btn" onclick="closeModal('mkdirModal')">取消</button>
+            <button class="btn" onclick="doMkdir()">创建</button>
+        </div>
     </div>
 </div>
 
 <!-- 文本编辑弹窗 -->
 <div id="editModal" class="modal">
     <div class="modal-content">
-        <h3>编辑文件: <span id="editFileName"></span></h3>
+        <h3>编辑: <span id="editFileName" style="font-weight: 500;"></span></h3>
         <textarea id="editContent"></textarea>
-        <button class="btn" onclick="doSave()">保存</button>
-        <button class="btn btn-gray" onclick="closeModal('editModal')">取消</button>
+        <div style="text-align: right; margin-top: 8px;">
+            <button class="btn" onclick="closeModal('editModal')">取消</button>
+            <button class="btn" onclick="doSave()">保存</button>
+        </div>
     </div>
 </div>
 
@@ -78,36 +118,31 @@ function refresh() {
             document.getElementById('path').textContent = data.path;
             var list = document.getElementById('list');
             list.innerHTML = '';
+            if (data.files.length === 0) {
+                list.innerHTML = '<div style="text-align:center; padding: 32px; color: var(--md-sys-color-outline);">空文件夹</div>';
+                return;
+            }
             data.files.forEach(function (f) {
                 var div = document.createElement('div');
                 div.className = 'item';
                 var full = (currentPath.endsWith('/') ? currentPath : currentPath + '/') + f.name;
                 
-                var nameSpan = document.createElement('div');
-                nameSpan.className = 'name';
+                var infoDiv = document.createElement('div');
+                infoDiv.className = 'item-info';
+                var icon = f.dir ? '📁' : (f.isImg ? '🖼️' : '📄');
+                infoDiv.innerHTML = '<div class="name ' + (f.dir ? 'dir-name' : '') + '">' + icon + ' ' + escapeHtml(f.name) + '</div>' +
+                                    (f.dir ? '' : '<div class="size">' + formatSize(f.size) + '</div>');
                 if (f.dir) {
-                    nameSpan.innerHTML = '<span class="dir">📁 ' + escapeHtml(f.name) + '</span>';
-                    nameSpan.onclick = function () { enterDir(full); };
-                } else {
-                    var icon = f.isImg ? '🖼️ ' : '📄 ';
-                    nameSpan.innerHTML = '<span>' + icon + escapeHtml(f.name) + '</span>';
+                    infoDiv.onclick = function () { enterDir(full); };
                 }
-                div.appendChild(nameSpan);
-
-                var sizeSpan = document.createElement('span');
-                sizeSpan.className = 'size';
-                sizeSpan.textContent = f.dir ? '' : formatSize(f.size);
-                div.appendChild(sizeSpan);
+                div.appendChild(infoDiv);
 
                 var actionDiv = document.createElement('div');
                 if (!f.dir) {
-                    if (f.isImg) {
-                        actionDiv.innerHTML += '<a href="/api/download?path=' + encodeURIComponent(full) + '" target="_blank" class="btn btn-gray" style="text-decoration:none;">预览</a>';
-                    }
                     if (f.isTxt) {
-                        actionDiv.innerHTML += '<button class="btn btn-gray" onclick="editFile(\'' + encodeURIComponent(full) + '\', \'' + escapeHtml(f.name) + '\')">编辑</button>';
+                        actionDiv.innerHTML += '<button class="btn" onclick="editFile(\'' + encodeURIComponent(full) + '\', \'' + escapeHtml(f.name) + '\')">编辑</button>';
                     }
-                    actionDiv.innerHTML += '<a href="/api/download?path=' + encodeURIComponent(full) + '" class="btn">下载</a>';
+                    actionDiv.innerHTML += '<a href="/api/download?path=' + encodeURIComponent(full) + '" class="btn" style="text-decoration:none;">下载</a>';
                 }
                 actionDiv.innerHTML += '<button class="btn btn-red" onclick="delFile(\'' + encodeURIComponent(full) + '\')">删除</button>';
                 div.appendChild(actionDiv);
@@ -115,7 +150,7 @@ function refresh() {
                 list.appendChild(div);
             });
         })
-        .catch(function () { document.getElementById('msg').textContent = '列表加载失败'; });
+        .catch(function () { document.getElementById('path').textContent = '列表加载失败'; });
 }
 
 function enterDir(path) { currentPath = path; refresh(); }
@@ -127,7 +162,7 @@ function goUp() {
     refresh();
 }
 
-function showMkdir() { document.getElementById('mkdirModal').style.display = 'block'; }
+function showMkdir() { document.getElementById('mkdirModal').style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
 function doMkdir() {
@@ -154,7 +189,7 @@ function editFile(encodedPath, name) {
     editingFile = decodeURIComponent(encodedPath);
     document.getElementById('editFileName').textContent = name;
     document.getElementById('editContent').value = '加载中...';
-    document.getElementById('editModal').style.display = 'block';
+    document.getElementById('editModal').style.display = 'flex';
     
     fetch('/api/preview?path=' + encodedPath)
         .then(function(r) { return r.text(); })
@@ -168,7 +203,6 @@ function doSave() {
     fd.append('content', content);
     fetch('/api/save', { method: 'POST', body: fd }).then(function() {
         closeModal('editModal');
-        document.getElementById('msg').textContent = '保存成功';
         refresh();
     });
 }
@@ -183,9 +217,8 @@ function escapeHtml(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-document.getElementById('uploadForm').onsubmit = function (e) {
-    e.preventDefault();
-    var input = document.getElementById('fileInput');
+document.getElementById('fileInput').onchange = function () {
+    var input = this;
     if (!input.files.length) return;
     
     var fd = new FormData();
@@ -194,15 +227,20 @@ document.getElementById('uploadForm').onsubmit = function (e) {
     }
     fd.append('path', currentPath);
 
-    document.getElementById('msg').textContent = '上传中（' + input.files.length + ' 个文件）...';
+    var pathEl = document.getElementById('path');
+    var originalText = pathEl.textContent;
+    pathEl.textContent = '正在上传 ' + input.files.length + ' 个文件...';
+
     fetch('/api/upload', { method: 'POST', body: fd })
         .then(function (r) { return r.text(); })
         .then(function (txt) {
-            document.getElementById('msg').textContent = '上传完成！';
             input.value = '';
             refresh();
         })
-        .catch(function () { document.getElementById('msg').textContent = '上传失败'; });
+        .catch(function () { 
+            pathEl.textContent = originalText;
+            alert('上传失败'); 
+        });
 };
 
 refresh();
