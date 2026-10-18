@@ -1,13 +1,13 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace 'com.androidnas'
-    compileSdk 33
+    compileSdkVersion 30
+    buildToolsVersion "30.0.3"
 
     defaultConfig {
         applicationId "com.androidnas"
-        minSdk 8
-        targetSdk 22
+        minSdkVersion 8
+        targetSdkVersion 22
         versionCode 1
         versionName "1.0"
     }
