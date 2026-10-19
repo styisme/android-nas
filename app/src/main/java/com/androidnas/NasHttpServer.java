@@ -26,7 +26,6 @@ public class NasHttpServer extends NanoHTTPD {
         String method = session.getMethod().name();
         
         try {
-            // 1. 分享拦截
             if (uri.startsWith("/share/")) {
                 String token = uri.substring(7);
                 String sharedPath = sharedLinks.get(token);
@@ -42,7 +41,6 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.NOT_FOUND, "分享已失效");
             }
 
-            // 2. 身份校验
             int role = 1;
             if (!Method.OPTIONS.equals(session.getMethod())) {
                 role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
@@ -53,8 +51,8 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
-            // 3. 剪贴板同步
             if ("/api/clipboard".equals(uri)) {
+                if (!SettingsManager.isClipboardEnabled()) return text(Response.Status.FORBIDDEN, "Clipboard disabled");
                 if (Method.POST.equals(session.getMethod())) {
                     Map<String, String> files = new HashMap<>();
                     session.parseBody(files);
@@ -65,7 +63,6 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
-            // 4. 在线解压
             if ("/api/unzip".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -94,7 +91,6 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.FORBIDDEN, "Fail");
             }
 
-            // 5. 目录列表
             if ("/api/list".equals(uri)) {
                 String path = session.getParms().get("path");
                 File dir = safeFile(path);
@@ -102,7 +98,6 @@ public class NasHttpServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", buildJson(dir, path));
             }
 
-            // 6. 全局搜索
             if ("/api/search".equals(uri)) {
                 String q = session.getParms().get("q");
                 List<File> results = new ArrayList<>();
@@ -117,14 +112,13 @@ public class NasHttpServer extends NanoHTTPD {
                     boolean isMedia = isImg || ext.equals("mp4") || ext.equals("mp3");
                     boolean isZip = ext.equals("zip");
                     sb.append("{\"name\":\"").append(escape(f.getName())).append("\",\"path\":\"").append(escape(f.getAbsolutePath().replace(ROOT, ""))).append("\",\"dir\":").append(f.isDirectory())
-                      .append(",\"size\":").append(f.length()).append(",\"isTxt\":").append(isTxt)
+                      .append(",\"size\":\"").append(f.length()).append("\",\"isTxt\":").append(isTxt)
                       .append(",\"isMedia\":").append(isMedia).append(",\"isZip\":").append(isZip).append("}");
                 }
                 sb.append("]");
                 return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
             }
 
-            // 7. 下载与视频流 (Range 支持)
             if ("/api/download".equals(uri)) {
                 String path = session.getParms().get("path");
                 File file = safeFile(path);
@@ -132,7 +126,8 @@ public class NasHttpServer extends NanoHTTPD {
                 
                 long fileLen = file.length();
                 String range = session.getHeaders().get("range");
-                if (range != null && range.startsWith("bytes=")) {
+                // 如果开启了流媒体，则允许 Range 分片；否则强制返回全量下载
+                if (SettingsManager.isStreamEnabled() && range != null && range.startsWith("bytes=")) {
                     String[] ranges = range.substring(6).split("-");
                     long start = Long.parseLong(ranges[0]);
                     long end = ranges.length > 1 && !ranges[1].isEmpty() ? Long.parseLong(ranges[1]) : fileLen - 1;
@@ -161,7 +156,6 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
-            // 8. 文本预览
             if ("/api/preview".equals(uri)) {
                 File file = safeFile(session.getParms().get("path"));
                 if (file == null || !file.exists()) return text(Response.Status.NOT_FOUND, "Not found");
@@ -172,7 +166,6 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.OK, sb.toString());
             }
 
-            // 9. 上传
             if ("/api/upload".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -192,7 +185,6 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.OK, "OK");
             }
 
-            // 10. 重命名
             if ("/api/rename".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -205,7 +197,6 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.INTERNAL_ERROR, "Fail");
             }
 
-            // 11. 新建文件夹 / 删除 / 保存
             if ("/api/mkdir".equals(uri) || "/api/delete".equals(uri) || "/api/save".equals(uri)) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -231,7 +222,6 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.INTERNAL_ERROR, "Fail");
             }
 
-            // 12. 免密分享生成
             if ("/api/share".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -244,7 +234,6 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.FORBIDDEN, "Fail");
             }
 
-            // 13. Web 首页
             if ("/".equals(uri) || "/index.html".equals(uri)) {
                 InputStream is = getClass().getClassLoader().getResourceAsStream("assets/index.html");
                 return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", is, -1);

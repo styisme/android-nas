@@ -139,7 +139,7 @@ public class MainActivity extends Activity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) { 
         menu.add(0, 1, 0, "新建文件夹"); 
-        menu.add(0, 6, 0, "服务端控制中心");
+        menu.add(0, 6, 0, "驾驶舱设置");
         menu.add(0, 3, 0, "内网穿透");
         menu.add(0, 4, 0, "运行日志");
         return true; 
@@ -164,8 +164,8 @@ public class MainActivity extends Activity {
         } else if (item.getItemId() == 3) {
             if (SettingsManager.isLowPowerMode()) {
                 new AlertDialog.Builder(this)
-                    .setTitle("低性能模式已开启")
-                    .setMessage("极寒省电模式下，系统已禁止建立内网穿透长连接以节省电量。如需使用穿透，请先在控制中心关闭低性能模式。")
+                    .setTitle("极寒模式已开启")
+                    .setMessage("为保证续航，极寒模式下已禁止建立内网穿透长连接。如需使用，请在设置中关闭极寒模式。")
                     .setPositiveButton("去关闭", new android.content.DialogInterface.OnClickListener() {
                         @Override
                         public void onClick(android.content.DialogInterface dialog, int which) { showControlCenter(); }
@@ -190,31 +190,46 @@ public class MainActivity extends Activity {
         layout.setPadding(48, 24, 48, 24);
         scrollView.addView(layout);
 
+        // --- 基础信息 ---
         EditText etAlias = new EditText(this); etAlias.setHint("设备名称"); etAlias.setText(SettingsManager.getDeviceAlias()); layout.addView(etAlias);
-        
-        CheckBox cbLowPower = new CheckBox(this); cbLowPower.setText("极寒省电模式"); cbLowPower.setChecked(SettingsManager.isLowPowerMode()); layout.addView(cbLowPower);
-        
-        TextView tvHint = new TextView(this);
-        tvHint.setText("警告：开启后将强制降级 Wi-Fi 锁频率、关闭内网穿透与 LocalSend。仅保留 Web 与 WebDAV 服务。适合长期插电挂机但追求极致省电的用户。");
-        tvHint.setTextSize(12);
-        tvHint.setTextColor(0xFFD32F2F); // 红色警告
-        layout.addView(tvHint);
+        EditText etWebPort = new EditText(this); etWebPort.setHint("Web 端口"); etWebPort.setInputType(InputType.TYPE_CLASS_NUMBER); etWebPort.setText(String.valueOf(SettingsManager.getWebPort())); layout.addView(etWebPort);
+        EditText etDavPort = new EditText(this); etDavPort.setHint("WebDAV 端口"); etDavPort.setInputType(InputType.TYPE_CLASS_NUMBER); etDavPort.setText(String.valueOf(SettingsManager.getWebDavPort())); layout.addView(etDavPort);
 
+        // --- 性能与安全 ---
+        CheckBox cbLowPower = new CheckBox(this); cbLowPower.setText("极寒省电模式 (限制 Wi-Fi 并断开穿透)"); cbLowPower.setChecked(SettingsManager.isLowPowerMode()); layout.addView(cbLowPower);
+        
+        EditText etAdminUser = new EditText(this); etAdminUser.setHint("管理员账号"); etAdminUser.setText(AuthManager.getAdminUser()); layout.addView(etAdminUser);
+        EditText etAdminPass = new EditText(this); etAdminPass.setHint("管理员密码 (留空不改)"); etAdminPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); layout.addView(etAdminPass);
+
+        // --- 服务开关 ---
         CheckBox cbWebDav = new CheckBox(this); cbWebDav.setText("开启 WebDAV"); cbWebDav.setChecked(SettingsManager.isWebDavEnabled()); layout.addView(cbWebDav);
         CheckBox cbLs = new CheckBox(this); cbLs.setText("开启 LocalSend"); cbLs.setChecked(SettingsManager.isLocalSendEnabled()); layout.addView(cbLs);
-        
         EditText etPin = new EditText(this); etPin.setHint("LocalSend PIN"); etPin.setText(SettingsManager.getLsPin()); layout.addView(etPin);
+        
+        CheckBox cbStream = new CheckBox(this); cbStream.setText("允许网页流媒体播放 (视频)"); cbStream.setChecked(SettingsManager.isStreamEnabled()); layout.addView(cbStream);
+        CheckBox cbClipboard = new CheckBox(this); cbClipboard.setText("开启局域网剪贴板"); cbClipboard.setChecked(SettingsManager.isClipboardEnabled()); layout.addView(cbClipboard);
 
+        // 极寒模式联动
         cbLowPower.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 cbLs.setEnabled(!isChecked);
-                if (isChecked) cbLs.setChecked(false);
+                cbStream.setEnabled(!isChecked);
+                cbClipboard.setEnabled(!isChecked);
+                if (isChecked) {
+                    cbLs.setChecked(false);
+                    cbStream.setChecked(false);
+                    cbClipboard.setChecked(false);
+                }
             }
         });
-        if (SettingsManager.isLowPowerMode()) cbLs.setEnabled(false);
+        if (SettingsManager.isLowPowerMode()) {
+            cbLs.setEnabled(false);
+            cbStream.setEnabled(false);
+            cbClipboard.setEnabled(false);
+        }
 
-        new AlertDialog.Builder(this).setTitle("控制中心").setView(scrollView)
+        new AlertDialog.Builder(this).setTitle("NAS 驾驶舱").setView(scrollView)
             .setPositiveButton("保存并重启", new android.content.DialogInterface.OnClickListener() {
                 @Override
                 public void onClick(android.content.DialogInterface dialog, int which) {
@@ -222,7 +237,31 @@ public class MainActivity extends Activity {
                     SettingsManager.setLowPowerMode(cbLowPower.isChecked());
                     SettingsManager.setWebDavEnabled(cbWebDav.isChecked());
                     SettingsManager.setLocalSendEnabled(cbLs.isChecked());
+                    SettingsManager.setStreamEnabled(cbStream.isChecked());
+                    SettingsManager.setClipboardEnabled(cbClipboard.isChecked());
                     SettingsManager.setLsPin(etPin.getText().toString().trim());
+                    
+                    if (!etWebPort.getText().toString().isEmpty()) {
+                        int p = Integer.parseInt(etWebPort.getText().toString());
+                        if (p > 1024 && p < 65535) SettingsManager.setWebPort(p);
+                    }
+                    if (!etDavPort.getText().toString().isEmpty()) {
+                        int p = Integer.parseInt(etDavPort.getText().toString());
+                        if (p > 1024 && p < 65535) SettingsManager.setWebDavPort(p);
+                    }
+                    
+                    String newUser = etAdminUser.getText().toString().trim();
+                    String newPass = etAdminPass.getText().toString().trim();
+                    if (!newUser.isEmpty()) {
+                        if (newPass.isEmpty()) {
+                            AuthManager.setAuth(MainActivity.this, newUser, AuthManager.getAdminPass());
+                        } else {
+                            AuthManager.setAuth(MainActivity.this, newUser, newPass);
+                        }
+                    } else if (!newPass.isEmpty()) {
+                        AuthManager.setAuth(MainActivity.this, AuthManager.getAdminUser(), newPass);
+                    }
+
                     if (HttpServerService.isRunning()) {
                         stopService(new Intent(MainActivity.this, HttpServerService.class));
                         new Handler().postDelayed(new Runnable() {
@@ -230,6 +269,7 @@ public class MainActivity extends Activity {
                             public void run() { startService(new Intent(MainActivity.this, HttpServerService.class)); }
                         }, 500);
                     }
+                    updateServiceStatus();
                 }
             }).setNegativeButton("取消", null).show();
     }
@@ -298,7 +338,7 @@ public class MainActivity extends Activity {
         toggleBtn.setText(running ? "停止服务" : "启动服务");
         String ip = getIpAddress();
         String text = "网页管理: http://" + ip + ":" + SettingsManager.getWebPort();
-        if (SettingsManager.isLowPowerMode()) text += "\n❄️ 极寒省电模式已开启";
+        if (SettingsManager.isLowPowerMode()) text += "\n❄️ 极寒模式已开启";
         
         if (SettingsManager.isWebDavEnabled()) text += "\n网络邻居: http://" + ip + ":" + SettingsManager.getWebDavPort();
         if (SettingsManager.isLocalSendEnabled()) text += "\nLocalSend PIN: " + SettingsManager.getLsPin();

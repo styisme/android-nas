@@ -23,6 +23,9 @@ public class AuthManager {
         sp.edit().putString("username", user).putString("password", pass).apply();
     }
 
+    public static String getAdminUser() { return adminUser; }
+    public static String getAdminPass() { return adminPass; }
+
     public static boolean isAuthEnabled() { return authEnabled; }
     public static void setAuthEnabled(Context context, boolean enabled) {
         authEnabled = enabled;
@@ -32,20 +35,18 @@ public class AuthManager {
     
     public static String getAuthInfo() { return adminUser + " / " + adminPass; }
 
-    // 返回: 0=无权限, 1=Admin, 2=Guest
     public static int verifyRole(String authHeader) {
-        if (!authEnabled) return 1; // 未开启验证直接算Admin
+        if (!authEnabled) return 1;
         if (authHeader == null || !authHeader.startsWith("Basic ")) return 0;
         try {
             String base64 = authHeader.substring(6);
             String decoded = new String(Base64.decode(base64, Base64.NO_WRAP));
-            if (decoded.equals(adminUser + ":" + adminPass)) return 1; // Admin
-            if (decoded.equals("guest:guest")) return 2; // Guest (默认账号)
+            if (decoded.equals(adminUser + ":" + adminPass)) return 1;
+            if (decoded.equals("guest:guest")) return 2;
         } catch (Exception e) {}
         return 0;
     }
     
-    // 兼容旧方法
     public static boolean verify(String authHeader) {
         return verifyRole(authHeader) > 0;
     }
