@@ -24,6 +24,7 @@ public class HttpServerService extends Service {
 
     private NasHttpServer serverHttp;
     private WebDavServer webDavHttp;
+    private FtpServer ftpServer;
     private LocalSendServer lsServer;
     private LocalSendDiscovery lsDiscovery;
     
@@ -48,31 +49,24 @@ public class HttpServerService extends Service {
             
             WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             if (isLowPower) {
-                // 激进模式：降级为普通 Wi-Fi 锁，允许芯片休眠省电
                 wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "AndroidNAS::WifiLockLowPower");
             } else {
-                // 性能模式：保持高性能 Wi-Fi 锁
                 wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "AndroidNAS::WifiLockHighPerf");
             }
             wifiLock.acquire();
             
-            // 激进模式：降低当前服务进程的 CPU 线程优先级
-            if (isLowPower) {
-                Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
-            }
+            if (isLowPower) Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
             
         } catch (Exception e) { e.printStackTrace(); }
 
         String rootDir = Environment.getExternalStorageDirectory().getAbsolutePath();
 
-        // 1. Web 服务 (核心)
         try {
             serverHttp = new NasHttpServer(SettingsManager.getWebPort());
             serverHttp.start();
             startedServices.add("Web");
         } catch (Exception e) { lastError += "Web启动失败: " + e.getMessage() + "\n"; }
         
-        // 2. WebDAV (保留)
         if (SettingsManager.isWebDavEnabled()) {
             try {
                 webDavHttp = new WebDavServer(rootDir);
@@ -81,22 +75,25 @@ public class HttpServerService extends Service {
             } catch (Exception e) { lastError += "WebDAV启动失败: " + e.getMessage() + "\n"; }
         }
 
-        // 3. 附加服务限制
+        if (SettingsManager.isFtpEnabled()) {
+            try {
+                ftpServer = new FtpServer(SettingsManager.getFtpPort());
+                ftpServer.start();
+                startedServices.add("FTP");
+            } catch (Exception e) { lastError += "FTP启动失败: " + e.getMessage() + "\n"; }
+        }
+
         if (isLowPower) {
-            // 激进模式：强制清理内网穿透，避免维持长连接耗电
             FreeTunnelManager.stop();
             SshTunnelManager.stop();
-        } else {
-            // 性能模式：判断是否开启 LocalSend
-            if (SettingsManager.isLocalSendEnabled()) {
-                try {
-                    lsServer = new LocalSendServer(53317);
-                    lsServer.start();
-                    lsDiscovery = new LocalSendDiscovery(this);
-                    lsDiscovery.start();
-                    startedServices.add("LocalSend");
-                } catch (Exception e) { lastError += "LocalSend启动失败: " + e.getMessage() + "\n"; }
-            }
+        } else if (SettingsManager.isLocalSendEnabled()) {
+            try {
+                lsServer = new LocalSendServer(53317);
+                lsServer.start();
+                lsDiscovery = new LocalSendDiscovery(this);
+                lsDiscovery.start();
+                startedServices.add("LocalSend");
+            } catch (Exception e) { lastError += "LocalSend启动失败: " + e.getMessage() + "\n"; }
         }
         
         running = true;
@@ -132,6 +129,7 @@ public class HttpServerService extends Service {
     public void onDestroy() {
         if (serverHttp != null) serverHttp.stop();
         if (webDavHttp != null) webDavHttp.stopServer();
+        if (ftpServer != null) ftpServer.stopServer();
         if (lsServer != null) lsServer.stop();
         if (lsDiscovery != null) lsDiscovery.stopDiscovery();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();

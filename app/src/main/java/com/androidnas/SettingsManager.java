@@ -22,6 +22,9 @@ public class SettingsManager {
     public static boolean isWebDavEnabled() { return sp.getBoolean("webdav_enabled", true); }
     public static void setWebDavEnabled(boolean enabled) { sp.edit().putBoolean("webdav_enabled", enabled).apply(); }
 
+    public static boolean isFtpEnabled() { return sp.getBoolean("ftp_enabled", true) && !isLowPowerMode(); }
+    public static void setFtpEnabled(boolean enabled) { sp.edit().putBoolean("ftp_enabled", enabled).apply(); }
+
     public static boolean isLocalSendEnabled() { return sp.getBoolean("localsend_enabled", true) && !isLowPowerMode(); }
     public static void setLocalSendEnabled(boolean enabled) { sp.edit().putBoolean("localsend_enabled", enabled).apply(); }
 
@@ -37,6 +40,9 @@ public class SettingsManager {
     
     public static int getWebDavPort() { return sp.getInt("webdav_port", 8081); }
     public static void setWebDavPort(int port) { sp.edit().putInt("webdav_port", port).apply(); }
+    
+    public static int getFtpPort() { return sp.getInt("ftp_port", 2121); }
+    public static void setFtpPort(int port) { sp.edit().putInt("ftp_port", port).apply(); }
     
     public static String getLsPin() { return sp.getString("ls_pin", "1234"); }
     public static void setLsPin(String pin) { sp.edit().putString("ls_pin", pin).apply(); }
