@@ -5,7 +5,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.InputType;
+import android.provider.OpenableColumns;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -14,16 +14,18 @@ import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.SearchView;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
-import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
+import com.google.android.material.progressindicator.LinearProgressIndicator;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -33,6 +35,13 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+
 import okhttp3.Credentials;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -55,8 +64,6 @@ public class FileListActivity extends AppCompatActivity {
     private Set<String> selectedPaths = new HashSet<>();
     private Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    private int filePickerAction = 0; // 1=upload
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -70,7 +77,7 @@ public class FileListActivity extends AppCompatActivity {
         String pass = getIntent().getStringExtra("password");
         authHeader = Credentials.basic(user != null ? user : "admin", pass != null ? pass : "admin");
 
-        client = new OkHttpClient.Builder().connectTimeout(30, TimeUnit.SECONDS).build();
+        client = getUnsafeOkHttpClient();
 
         MaterialToolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
@@ -98,6 +105,25 @@ public class FileListActivity extends AppCompatActivity {
         fab.setOnClickListener(v -> openFilePicker());
 
         loadFiles();
+    }
+
+    private OkHttpClient getUnsafeOkHttpClient() {
+        try {
+            final TrustManager[] trustAllCerts = new TrustManager[]{
+                new X509TrustManager() {
+                    @Override public void checkClientTrusted(java.security.cert.X509Certificate[] chain, String authType) {}
+                    @Override public void checkServerTrusted(java.security.cert.X509Certificate[] chain, String authType) {}
+                    @Override public java.security.cert.X509Certificate[] getAcceptedIssuers() { return new java.security.cert.X509Certificate[]{}; }
+                }
+            };
+            final SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+            return new OkHttpClient.Builder()
+                    .sslSocketFactory(sslContext.getSocketFactory(), (X509TrustManager) trustAllCerts[0])
+                    .hostnameVerifier((hostname, session) -> true)
+                    .connectTimeout(30, TimeUnit.SECONDS)
+                    .build();
+        } catch (Exception e) { throw new RuntimeException(e); }
     }
 
     private void updateTitle() {
@@ -203,25 +229,63 @@ public class FileListActivity extends AppCompatActivity {
 
         new Thread(() -> {
             try {
-                String apiUrl = baseUrl + "/api/list?path=" + URLEncoder.encode(currentPath, "UTF-8");
-                Request request = new Request.Builder().url(apiUrl).header("Authorization", authHeader).build();
-                Response response = client.newCall(request).execute();
-                if (response.isSuccessful() && response.body() != null) {
-                    String json = response.body().string();
-                    org.json.JSONObject obj = new org.json.JSONObject(json);
-                    org.json.JSONArray arr = obj.getJSONArray("files");
-                    for (int i = 0; i < arr.length(); i++) {
-                        org.json.JSONObject f = arr.getJSONObject(i);
-                        files.add(new FileItem(f.getString("name"), 
-                                currentPath.endsWith("/") ? currentPath + f.getString("name") : currentPath + "/" + f.getString("name"),
-                                f.getBoolean("dir"), f.getLong("size")));
-                    }
-                    runOnUiThread(() -> adapter.notifyDataSetChanged());
-                }
+                if (isAndroidNas) loadAndroidNasFiles();
+                else loadWebDavFiles();
+                runOnUiThread(() -> adapter.notifyDataSetChanged());
             } catch (Exception e) {
                 runOnUiThread(() -> Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show());
             }
         }).start();
+    }
+
+    private void loadAndroidNasFiles() throws Exception {
+        String apiUrl = baseUrl + "/api/list?path=" + URLEncoder.encode(currentPath, "UTF-8");
+        Request request = new Request.Builder().url(apiUrl).header("Authorization", authHeader).build();
+        Response response = client.newCall(request).execute();
+        if (response.isSuccessful() && response.body() != null) {
+            String json = response.body().string();
+            org.json.JSONObject obj = new org.json.JSONObject(json);
+            org.json.JSONArray arr = obj.getJSONArray("files");
+            for (int i = 0; i < arr.length(); i++) {
+                org.json.JSONObject f = arr.getJSONObject(i);
+                files.add(new FileItem(f.getString("name"), 
+                        currentPath.endsWith("/") ? currentPath + f.getString("name") : currentPath + "/" + f.getString("name"),
+                        f.getBoolean("dir"), f.getLong("size")));
+            }
+        }
+    }
+
+    private void loadWebDavFiles() throws Exception {
+        String url = baseUrl + currentPath;
+        if (!url.endsWith("/")) url += "/";
+        String xmlBody = "<?xml version=\"1.0\"?><d:propfind xmlns:d=\"DAV:\"><d:prop><d:displayname/><d:resourcetype/><d:getcontentlength/></d:prop></d:propfind>";
+        Request.Builder builder = new Request.Builder().url(url).method("PROPFIND", RequestBody.create(xmlBody, MediaType.parse("application/xml"))).header("Depth", "1");
+        if (authHeader != null) builder.header("Authorization", authHeader);
+        Response response = client.newCall(builder.build()).execute();
+        if (response.isSuccessful() && response.body() != null) parseWebDavXml(response.body().string());
+    }
+
+    private void parseWebDavXml(String xml) {
+        Pattern responsePattern = Pattern.compile("<D:response>(.*?)</D:response>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Matcher responseMatcher = responsePattern.matcher(xml);
+        Pattern hrefPattern = Pattern.compile("<D:href>(.*?)</D:href>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern isDirPattern = Pattern.compile("<D:collection\\s*/>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+        Pattern sizePattern = Pattern.compile("<D:getcontentlength>(.*?)</D:getcontentlength>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+
+        while (responseMatcher.find()) {
+            String responseBlock = responseMatcher.group(1);
+            Matcher hrefMatcher = hrefPattern.matcher(responseBlock);
+            if (!hrefMatcher.find()) continue;
+            String href = hrefMatcher.group(1);
+            if (href.startsWith("http")) href = href.replace(baseUrl, "");
+            String name = href.substring(href.lastIndexOf("/") + 1);
+            if (name.isEmpty()) continue;
+            boolean isDir = isDirPattern.matcher(responseBlock).find();
+            long size = 0;
+            Matcher sizeMatcher = sizePattern.matcher(responseBlock);
+            if (sizeMatcher.find()) { try { size = Long.parseLong(sizeMatcher.group(1)); } catch (Exception ignored) {} }
+            files.add(new FileItem(name, href, isDir, size));
+        }
     }
 
     private void openFilePicker() {
@@ -235,24 +299,69 @@ public class FileListActivity extends AppCompatActivity {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == 100 && resultCode == RESULT_OK && data != null && data.getData() != null) {
             Uri uri = data.getData();
-            String fileName = "upload_" + System.currentTimeMillis();
+            String fileName = getFileName(uri);
+            if (fileName == null) fileName = "upload_" + System.currentTimeMillis();
+            final String finalFileName = fileName;
+
+            // 获取文件大小，必须传给 OkHttp，否则 NanoHTTPD 2.2 会卡死
+            long tempSize = -1;
+            try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                    if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) tempSize = cursor.getLong(sizeIndex);
+                }
+            } catch (Exception ignored) {}
+            final long finalSize = tempSize;
+
+            LinearProgressIndicator progress = new LinearProgressIndicator(this);
+            progress.setIndeterminate(true); // 上传暂不显示具体进度，使用不确定进度条
+            androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle("上传中").setView(progress).setCancelable(false).show();
+
             new Thread(() -> {
                 try {
                     InputStream is = getContentResolver().openInputStream(uri);
-                    String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + fileName;
+                    String encodedName = URLEncoder.encode(finalFileName, "UTF-8").replace("+", "%20");
+                    String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + encodedName;
+                    
                     RequestBody body = new RequestBody() {
                         @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
+                        @Override public long contentLength() { return finalSize; }
                         @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
                             byte[] buf = new byte[8192]; int len;
                             while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
                         }
                     };
                     Request req = new Request.Builder().url(targetUrl).put(body).header("Authorization", authHeader).build();
-                    client.newCall(req).execute();
-                    runOnUiThread(this::loadFiles);
-                } catch (Exception e) {}
+                    Response response = client.newCall(req).execute();
+                    
+                    mainHandler.post(() -> {
+                        dialog.dismiss();
+                        if (response.isSuccessful()) loadFiles();
+                        else Toast.makeText(this, "上传失败", Toast.LENGTH_SHORT).show();
+                    });
+                } catch (Exception e) {
+                    mainHandler.post(() -> { dialog.dismiss(); Toast.makeText(this, "上传失败", Toast.LENGTH_SHORT).show(); });
+                }
             }).start();
         }
+    }
+
+    private String getFileName(Uri uri) {
+        String result = null;
+        if (uri.getScheme().equals("content")) {
+            try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (index >= 0) result = cursor.getString(index);
+                }
+            }
+        }
+        if (result == null) {
+            result = uri.getPath();
+            int cut = result.lastIndexOf('/');
+            if (cut != -1) result = result.substring(cut + 1);
+        }
+        return result;
     }
 
     private void deleteSelected() {
