@@ -10,28 +10,18 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.Environment;
-import javax.net.ssl.SSLServerSocketFactory;
 
 public class HttpServerService extends Service {
-
     public static final int PORT = 8080;
-    public static final int HTTPS_PORT = 8443;
     public static final int WEBDAV_PORT = 8081;
-    public static final int WEBDAV_HTTPS_PORT = 8444;
-    
     private static final int NOTIFICATION_ID = 1001;
     private static volatile boolean running = false;
     public static volatile String lastError = "";
 
-    public static boolean isRunning() {
-        return running;
-    }
+    public static boolean isRunning() { return running; }
 
     private NasHttpServer serverHttp;
-    private NasHttpServer serverHttps;
     private WebDavServer webDavHttp;
-    private WebDavServer webDavHttps;
-    
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
 
@@ -52,44 +42,20 @@ public class HttpServerService extends Service {
 
         lastError = "";
         String rootDir = Environment.getExternalStorageDirectory().getAbsolutePath();
-        boolean httpsEnabled = getSharedPreferences("nas_auth", Context.MODE_PRIVATE).getBoolean("https_enabled", false);
 
         // 1. 启动 HTTP 普通服务
         try {
-            serverHttp = new NasHttpServer(PORT, false, null);
+            serverHttp = new NasHttpServer(PORT);
             serverHttp.start();
         } catch (Exception e) { lastError += "HTTP启动失败: " + e.getMessage() + "\n"; }
         
+        // 2. 启动 WebDAV 服务
         try {
             webDavHttp = new WebDavServer(rootDir);
-            webDavHttp.startServer(WEBDAV_PORT, false, null);
+            webDavHttp.startServer(WEBDAV_PORT);
         } catch (Exception e) { lastError += "WebDAV启动失败: " + e.getMessage() + "\n"; }
-
-        // 2. 根据开关启动 HTTPS 加密服务
-        if (httpsEnabled) {
-            SSLServerSocketFactory sslFactory = createSelfSignedSSL();
-            if (sslFactory != null) {
-                try {
-                    serverHttps = new NasHttpServer(HTTPS_PORT, true, sslFactory);
-                    serverHttps.start();
-                } catch (Exception e) { lastError += "HTTPS启动失败: " + e.getMessage() + "\n"; }
-                
-                try {
-                    webDavHttps = new WebDavServer(rootDir);
-                    webDavHttps.startServer(WEBDAV_HTTPS_PORT, true, sslFactory);
-                } catch (Exception e) { lastError += "WebDAV-HTTPS启动失败: " + e.getMessage() + "\n"; }
-            } else {
-                lastError += "自签证书生成失败，HTTPS未启动\n";
-            }
-        }
         
-        running = lastError.isEmpty() || !lastError.contains("启动失败");
-    }
-
-    private SSLServerSocketFactory createSelfSignedSSL() {
-        // 为了兼容极低版本的 Android，这里简单返回 null，由 UI 提示用户开启失败
-        // 如果需要真正的 HTTPS，需预置 BKS 证书
-        return null;
+        running = lastError.isEmpty();
     }
 
     private void goForeground() {
@@ -125,9 +91,7 @@ public class HttpServerService extends Service {
     @Override
     public void onDestroy() {
         if (serverHttp != null) serverHttp.stop();
-        if (serverHttps != null) serverHttps.stop();
         if (webDavHttp != null) webDavHttp.stopServer();
-        if (webDavHttps != null) webDavHttps.stopServer();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         running = false;

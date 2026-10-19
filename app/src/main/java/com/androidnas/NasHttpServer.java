@@ -21,7 +21,11 @@ public class NasHttpServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         String method = session.getMethod().name();
-        String clientIp = session.getRemoteIpAddress();
+        
+        // NanoHTTPD 2.2.0 获取 IP 的方式
+        String clientIp = session.getHeaders().get("remote-addr");
+        if (clientIp == null) clientIp = session.getHeaders().get("http-client-ip");
+        if (clientIp == null) clientIp = "unknown";
 
         // 1. 身份校验
         int role = 1;
@@ -42,13 +46,12 @@ public class NasHttpServer extends NanoHTTPD {
             }
         }
 
-        // 3. 记录日志 (忽略列表请求，防刷屏)
+        // 3. 记录日志
         if (!uri.startsWith("/api/list") && !"/".equals(uri)) {
             LogManager.add(clientIp, method + " " + uri);
         }
 
         try {
-            // 客户端上传 (PUT)
             if (Method.PUT.equals(session.getMethod())) {
                 File targetFile = safeFile(uri);
                 if (targetFile != null && role == 1) {

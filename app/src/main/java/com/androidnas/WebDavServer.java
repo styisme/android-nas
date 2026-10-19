@@ -3,7 +3,6 @@ package com.androidnas;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
-import javax.net.ssl.SSLServerSocketFactory;
 import java.util.*;
 import java.text.SimpleDateFormat;
 import java.util.Locale;
@@ -15,12 +14,8 @@ public class WebDavServer extends Thread {
 
     public WebDavServer(String rootDir) { this.rootDir = rootDir; }
 
-    public void startServer(int port, boolean isSecure, SSLServerSocketFactory sslFactory) throws IOException {
-        if (isSecure && sslFactory != null) {
-            serverSocket = sslFactory.createServerSocket(port);
-        } else {
-            serverSocket = new ServerSocket(port);
-        }
+    public void startServer(int port) throws IOException {
+        serverSocket = new ServerSocket(port);
         this.start();
     }
 
@@ -77,7 +72,6 @@ public class WebDavServer extends Thread {
                     }
                 }
 
-                // WebDAV 身份认证拦截
                 if (!"OPTIONS".equalsIgnoreCase(method)) {
                     String auth = headers.get("authorization");
                     if (!AuthManager.verify(auth)) {
