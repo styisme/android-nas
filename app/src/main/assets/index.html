@@ -37,6 +37,7 @@
         #uploadProgress { display: none; position: fixed; top: 70px; left: 16px; right: 16px; background: var(--primary-container); color: var(--primary); padding: 16px; border-radius: 16px; z-index: 40; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         .progress-bg { width: 100%; height: 8px; background: rgba(0,0,0,0.1); border-radius: 4px; margin-top: 8px; overflow: hidden; }
         .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: 0.2s; }
+        img, video, audio { max-width: 100%; border-radius: 8px; }
     </style>
 </head>
 <body>
@@ -91,7 +92,7 @@
 
 <div id="previewModal" class="modal"><div class="modal-content">
     <h3 id="previewTitle">预览</h3>
-    <div id="previewBody"></div>
+    <div id="previewBody" style="text-align:center;"></div>
     <div style="text-align:right; margin-top:16px;"><button class="btn" onclick="closeModal('previewModal')">关闭</button></div>
 </div></div>
 
@@ -141,7 +142,7 @@ function renderList(files) {
 
         var actions = document.createElement('div');
         if (!f.dir) {
-            if (f.isMedia) actions.innerHTML += `<button class="btn" onclick="playMedia('${encodeURIComponent(full)}', '${f.name}')">播放</button>`;
+            if (f.isMedia) actions.innerHTML += `<button class="btn" onclick="playMedia('${encodeURIComponent(full)}', '${f.name}')">预览</button>`;
             if (f.isTxt) actions.innerHTML += `<button class="btn" onclick="editFile('${encodeURIComponent(full)}', '${f.name}')">编辑</button>`;
             if (f.isZip) actions.innerHTML += `<button class="btn" onclick="unzipFile('${encodeURIComponent(full)}')">解压</button>`;
             actions.innerHTML += `<a href="/api/download?path=${encodeURIComponent(full)}" class="btn" style="text-decoration:none;">下载</a>`;
@@ -155,7 +156,19 @@ function renderList(files) {
 
 function playMedia(encodedPath, name) {
     document.getElementById('previewTitle').textContent = name;
-    document.getElementById('previewBody').innerHTML = `<video src="/api/download?path=${encodedPath}" controls autoplay style="width:100%; max-height:60vh;"></video>`;
+    var ext = name.split('.').pop().toLowerCase();
+    var url = `/api/download?path=${encodedPath}`;
+    var body = document.getElementById('previewBody');
+    
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
+        body.innerHTML = `<img src="${url}" alt="${name}" />`;
+    } else if (['mp4', 'webm', 'mkv'].includes(ext)) {
+        body.innerHTML = `<video src="${url}" controls autoplay></video>`;
+    } else if (['mp3', 'wav', 'ogg'].includes(ext)) {
+        body.innerHTML = `<audio src="${url}" controls autoplay style="width:100%;"></audio>`;
+    } else {
+        body.innerHTML = `<p>不支持在线预览此媒体格式，请下载后查看。</p>`;
+    }
     document.getElementById('previewModal').style.display = 'flex';
 }
 

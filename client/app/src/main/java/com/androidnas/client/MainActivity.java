@@ -17,6 +17,8 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -124,7 +126,7 @@ public class MainActivity extends AppCompatActivity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextInputLayout tilName = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilName.setHint("设备名称 (如: 我的NAS)");
+        tilName.setHint("设备名称");
         TextInputEditText etName = new TextInputEditText(this);
         tilName.addView(etName);
         layout.addView(tilName);
@@ -138,14 +140,27 @@ public class MainActivity extends AppCompatActivity {
         params.topMargin = 24;
         layout.addView(tilUrl, params);
 
+        // 加回协议选择
+        RadioGroup rgType = new RadioGroup(this);
+        RadioButton rbAndroid = new RadioButton(this);
+        rbAndroid.setText("Android NAS (原生接口)");
+        rbAndroid.setId(View.generateViewId());
+        rbAndroid.setChecked(true);
+        RadioButton rbWebDav = new RadioButton(this);
+        rbWebDav.setText("外部 NAS (WebDAV 协议)");
+        rbWebDav.setId(View.generateViewId());
+        rgType.addView(rbAndroid); 
+        rgType.addView(rbWebDav);
+        layout.addView(rgType, params);
+
         TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilUser.setHint("服务端账号 (默认 admin)");
+        tilUser.setHint("账号 (默认 admin)");
         TextInputEditText etUser = new TextInputEditText(this);
         tilUser.addView(etUser);
         layout.addView(tilUser, params);
 
         TextInputLayout tilPass = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilPass.setHint("服务端密码 (默认 admin)");
+        tilPass.setHint("密码 (默认 admin)");
         TextInputEditText etPass = new TextInputEditText(this);
         tilPass.addView(etPass);
         layout.addView(tilPass, params);
@@ -165,7 +180,9 @@ public class MainActivity extends AppCompatActivity {
                 }
                 if (!url.startsWith("http")) url = "http://" + url;
                 
-                devices.add(new NasDevice(name, url, true, user, pass));
+                boolean isAndroid = rgType.getCheckedRadioButtonId() == rbAndroid.getId();
+                
+                devices.add(new NasDevice(name, url, isAndroid, user, pass));
                 saveDevices();
                 adapter.notifyDataSetChanged();
             }).setNegativeButton("取消", null).show();
@@ -295,7 +312,7 @@ public class MainActivity extends AppCompatActivity {
             final NasDevice d = devices.get(position);
             holder.tvName.setText(d.name);
             holder.tvIp.setText(d.url);
-            holder.tvIcon.setText("📱");
+            holder.tvIcon.setText(d.isAndroidNas ? "📱" : "🖥️");
             
             holder.itemView.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -306,7 +323,7 @@ public class MainActivity extends AppCompatActivity {
                             if (which == 0) {
                                 Intent intent = new Intent(MainActivity.this, FileListActivity.class);
                                 intent.putExtra("url", d.getBaseUrl());
-                                intent.putExtra("isAndroidNas", true);
+                                intent.putExtra("isAndroidNas", d.isAndroidNas);
                                 intent.putExtra("username", d.username);
                                 intent.putExtra("password", d.password);
                                 startActivity(intent);
@@ -391,7 +408,7 @@ public class MainActivity extends AppCompatActivity {
                 if (name.isEmpty() || url.isEmpty()) return;
                 if (!url.startsWith("http")) url = "http://" + url;
 
-                devices.set(position, new NasDevice(name, url, true, user, pass));
+                devices.set(position, new NasDevice(name, url, d.isAndroidNas, user, pass));
                 saveDevices();
                 adapter.notifyDataSetChanged();
             }).setNegativeButton("取消", null).show();
