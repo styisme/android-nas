@@ -21,14 +21,17 @@ public class SshTunnelManager {
                 session.setConfig("StrictHostKeyChecking", "no");
                 session.setTimeout(15000);
                 session.connect();
+                
                 // 将远端的 remotePort 映射到本地的 localPort
                 session.setPortForwardingR(remotePort, "127.0.0.1", localPort);
                 LogManager.add("127.0.0.1", "SSH穿透启动: " + host + ":" + remotePort + " -> 127.0.0.1:" + localPort);
 
                 keepAliveThread = new Thread(() -> {
                     while (isRunning()) {
-                        try { Thread.sleep(10000); } catch (Exception ignored) {}
-                        if (session != null) session.sendKeepAliveMsg();
+                        try { 
+                            Thread.sleep(10000); 
+                            if (session != null) session.sendKeepAliveMsg();
+                        } catch (Exception ignored) {}
                     }
                 });
                 keepAliveThread.start();
