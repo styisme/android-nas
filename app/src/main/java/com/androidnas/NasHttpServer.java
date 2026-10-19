@@ -14,7 +14,7 @@ public class NasHttpServer extends NanoHTTPD {
     public NasHttpServer(int port) { super(port); }
 
     private File safeFile(String path) throws IOException {
-        if (path == null) path = "/";
+        if (path == null || path.trim().isEmpty()) path = "/";
         File f = new File(ROOT, path);
         if (!f.getCanonicalPath().startsWith(new File(ROOT).getCanonicalPath())) return null;
         return f;
@@ -26,84 +26,7 @@ public class NasHttpServer extends NanoHTTPD {
         String method = session.getMethod().name();
         
         try {
-            if ("/dlna/description.xml".equals(uri)) {
-                String ip = getLocalIpAddress();
-                String xml = "<?xml version=\"1.0\"?>\n" +
-                        "<root xmlns=\"urn:schemas-upnp-org:device-1-0\">\n" +
-                        "<specVersion><major>1</major><minor>0</minor></specVersion>\n" +
-                        "<device>\n" +
-                        "<deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>\n" +
-                        "<friendlyName>" + SettingsManager.getDeviceAlias() + "</friendlyName>\n" +
-                        "<manufacturer>AndroidNAS</manufacturer>\n" +
-                        "<modelName>Android NAS</modelName>\n" +
-                        "<UDN>uuid:" + SettingsManager.getFingerprint() + "</UDN>\n" +
-                        "<serviceList>\n" +
-                        "<service>\n" +
-                        "<serviceType>urn:schemas-upnp-org:service:ContentDirectory:1</serviceType>\n" +
-                        "<serviceId>urn:upnp-org:serviceId:ContentDirectory</serviceId>\n" +
-                        "<controlURL>/dlna/control</controlURL>\n" +
-                        "<eventSubURL>/dlna/event</eventSubURL>\n" +
-                        "<SCPDURL>/dlna/scpd.xml</SCPDURL>\n" +
-                        "</service>\n" +
-                        "</serviceList>\n" +
-                        "</device>\n" +
-                        "</root>";
-                return newFixedLengthResponse(Response.Status.OK, "text/xml; charset=utf-8", xml);
-            }
-
-            if (uri.startsWith("/dlna/control") && method.equals("POST")) {
-                Map<String, String> files = new HashMap<>();
-                session.parseBody(files);
-                String body = files.get("postData");
-                String responseXml = "";
-                
-                if (body != null && body.contains("Browse")) {
-                    String ip = getLocalIpAddress();
-                    responseXml = "<?xml version=\"1.0\"?>\n" +
-                            "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\n" +
-                            "<s:Body>\n" +
-                            "<u:BrowseResponse xmlns:u=\"urn:schemas-upnp-org:service:ContentDirectory:1\">\n" +
-                            "<Result>&lt;DIDL-Lite xmlns=&quot;urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/&quot; xmlns:dc=&quot;http://purl.org/dc/elements/1.1/&quot; xmlns:upnp=&quot;urn:schemas-upnp-org:metadata-1-0/upnp/&quot;&gt;\n";
-                    
-                    // 简单扫描根目录下的视频文件作为示例
-                    File[] filesList = new File(ROOT).listFiles();
-                    int count = 0;
-                    if (filesList != null) {
-                        for (File f : filesList) {
-                            if (f.isFile() && (f.getName().endsWith(".mp4") || f.getName().endsWith(".mkv"))) {
-                                String objId = String.valueOf(f.hashCode());
-                                responseXml += "&lt;item id=&quot;" + objId + "&quot; parentID=&quot;0&quot; restricted=&quot;1&quot;&gt;" +
-                                        "&lt;dc:title&gt;" + f.getName() + "&lt;/dc:title&gt;" +
-                                        "&lt;upnp:class&gt;object.item.videoItem&lt;/upnp:class&gt;" +
-                                        "&lt;res protocolInfo=&quot;http-get:*:video/mp4:*&quot;&gt;http://" + ip + ":" + SettingsManager.getWebPort() + "/api/download?path=" + f.getName() + "&lt;/res&gt;" +
-                                        "&lt;/item&gt;\n";
-                                count++;
-                                if (count > 50) break; // 限制数量
-                            }
-                        }
-                    }
-                    responseXml += "&lt;/DIDL-Lite&gt;</Result>\n" +
-                            "<NumberReturned>" + count + "</NumberReturned>\n" +
-                            "<TotalMatches>" + count + "</TotalMatches>\n" +
-                            "<UpdateID>1</UpdateID>\n" +
-                            "</u:BrowseResponse>\n" +
-                            "</s:Body>\n" +
-                            "</s:Envelope>";
-                }
-                return newFixedLengthResponse(Response.Status.OK, "text/xml; charset=utf-8", responseXml);
-            }
-
-            if ("/dlna/scpd.xml".equals(uri)) {
-                 String xml = "<?xml version=\"1.0\"?>\n" +
-                        "<scpd xmlns=\"urn:schemas-upnp-org:service-1-0\">\n" +
-                        "<specVersion><major>1</major><minor>0</minor></specVersion>\n" +
-                        "<actionList><action><name>Browse</name><argumentList></argumentList></action></actionList>\n" +
-                        "<serviceStateTable></serviceStateTable>\n" +
-                        "</scpd>";
-                return newFixedLengthResponse(Response.Status.OK, "text/xml; charset=utf-8", xml);
-            }
-            
-            // 原有业务逻辑
+            // 分享拦截
             if (uri.startsWith("/share/")) {
                 String token = uri.substring(7);
                 String sharedPath = sharedLinks.get(token);
@@ -119,6 +42,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.NOT_FOUND, "分享已失效");
             }
 
+            // 身份校验
             int role = 1;
             if (!Method.OPTIONS.equals(session.getMethod())) {
                 role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
@@ -129,26 +53,28 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
-            if (role == 2 && !uri.startsWith("/Public") && !"/".equals(uri) && !"/index.html".equals(uri) && !"/api/list".equals(uri)) {
-                return text(Response.Status.FORBIDDEN, "访客仅能访问 /Public 目录");
-            }
-
+            // 剪贴板
             if ("/api/clipboard".equals(uri)) {
                 if (!SettingsManager.isClipboardEnabled()) return text(Response.Status.FORBIDDEN, "Clipboard disabled");
                 if (Method.POST.equals(session.getMethod())) {
                     Map<String, String> files = new HashMap<>();
                     session.parseBody(files);
                     clipboardContent = files.get("content");
+                    if (clipboardContent == null) clipboardContent = session.getParms().get("content");
                     return text(Response.Status.OK, "OK");
                 } else {
                     return text(Response.Status.OK, clipboardContent != null ? clipboardContent : "");
                 }
             }
 
+            // 解压
             if ("/api/unzip".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
-                File zipFile = safeFile(files.get("path"));
+                String path = files.get("path");
+                if (path == null) path = session.getParms().get("path");
+                
+                File zipFile = safeFile(path);
                 if (zipFile != null && zipFile.exists() && role == 1) {
                     File destDir = new File(zipFile.getParent(), zipFile.getName().replace(".zip", ""));
                     destDir.mkdirs();
@@ -172,6 +98,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.FORBIDDEN, "Fail");
             }
 
+            // 列表
             if ("/api/list".equals(uri)) {
                 String path = session.getParms().get("path");
                 File dir = safeFile(path);
@@ -179,6 +106,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", buildJson(dir, path));
             }
 
+            // 搜索
             if ("/api/search".equals(uri)) {
                 String q = session.getParms().get("q");
                 List<File> results = new ArrayList<>();
@@ -200,6 +128,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
             }
 
+            // 下载
             if ("/api/download".equals(uri)) {
                 String path = session.getParms().get("path");
                 File file = safeFile(path);
@@ -236,6 +165,7 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
+            // 预览
             if ("/api/preview".equals(uri)) {
                 File file = safeFile(session.getParms().get("path"));
                 if (file == null || !file.exists()) return text(Response.Status.NOT_FOUND, "Not found");
@@ -247,12 +177,16 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.OK, sb.toString());
             }
 
+            // 上传
             if ("/api/upload".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
-                String targetPath = files.get("path");
-                File targetDir = safeFile(targetPath != null ? targetPath : "/");
+                String targetPath = session.getParms().get("path");
+                if (targetPath == null) targetPath = files.get("path");
+                
+                File targetDir = safeFile(targetPath);
                 if (targetDir == null || !targetDir.isDirectory()) targetDir = new File(ROOT);
+                
                 String tmpFilePath = null; String originalName = null;
                 for (Map.Entry<String, String> e : files.entrySet()) {
                     String val = e.getValue();
@@ -263,14 +197,19 @@ public class NasHttpServer extends NanoHTTPD {
                 File dest = new File(targetDir, new File(originalName).getName());
                 copy(new File(tmpFilePath), dest);
                 new File(tmpFilePath).delete();
-                return text(Response.Status.OK, "OK");
+                return text(Response.Status.OK, "OK: " + originalName);
             }
 
+            // 重命名
             if ("/api/rename".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
-                File oldFile = safeFile(files.get("path"));
-                String newName = files.get("newName");
+                String path = session.getParms().get("path");
+                if (path == null) path = files.get("path");
+                String newName = session.getParms().get("newName");
+                if (newName == null) newName = files.get("newName");
+                
+                File oldFile = safeFile(path);
                 if (oldFile != null && newName != null && role == 1) {
                     File newFile = new File(oldFile.getParent(), newName);
                     if (oldFile.renameTo(newFile)) return text(Response.Status.OK, "OK");
@@ -278,23 +217,32 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.INTERNAL_ERROR, "Fail");
             }
 
+            // 新建 / 删除 / 保存
             if ("/api/mkdir".equals(uri) || "/api/delete".equals(uri) || "/api/save".equals(uri)) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
+                
+                String path = session.getParms().get("path");
+                if (path == null) path = files.get("path");
+                String name = session.getParms().get("name");
+                if (name == null) name = files.get("name");
+                String content = session.getParms().get("content");
+                if (content == null) content = files.get("content");
+
                 if ("/api/mkdir".equals(uri)) {
-                    File dir = safeFile(files.get("path"));
-                    String name = files.get("name");
+                    File dir = safeFile(path);
                     if (dir != null && name != null && role == 1) {
-                        if (new File(dir, name).mkdirs()) return text(Response.Status.OK, "OK");
+                        File newDir = new File(dir, name);
+                        if (newDir.mkdirs()) return text(Response.Status.OK, "OK");
+                        else return text(Response.Status.INTERNAL_ERROR, "创建失败: " + newDir.getAbsolutePath());
                     }
                 } else if ("/api/delete".equals(uri)) {
-                    File f = safeFile(files.get("path"));
+                    File f = safeFile(path);
                     if (f != null && !f.getAbsolutePath().equals(ROOT) && role == 1) {
                         if (deleteRecursive(f)) return text(Response.Status.OK, "OK");
                     }
                 } else if ("/api/save".equals(uri)) {
-                    File file = safeFile(files.get("path"));
-                    String content = files.get("content");
+                    File file = safeFile(path);
                     if (file != null && content != null && file.exists() && role == 1) {
                         FileWriter writer = new FileWriter(file); writer.write(content); writer.close();
                         return text(Response.Status.OK, "OK");
@@ -303,10 +251,13 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.INTERNAL_ERROR, "Fail");
             }
 
+            // 分享
             if ("/api/share".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
-                String path = files.get("path");
+                String path = session.getParms().get("path");
+                if (path == null) path = files.get("path");
+                
                 if (path != null && role == 1) {
                     String token = UUID.randomUUID().toString().substring(0, 8);
                     sharedLinks.put(token, path);
@@ -324,22 +275,6 @@ public class NasHttpServer extends NanoHTTPD {
             return text(Response.Status.INTERNAL_ERROR, "Error: " + e.getMessage());
         }
         return text(Response.Status.NOT_FOUND, "Not found");
-    }
-
-    private String getLocalIpAddress() {
-        try {
-            java.net.NetworkInterface ni = java.net.NetworkInterface.getByName("wlan0");
-            if (ni != null) {
-                java.util.Enumeration<java.net.InetAddress> ips = ni.getInetAddresses();
-                while (ips.hasMoreElements()) {
-                    java.net.InetAddress ip = ips.nextElement();
-                    if (!ip.isLoopbackAddress() && ip instanceof java.net.Inet4Address) {
-                        return ip.getHostAddress();
-                    }
-                }
-            }
-        } catch (Exception e) {}
-        return "127.0.0.1";
     }
 
     private void searchRecursive(File dir, String q, List<File> results) {

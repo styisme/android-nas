@@ -209,7 +209,7 @@ public class FileListActivity extends AppCompatActivity {
                 else if (type == NasDevice.TYPE_FTP) loadFtpFiles();
                 runOnUiThread(() -> adapter.notifyDataSetChanged());
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "加载失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
@@ -371,8 +371,18 @@ public class FileListActivity extends AppCompatActivity {
         if (fileName == null) fileName = "upload_" + System.currentTimeMillis();
         final String finalFileName = fileName;
 
+        long tempSize = -1;
+        try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) tempSize = cursor.getLong(sizeIndex);
+            }
+        } catch (Exception ignored) {}
+        final long finalSize = tempSize;
+
         LinearProgressIndicator progress = new LinearProgressIndicator(this);
-        progress.setIndeterminate(true);
+        progress.setIndeterminate(false);
+        progress.setMax(100);
         androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle("上传中").setView(progress).setCancelable(false).show();
 
         new Thread(() -> {
@@ -383,8 +393,10 @@ public class FileListActivity extends AppCompatActivity {
                 if (type == NasDevice.TYPE_ANDROID) {
                     String encodedName = URLEncoder.encode(finalFileName, "UTF-8").replace("+", "%20");
                     String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + encodedName;
+                    
                     RequestBody body = new RequestBody() {
                         @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
+                        @Override public long contentLength() { return finalSize; }
                         @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
                             byte[] buf = new byte[8192]; int len;
                             while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
@@ -450,17 +462,182 @@ public class FileListActivity extends AppCompatActivity {
     }
 
     private void deleteSelected() {
-        Toast.makeText(this, "外部协议暂不支持批量删除", Toast.LENGTH_SHORT).show();
-        exitMultiSelect();
+        if (type != NasDevice.TYPE_ANDROID) {
+            Toast.makeText(this, "外部协议暂不支持批量删除", Toast.LENGTH_SHORT).show();
+            exitMultiSelect();
+            return;
+        }
+        new MaterialAlertDialogBuilder(this).setTitle("确认删除").setMessage("确定要删除选中的 " + selectedPaths.size() + " 个文件吗？")
+            .setPositiveButton("删除", (d, w) -> {
+                new Thread(() -> {
+                    for (String path : selectedPaths) {
+                        try {
+                            RequestBody body = new okhttp3.FormBody.Builder().add("path", path).build();
+                            Request req = new Request.Builder().url(baseUrl + "/api/delete").post(body).header("Authorization", authHeader).build();
+                            client.newCall(req).execute();
+                        } catch (Exception e) {}
+                    }
+                    runOnUiThread(() -> { exitMultiSelect(); loadFiles(); });
+                }).start();
+            }).setNegativeButton("取消", null).show();
     }
-    private void showMkdirDialog() { Toast.makeText(this, "外部协议暂不支持新建文件夹", Toast.LENGTH_SHORT).show(); }
-    private void showSearchDialog() { Toast.makeText(this, "外部协议暂不支持搜索", Toast.LENGTH_SHORT).show(); }
+
+    private void showMkdirDialog() {
+        if (type != NasDevice.TYPE_ANDROID) {
+            Toast.makeText(this, "外部协议暂不支持新建文件夹", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        til.setHint("文件夹名称");
+        TextInputEditText et = new TextInputEditText(this);
+        til.addView(et);
+        
+        LinearLayout container = new LinearLayout(this);
+        container.setPadding(48, 24, 48, 0);
+        container.addView(til);
+
+        new MaterialAlertDialogBuilder(this).setTitle("新建文件夹").setView(container)
+            .setPositiveButton("创建", (d, w) -> {
+                String name = et.getText().toString();
+                if (name.isEmpty()) return;
+                new Thread(() -> {
+                    try {
+                        RequestBody body = new okhttp3.FormBody.Builder().add("path", currentPath).add("name", name).build();
+                        Request req = new Request.Builder().url(baseUrl + "/api/mkdir").post(body).header("Authorization", authHeader).build();
+                        client.newCall(req).execute();
+                        runOnUiThread(this::loadFiles);
+                    } catch (Exception e) {}
+                }).start();
+            }).setNegativeButton("取消", null).show();
+    }
+
+    private void showSearchDialog() {
+        if (type != NasDevice.TYPE_ANDROID) {
+            Toast.makeText(this, "外部协议暂不支持搜索", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        til.setHint("搜索关键字");
+        TextInputEditText et = new TextInputEditText(this);
+        til.addView(et);
+        
+        LinearLayout container = new LinearLayout(this);
+        container.setPadding(48, 24, 48, 0);
+        container.addView(til);
+
+        new MaterialAlertDialogBuilder(this).setTitle("全局搜索").setView(container)
+            .setPositiveButton("搜索", (d, w) -> {
+                String q = et.getText().toString();
+                if (q.isEmpty()) return;
+                searchFiles(q);
+            }).setNegativeButton("取消", null).show();
+    }
+
+    private void searchFiles(String q) {
+        files.clear();
+        adapter.notifyDataSetChanged();
+        new Thread(() -> {
+            try {
+                String url = baseUrl + "/api/search?q=" + URLEncoder.encode(q, "UTF-8");
+                Request request = new Request.Builder().url(url).header("Authorization", authHeader).build();
+                Response response = client.newCall(request).execute();
+                if (response.isSuccessful() && response.body() != null) {
+                    String json = response.body().string();
+                    org.json.JSONArray arr = new org.json.JSONArray(json);
+                    for (int i = 0; i < arr.length(); i++) {
+                        org.json.JSONObject obj = arr.getJSONObject(i);
+                        files.add(new FileItem(obj.getString("name"), obj.getString("path"), obj.getBoolean("dir"), obj.optLong("size", 0)));
+                    }
+                    runOnUiThread(() -> adapter.notifyDataSetChanged());
+                }
+            } catch (Exception e) { e.printStackTrace(); }
+        }).start();
+    }
 
     private void showFileMenu(FileItem f) {
-        String[] actions = new String[]{"下载"};
+        String[] actions;
+        String ext = f.name.contains(".") ? f.name.substring(f.name.lastIndexOf(".") + 1).toLowerCase() : "";
+        boolean isMedia = ext.equals("jpg") || ext.equals("png") || ext.equals("mp4") || ext.equals("mp3");
+        
+        if (isMedia && type == NasDevice.TYPE_ANDROID) {
+            actions = new String[]{"预览/播放", "下载", "重命名", "删除", "属性"};
+        } else if (type == NasDevice.TYPE_ANDROID) {
+            actions = new String[]{"下载", "重命名", "删除", "属性"};
+        } else {
+            actions = new String[]{"下载"};
+        }
+
         new MaterialAlertDialogBuilder(this).setTitle(f.name).setItems(actions, (dialog, which) -> {
-            if (actions[which].equals("下载")) downloadFile(f);
+            String action = actions[which];
+            if (action.equals("预览/播放")) {
+                new Thread(() -> {
+                    try {
+                        RequestBody body = new okhttp3.FormBody.Builder().add("path", f.path).build();
+                        Request req = new Request.Builder().url(baseUrl + "/api/share").post(body).header("Authorization", authHeader).build();
+                        Response res = client.newCall(req).execute();
+                        if (res.isSuccessful() && res.body() != null) {
+                            String token = res.body().string();
+                            String shareUrl = baseUrl + "/share/" + token;
+                            runOnUiThread(() -> openSystemPlayer(shareUrl, ext));
+                        }
+                    } catch (Exception e) {
+                        runOnUiThread(() -> Toast.makeText(FileListActivity.this, "获取播放链接失败", Toast.LENGTH_SHORT).show());
+                    }
+                }).start();
+            } else if (action.equals("下载")) {
+                downloadFile(f);
+            } else if (action.equals("重命名")) {
+                TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+                til.setHint("新名称");
+                TextInputEditText et = new TextInputEditText(this);
+                et.setText(f.name);
+                til.addView(et);
+                
+                LinearLayout container = new LinearLayout(this);
+                container.setPadding(48, 24, 48, 0);
+                container.addView(til);
+
+                new MaterialAlertDialogBuilder(this).setTitle("重命名").setView(container)
+                    .setPositiveButton("确定", (d, w) -> {
+                        String newName = et.getText().toString();
+                        if (newName.isEmpty()) return;
+                        new Thread(() -> {
+                            try {
+                                RequestBody body = new okhttp3.FormBody.Builder().add("path", f.path).add("newName", newName).build();
+                                Request req = new Request.Builder().url(baseUrl + "/api/rename").post(body).header("Authorization", authHeader).build();
+                                client.newCall(req).execute();
+                                runOnUiThread(this::loadFiles);
+                            } catch (Exception e) {}
+                        }).start();
+                    }).setNegativeButton("取消", null).show();
+            } else if (action.equals("删除")) {
+                new MaterialAlertDialogBuilder(this).setTitle("确认删除").setMessage("确定要删除此文件吗？")
+                    .setPositiveButton("删除", (d, w) -> {
+                        new Thread(() -> {
+                            try {
+                                RequestBody body = new okhttp3.FormBody.Builder().add("path", f.path).build();
+                                Request req = new Request.Builder().url(baseUrl + "/api/delete").post(body).header("Authorization", authHeader).build();
+                                client.newCall(req).execute();
+                                runOnUiThread(this::loadFiles);
+                            } catch (Exception e) {}
+                        }).start();
+                    }).setNegativeButton("取消", null).show();
+            } else if (action.equals("属性")) {
+                String info = "路径: " + f.path + "\n大小: " + (f.size / 1024) + " KB";
+                new MaterialAlertDialogBuilder(this).setTitle("文件属性").setMessage(info).setPositiveButton("确定", null).show();
+            }
         }).show();
+    }
+
+    private void openSystemPlayer(String url, String ext) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            String mime = ext.equals("mp4") ? "video/*" : (ext.equals("mp3") ? "audio/*" : "image/*");
+            intent.setDataAndType(Uri.parse(url), mime);
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "无可用播放器", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.VH> {
@@ -474,16 +651,23 @@ public class FileListActivity extends AppCompatActivity {
             holder.tvIcon.setText(f.isDir ? "📁" : "📄");
             if (!isGridMode) holder.tvDetail.setText(f.isDir ? "文件夹" : (f.size / 1024) + " KB");
             
-            holder.cbSelect.setVisibility(View.GONE);
-            
+            holder.cbSelect.setVisibility(isMultiSelect ? View.VISIBLE : View.GONE);
+            holder.cbSelect.setChecked(selectedPaths.contains(f.path));
+            holder.cbSelect.setOnClickListener(v -> toggleSelect(f.path));
+
             holder.itemView.setOnClickListener(v -> {
-                if (f.isDir) { 
-                    currentPath = f.path; 
-                    if (!currentPath.endsWith("/")) currentPath += "/"; 
-                    loadFiles(); 
-                } else {
-                    showFileMenu(f);
+                if (isMultiSelect) toggleSelect(f.path);
+                else if (f.isDir) { currentPath = f.path; if (!currentPath.endsWith("/")) currentPath += "/"; loadFiles(); }
+                else showFileMenu(f);
+            });
+
+            holder.itemView.setOnLongClickListener(v -> {
+                if (!isMultiSelect && type == NasDevice.TYPE_ANDROID) {
+                    isMultiSelect = true;
+                    toggleSelect(f.path);
+                    return true;
                 }
+                return false;
             });
         }
         @Override public int getItemCount() { return files.size(); }
@@ -498,5 +682,12 @@ public class FileListActivity extends AppCompatActivity {
                 cbSelect = v.findViewById(R.id.cbSelect); 
             }
         }
+    }
+    
+    private void toggleSelect(String path) {
+        if (selectedPaths.contains(path)) selectedPaths.remove(path);
+        else selectedPaths.add(path);
+        updateTitle();
+        adapter.notifyDataSetChanged();
     }
 }
