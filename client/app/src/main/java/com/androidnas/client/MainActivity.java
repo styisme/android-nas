@@ -85,8 +85,14 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) { showAddDeviceDialog(); }
         });
         
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 100);
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_MEDIA_IMAGES}, 100);
+            }
+        } else {
+            if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 100);
+            }
         }
     }
 
@@ -110,8 +116,9 @@ public class MainActivity extends AppCompatActivity {
                                 try {
                                     java.net.URL url = new java.net.URL("http://" + targetIp + ":8080/api/list?path=/");
                                     java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-                                    conn.setConnectTimeout(300);
-                                    conn.setReadTimeout(300);
+                                    int timeout = getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("scan_timeout", 500);
+                                    conn.setConnectTimeout(timeout);
+                                    conn.setReadTimeout(timeout);
                                     if (conn.getResponseCode() == 200 || conn.getResponseCode() == 401) {
                                         runOnUiThread(new Runnable() {
                                             @Override

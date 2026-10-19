@@ -151,6 +151,7 @@ public class MainActivity extends Activity {
         menu.add(0, 3, 0, "内网穿透");
         menu.add(0, 4, 0, "运行日志");
         menu.add(0, 7, 0, "关于");
+        menu.add(0, 8, 0, "连接二维码");
         return true; 
     }
     
@@ -184,6 +185,9 @@ public class MainActivity extends Activity {
                 return true;
             }
             showTunnelCenter();
+            return true;
+        } else if (item.getItemId() == 8) {
+            showQrCodeDialog();
             return true;
         } else if (item.getItemId() == 7) {
             new AlertDialog.Builder(this)
@@ -453,6 +457,30 @@ public class MainActivity extends Activity {
         if (name.endsWith(".txt")) return "text/plain";
         if (name.endsWith(".pdf")) return "application/pdf";
         return "*/*";
+    }
+
+
+    private void showQrCodeDialog() {
+        String url = "http://" + getIpAddress() + ":" + SettingsManager.getWebPort();
+        try {
+            com.google.zxing.qrcode.QRCodeWriter writer = new com.google.zxing.qrcode.QRCodeWriter();
+            java.util.Map<com.google.zxing.EncodeHintType, Object> hints = new java.util.HashMap<>();
+            hints.put(com.google.zxing.EncodeHintType.MARGIN, 1);
+            com.google.zxing.common.BitMatrix matrix = writer.encode(url, com.google.zxing.BarcodeFormat.QR_CODE, 400, 400, hints);
+            int width = matrix.getWidth(); int height = matrix.getHeight();
+            int[] pixels = new int[width * height];
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) pixels[y * width + x] = matrix.get(x, y) ? android.graphics.Color.BLACK : android.graphics.Color.WHITE;
+            }
+            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888);
+            bitmap.setPixels(pixels, 0, width, 0, 0, width, height);
+
+            ImageView iv = new ImageView(this);
+            iv.setImageBitmap(bitmap);
+            iv.setPadding(32, 32, 32, 32);
+
+            new AlertDialog.Builder(this).setTitle("扫码连接 NAS").setView(iv).setPositiveButton("关闭", null).show();
+        } catch (Exception e) { Toast.makeText(this, "生成二维码失败", Toast.LENGTH_SHORT).show(); }
     }
 
     private void refresh() {
