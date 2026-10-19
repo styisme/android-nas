@@ -205,6 +205,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, 1, 0, "局域网剪贴板");
+        menu.add(0, 2, 0, "设置");
         return true;
     }
 
@@ -212,6 +213,9 @@ public class MainActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == 1) {
             showClipboardDialog();
+            return true;
+        } else if (item.getItemId() == 2) {
+            startActivity(new Intent(MainActivity.this, SettingsActivity.class));
             return true;
         }
         return super.onOptionsItemSelected(item);
