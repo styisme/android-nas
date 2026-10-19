@@ -163,7 +163,16 @@ public class MainActivity extends Activity {
             return true;
         } else if (item.getItemId() == 3) {
             if (SettingsManager.isLowPowerMode()) {
-                Toast.makeText(this, "低性能模式下建议关闭内网穿透以节省电量", Toast.LENGTH_LONG).show();
+                new AlertDialog.Builder(this)
+                    .setTitle("低性能模式已开启")
+                    .setMessage("极寒省电模式下，系统已禁止建立内网穿透长连接以节省电量。如需使用穿透，请先在控制中心关闭低性能模式。")
+                    .setPositiveButton("去关闭", new android.content.DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(android.content.DialogInterface dialog, int which) { showControlCenter(); }
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+                return true;
             }
             showTunnelCenter();
             return true;
@@ -183,13 +192,12 @@ public class MainActivity extends Activity {
 
         EditText etAlias = new EditText(this); etAlias.setHint("设备名称"); etAlias.setText(SettingsManager.getDeviceAlias()); layout.addView(etAlias);
         
-        CheckBox cbLowPower = new CheckBox(this); cbLowPower.setText("低性能模式 (关闭 LocalSend)"); cbLowPower.setChecked(SettingsManager.isLowPowerMode()); layout.addView(cbLowPower);
+        CheckBox cbLowPower = new CheckBox(this); cbLowPower.setText("极寒省电模式"); cbLowPower.setChecked(SettingsManager.isLowPowerMode()); layout.addView(cbLowPower);
         
-        // 提示文字
         TextView tvHint = new TextView(this);
-        tvHint.setText("提示：低性能模式会暂停 LocalSend 接收，但 Web 与 WebDAV 仍保持工作。");
+        tvHint.setText("警告：开启后将强制降级 Wi-Fi 锁频率、关闭内网穿透与 LocalSend。仅保留 Web 与 WebDAV 服务。适合长期插电挂机但追求极致省电的用户。");
         tvHint.setTextSize(12);
-        tvHint.setTextColor(0xFF888888);
+        tvHint.setTextColor(0xFFD32F2F); // 红色警告
         layout.addView(tvHint);
 
         CheckBox cbWebDav = new CheckBox(this); cbWebDav.setText("开启 WebDAV"); cbWebDav.setChecked(SettingsManager.isWebDavEnabled()); layout.addView(cbWebDav);
@@ -201,17 +209,13 @@ public class MainActivity extends Activity {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
                 cbLs.setEnabled(!isChecked);
-                if (isChecked) {
-                    cbLs.setChecked(false);
-                }
+                if (isChecked) cbLs.setChecked(false);
             }
         });
-        if (SettingsManager.isLowPowerMode()) {
-            cbLs.setEnabled(false);
-        }
+        if (SettingsManager.isLowPowerMode()) cbLs.setEnabled(false);
 
         new AlertDialog.Builder(this).setTitle("控制中心").setView(scrollView)
-            .setPositiveButton("保存并重启服务", new android.content.DialogInterface.OnClickListener() {
+            .setPositiveButton("保存并重启", new android.content.DialogInterface.OnClickListener() {
                 @Override
                 public void onClick(android.content.DialogInterface dialog, int which) {
                     SettingsManager.setDeviceAlias(etAlias.getText().toString().trim());
@@ -294,16 +298,10 @@ public class MainActivity extends Activity {
         toggleBtn.setText(running ? "停止服务" : "启动服务");
         String ip = getIpAddress();
         String text = "网页管理: http://" + ip + ":" + SettingsManager.getWebPort();
-        if (SettingsManager.isLowPowerMode()) text += "\n(低性能模式)";
+        if (SettingsManager.isLowPowerMode()) text += "\n❄️ 极寒省电模式已开启";
         
-        // 低性能模式下依然显示 WebDAV 链接
-        if (SettingsManager.isWebDavEnabled()) {
-            text += "\n网络邻居: http://" + ip + ":" + SettingsManager.getWebDavPort();
-        }
-        
-        if (SettingsManager.isLocalSendEnabled()) {
-            text += "\nLocalSend PIN: " + SettingsManager.getLsPin();
-        }
+        if (SettingsManager.isWebDavEnabled()) text += "\n网络邻居: http://" + ip + ":" + SettingsManager.getWebDavPort();
+        if (SettingsManager.isLocalSendEnabled()) text += "\nLocalSend PIN: " + SettingsManager.getLsPin();
         
         if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) text += "\n\n公网: " + FreeTunnelManager.getPublicUrl();
         ipView.setText(text);
