@@ -112,7 +112,13 @@ public class NasHttpServer extends NanoHTTPD {
                     File f = results.get(i);
                     String ext = f.getName().contains(".") ? f.getName().substring(f.getName().lastIndexOf(".") + 1).toLowerCase() : "";
                     boolean isTxt = ext.equals("txt") || ext.equals("md") || ext.equals("json") || ext.equals("java") || ext.equals("html");
-                    sb.append("{\"name\":\"").append(f.getName()).append("\",\"path\":\"").append(f.getAbsolutePath().replace(ROOT, "")).append("\",\"dir\":").append(f.isDirectory()).append(",\"isTxt\":").append(isTxt).append("}");
+                                        boolean isTxt = ext.equals("txt") || ext.equals("md") || ext.equals("json") || ext.equals("java") || ext.equals("html");
+                    boolean isImg = ext.equals("jpg") || ext.equals("png");
+                    boolean isMedia = isImg || ext.equals("mp4") || ext.equals("mp3");
+                    boolean isZip = ext.equals("zip");
+                    sb.append("{\"name\":\"").append(escape(f.getName())).append("\",\"path\":\"").append(escape(f.getAbsolutePath().replace(ROOT, ""))).append("\",\"dir\":").append(f.isDirectory())
+                      .append(",\"size\":").append(f.length()).append(",\"isTxt\":").append(isTxt)
+                      .append(",\"isMedia\":").append(isMedia).append(",\"isZip\":").append(isZip).append("}");
                 }
                 sb.append("]");
                 return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
@@ -290,13 +296,15 @@ public class NasHttpServer extends NanoHTTPD {
             boolean isImg = ext.equals("jpg") || ext.equals("png");
             boolean isMedia = isImg || ext.equals("mp4") || ext.equals("mp3");
             boolean isZip = ext.equals("zip");
-            sb.append("{\"name\":\"").append(f.getName()).append("\",\"dir\":").append(f.isDirectory())
+            sb.append("{\"name\":\"").append(escape(f.getName())).append("\",\"dir\":").append(f.isDirectory())
               .append(",\"size\":").append(f.length()).append(",\"isTxt\":").append(isTxt)
               .append(",\"isMedia\":").append(isMedia).append(",\"isZip\":").append(isZip).append("}");
         }
         sb.append("]}");
         return sb.toString();
     }
+
+    private String escape(String s) { return s.replace("\\", "\\\\").replace("\"", "\\\""); }
 
     private boolean deleteRecursive(File f) {
         if (f.isDirectory()) { File[] c = f.listFiles(); if (c != null) for (File x : c) if (!deleteRecursive(x)) return false; }
