@@ -17,39 +17,43 @@ public class LocalSendDiscovery extends Thread {
 
     @Override
     public void run() {
-        try {
-            WifiManager wm = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
-            multicastLock = wm.createMulticastLock("LocalSendLock");
-            multicastLock.setReferenceCounted(true);
-            multicastLock.acquire();
-
-            InetAddress group = InetAddress.getByName("224.0.0.167");
-            socket = new MulticastSocket(53317);
-            socket.joinGroup(group);
-
-            byte[] buf = new byte[2048];
-            while (running) {
-                DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                socket.receive(packet);
-                String msg = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
-                
-                // 防死循环：检查包内是否包含本机的指纹
-                if (!msg.contains(LocalSendAuth.getFingerprint())) {
-                    String myInfo = LocalSendAuth.getDeviceInfo(53317);
-                    byte[] resBuf = myInfo.getBytes("UTF-8");
-                    DatagramPacket resPacket = new DatagramPacket(resBuf, resBuf.length, packet.getAddress(), packet.getPort());
-                    
-                    // 开启独立 Socket 单播回复，避免阻塞
-                    DatagramSocket replySocket = new DatagramSocket();
-                    replySocket.send(resPacket);
-                    replySocket.close();
+        while (running) {
+            try {
+                WifiManager wm = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
+                if (multicastLock == null) {
+                    multicastLock = wm.createMulticastLock("LocalSendLock");
+                    multicastLock.setReferenceCounted(true);
+                    multicastLock.acquire();
                 }
+
+                InetAddress group = InetAddress.getByName("224.0.0.167");
+                socket = new MulticastSocket(53317);
+                socket.setReuseAddress(true);
+                socket.joinGroup(group);
+
+                byte[] buf = new byte[2048];
+                while (running) {
+                    DatagramPacket packet = new DatagramPacket(buf, buf.length);
+                    socket.receive(packet);
+                    String msg = new String(packet.getData(), 0, packet.getLength(), "UTF-8");
+                    
+                    if (!msg.contains(SettingsManager.getFingerprint())) {
+                        String myInfo = "{\"alias\":\"" + SettingsManager.getDeviceAlias() + "\",\"version\":\"2.2\",\"deviceModel\":\"Android\",\"deviceType\":\"desktop\",\"fingerprint\":\"" + SettingsManager.getFingerprint() + "\",\"port\":53317,\"protocol\":\"http\",\"download\":false}";
+                        byte[] resBuf = myInfo.getBytes("UTF-8");
+                        DatagramPacket resPacket = new DatagramPacket(resBuf, resBuf.length, packet.getAddress(), packet.getPort());
+                        
+                        DatagramSocket replySocket = new DatagramSocket();
+                        replySocket.send(resPacket);
+                        replySocket.close();
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+                if (socket != null) socket.close();
+                try { Thread.sleep(3000); } catch (Exception ignored) {} // 断网后等待3秒重连
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            if (multicastLock != null && multicastLock.isHeld()) multicastLock.release();
         }
+        if (multicastLock != null && multicastLock.isHeld()) multicastLock.release();
     }
 
     public void stopDiscovery() {

@@ -28,15 +28,14 @@ public class MainActivity extends Activity {
     private CheckBox cbAuth;
     private FileAdapter adapter;
     private final List<File> items = new ArrayList<File>();
-    private int selectedNode = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        SettingsManager.init(this);
         AuthManager.init(this);
-        LocalSendAuth.init(this);
         currentDir = new File(ROOT);
         pathView = (TextView) findViewById(R.id.pathView);
         statusView = (TextView) findViewById(R.id.statusView);
@@ -88,7 +87,7 @@ public class MainActivity extends Activity {
     @Override public boolean onCreateOptionsMenu(Menu menu) { 
         menu.add(0, 1, 0, "新建文件夹"); 
         menu.add(0, 2, 0, "修改管理员密码");
-        menu.add(0, 5, 0, "修改 LocalSend 接收 PIN");
+        menu.add(0, 5, 0, "修改 LocalSend 设置");
         menu.add(0, 3, 0, "内网穿透 (公网访问)");
         menu.add(0, 4, 0, "运行日志");
         return true; 
@@ -113,14 +112,7 @@ public class MainActivity extends Activity {
             }).setNegativeButton("取消", null).show();
             return true;
         } else if (item.getItemId() == 5) {
-            final EditText input = new EditText(this);
-            input.setText(LocalSendAuth.getPin());
-            new AlertDialog.Builder(this).setTitle("设置 LocalSend 接收 PIN").setView(input).setPositiveButton("保存", (dialog, which) -> {
-                String p = input.getText().toString().trim();
-                if (p.isEmpty()) return;
-                LocalSendAuth.setPin(this, p);
-                Toast.makeText(this, "LocalSend PIN 已更新为: " + p, Toast.LENGTH_SHORT).show();
-            }).setNegativeButton("取消", null).show();
+            showLocalSendSettings();
             return true;
         } else if (item.getItemId() == 3) {
             showTunnelCenter();
@@ -132,6 +124,33 @@ public class MainActivity extends Activity {
         return super.onOptionsItemSelected(item);
     }
 
+    private void showLocalSendSettings() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(48, 24, 48, 24);
+
+        EditText etAlias = new EditText(this);
+        etAlias.setHint("局域网设备名称");
+        etAlias.setText(SettingsManager.getDeviceAlias());
+        layout.addView(etAlias);
+
+        EditText etPin = new EditText(this);
+        etPin.setHint("接收 PIN 码");
+        etPin.setText(SettingsManager.getLsPin());
+        etPin.setInputType(InputType.TYPE_CLASS_NUMBER);
+        layout.addView(etPin);
+
+        new AlertDialog.Builder(this)
+            .setTitle("LocalSend 设置")
+            .setView(layout)
+            .setPositiveButton("保存", (dialog, which) -> {
+                SettingsManager.setDeviceAlias(etAlias.getText().toString().trim());
+                SettingsManager.setLsPin(etPin.getText().toString().trim());
+                Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show();
+            }).setNegativeButton("取消", null).show();
+    }
+
+    // 省略 showTunnelCenter 等代码，保持原样
     private void showTunnelCenter() {
         boolean isRunning = FreeTunnelManager.isRunning();
         String title = isRunning ? "内网穿透 (已连接)" : "内网穿透 (未连接)";
@@ -161,10 +180,10 @@ public class MainActivity extends Activity {
     private void showFreeNodeSelection() {
         String[] nodes = FreeTunnelManager.getNodeNames();
         new AlertDialog.Builder(this).setTitle("选择穿透节点")
-            .setSingleChoiceItems(nodes, selectedNode, (dialog, which) -> selectedNode = which)
+            .setSingleChoiceItems(nodes, 0, (dialog, which) -> {})
             .setPositiveButton("开始连接", (dialog, which) -> {
-                FreeTunnelManager.start(HttpServerService.PORT, selectedNode);
-                Toast.makeText(this, selectedNode == 0 ? "正在自动寻找可用节点..." : "正在连接...", Toast.LENGTH_LONG).show();
+                FreeTunnelManager.start(HttpServerService.PORT, 0);
+                Toast.makeText(this, "正在自动寻找可用节点...", Toast.LENGTH_LONG).show();
                 waitAndShowFreeUrl();
             }).setNegativeButton("取消", null).show();
     }
@@ -186,7 +205,7 @@ public class MainActivity extends Activity {
                                 Toast.makeText(MainActivity.this, "已复制", Toast.LENGTH_SHORT).show();
                             }).setNegativeButton("关闭", null).show();
                     });
-                } else if (count < 30 && (selectedNode == 0 || FreeTunnelManager.isRunning())) {
+                } else if (count < 30 && FreeTunnelManager.isRunning()) {
                     count++;
                     new Handler().postDelayed(this, 1000);
                 } else if (!FreeTunnelManager.isRunning()) {
@@ -224,7 +243,7 @@ public class MainActivity extends Activity {
         statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
         toggleBtn.setText(running ? "停止服务" : "启动服务");
         String ip = getIpAddress();
-        String text = "网页管理: http://" + ip + ":8080\n网络邻居: http://" + ip + ":8081\nLocalSend PIN: " + LocalSendAuth.getPin();
+        String text = "网页管理: http://" + ip + ":8080\n网络邻居: http://" + ip + ":8081\nLocalSend PIN: " + SettingsManager.getLsPin();
         if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) text += "\n\n公网链接:\n" + FreeTunnelManager.getPublicUrl();
         ipView.setText(text);
     }
