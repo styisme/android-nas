@@ -48,11 +48,7 @@ public class MainActivity extends Activity {
         cbAuth.setChecked(sp.getBoolean("auth_enabled", true));
         cbAuth.setOnCheckedChangeListener((v, isChecked) -> {
             AuthManager.setAuthEnabled(this, isChecked);
-            if (HttpServerService.isRunning()) {
-                stopService(new Intent(this, HttpServerService.class));
-                new Handler().postDelayed(() -> startService(new Intent(MainActivity.this, HttpServerService.class)), 500);
-            }
-            updateServiceStatus();
+            restartService();
         });
 
         storageView = new TextView(this);
@@ -84,10 +80,16 @@ public class MainActivity extends Activity {
         if (!HttpServerService.isRunning()) startService(new Intent(this, HttpServerService.class));
     }
 
+    private void restartService() {
+        if (HttpServerService.isRunning()) {
+            stopService(new Intent(this, HttpServerService.class));
+            new Handler().postDelayed(() -> startService(new Intent(MainActivity.this, HttpServerService.class)), 500);
+        }
+    }
+
     @Override public boolean onCreateOptionsMenu(Menu menu) { 
         menu.add(0, 1, 0, "新建文件夹"); 
-        menu.add(0, 2, 0, "修改管理员密码");
-        menu.add(0, 5, 0, "修改 LocalSend 设置");
+        menu.add(0, 6, 0, "服务端控制中心"); // 核心面板
         menu.add(0, 3, 0, "内网穿透 (公网访问)");
         menu.add(0, 4, 0, "运行日志");
         return true; 
@@ -102,17 +104,8 @@ public class MainActivity extends Activity {
                 if (new File(currentDir, name).mkdirs()) refresh();
             }).setNegativeButton("取消", null).show();
             return true;
-        } else if (item.getItemId() == 2) {
-            final EditText input = new EditText(this);
-            new AlertDialog.Builder(this).setTitle("修改管理员密码").setView(input).setPositiveButton("保存", (dialog, which) -> {
-                String p = input.getText().toString().trim();
-                if (p.isEmpty()) return;
-                AuthManager.setAuth(this, "admin", p);
-                updateServiceStatus();
-            }).setNegativeButton("取消", null).show();
-            return true;
-        } else if (item.getItemId() == 5) {
-            showLocalSendSettings();
+        } else if (item.getItemId() == 6) {
+            showControlCenter();
             return true;
         } else if (item.getItemId() == 3) {
             showTunnelCenter();
@@ -124,33 +117,67 @@ public class MainActivity extends Activity {
         return super.onOptionsItemSelected(item);
     }
 
-    private void showLocalSendSettings() {
+    // 服务端控制中心 (所有配置的集大成者)
+    private void showControlCenter() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(48, 24, 48, 24);
 
+        // 1. 别名
         EditText etAlias = new EditText(this);
-        etAlias.setHint("局域网设备名称");
+        etAlias.setHint("设备名称");
         etAlias.setText(SettingsManager.getDeviceAlias());
         layout.addView(etAlias);
 
+        // 2. WebDAV 开关
+        CheckBox cbWebDav = new CheckBox(this);
+        cbWebDav.setText("开启 WebDAV 网络邻居 (8081)");
+        cbWebDav.setChecked(SettingsManager.isWebDavEnabled());
+        layout.addView(cbWebDav);
+
+        // 3. LocalSend 开关
+        CheckBox cbLs = new CheckBox(this);
+        cbLs.setText("开启 LocalSend 接收 (53317)");
+        cbLs.setChecked(SettingsManager.isLocalSendEnabled());
+        layout.addView(cbLs);
+
+        // 4. LocalSend PIN
         EditText etPin = new EditText(this);
-        etPin.setHint("接收 PIN 码");
+        etPin.setHint("LocalSend 接收 PIN 码");
         etPin.setText(SettingsManager.getLsPin());
         etPin.setInputType(InputType.TYPE_CLASS_NUMBER);
         layout.addView(etPin);
 
+        // 5. 安全密码
+        EditText etPwd = new EditText(this);
+        etPwd.setHint("修改管理员密码 (留空不改)");
+        etPwd.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        layout.addView(etPwd);
+
+        ScrollView scroll = new ScrollView(this);
+        scroll.addView(layout);
+
         new AlertDialog.Builder(this)
-            .setTitle("LocalSend 设置")
-            .setView(layout)
-            .setPositiveButton("保存", (dialog, which) -> {
+            .setTitle("服务端控制中心")
+            .setView(scroll)
+            .setPositiveButton("保存并重启服务", (dialog, which) -> {
                 SettingsManager.setDeviceAlias(etAlias.getText().toString().trim());
+                SettingsManager.setWebDavEnabled(cbWebDav.isChecked());
+                SettingsManager.setLocalSendEnabled(cbLs.isChecked());
                 SettingsManager.setLsPin(etPin.getText().toString().trim());
-                Toast.makeText(this, "设置已保存", Toast.LENGTH_SHORT).show();
-            }).setNegativeButton("取消", null).show();
+                
+                String pwd = etPwd.getText().toString().trim();
+                if (!pwd.isEmpty()) AuthManager.setAuth(this, "admin", pwd);
+                
+                Toast.makeText(this, "配置已保存，正在重启...", Toast.LENGTH_SHORT).show();
+                restartService();
+                updateServiceStatus();
+            })
+            .setNegativeButton("取消", null)
+            .show();
     }
 
-    // 省略 showTunnelCenter 等代码，保持原样
+    // 内网穿透面板
     private void showTunnelCenter() {
         boolean isRunning = FreeTunnelManager.isRunning();
         String title = isRunning ? "内网穿透 (已连接)" : "内网穿透 (未连接)";
@@ -182,7 +209,7 @@ public class MainActivity extends Activity {
         new AlertDialog.Builder(this).setTitle("选择穿透节点")
             .setSingleChoiceItems(nodes, 0, (dialog, which) -> {})
             .setPositiveButton("开始连接", (dialog, which) -> {
-                FreeTunnelManager.start(HttpServerService.PORT, 0);
+                FreeTunnelManager.start(SettingsManager.getWebPort(), 0);
                 Toast.makeText(this, "正在自动寻找可用节点...", Toast.LENGTH_LONG).show();
                 waitAndShowFreeUrl();
             }).setNegativeButton("取消", null).show();
@@ -231,7 +258,7 @@ public class MainActivity extends Activity {
                 String user = etUser.getText().toString().trim();
                 String pass = etPass.getText().toString();
                 int remotePort = etRemotePort.getText().toString().isEmpty() ? 8080 : Integer.parseInt(etRemotePort.getText().toString());
-                SshTunnelManager.start(host, port, user, pass, remotePort, HttpServerService.PORT);
+                SshTunnelManager.start(host, port, user, pass, remotePort, SettingsManager.getWebPort());
                 Toast.makeText(this, "正在建立 SSH 隧道...", Toast.LENGTH_SHORT).show();
             }).setNegativeButton("取消", null).show();
     }
@@ -242,9 +269,15 @@ public class MainActivity extends Activity {
         boolean running = HttpServerService.isRunning();
         statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
         toggleBtn.setText(running ? "停止服务" : "启动服务");
+        
         String ip = getIpAddress();
-        String text = "网页管理: http://" + ip + ":8080\n网络邻居: http://" + ip + ":8081\nLocalSend PIN: " + SettingsManager.getLsPin();
-        if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) text += "\n\n公网链接:\n" + FreeTunnelManager.getPublicUrl();
+        String text = "网页管理: http://" + ip + ":" + SettingsManager.getWebPort();
+        if (SettingsManager.isWebDavEnabled()) text += "\n网络邻居: http://" + ip + ":" + SettingsManager.getWebDavPort();
+        if (SettingsManager.isLocalSendEnabled()) text += "\nLocalSend PIN: " + SettingsManager.getLsPin();
+        
+        if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) {
+            text += "\n\n公网链接:\n" + FreeTunnelManager.getPublicUrl();
+        }
         ipView.setText(text);
     }
 

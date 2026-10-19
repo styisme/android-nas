@@ -10,15 +10,14 @@ import android.os.Build;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.Environment;
+import java.util.ArrayList;
+import java.util.List;
 
 public class HttpServerService extends Service {
-    public static final int PORT = 8080;
-    public static final int WEBDAV_PORT = 8081;
-    public static final int LOCALSEND_PORT = 53317;
-    
-    private static final int NOTIFICATION_ID = 1001;
-    private static volatile boolean running = false;
+    public static volatile List<String> startedServices = new ArrayList<>();
     public static volatile String lastError = "";
+    private static volatile boolean running = false;
+    private static final int NOTIFICATION_ID = 1001;
 
     public static boolean isRunning() { return running; }
 
@@ -35,8 +34,11 @@ public class HttpServerService extends Service {
         super.onCreate();
         goForeground();
         AuthManager.init(this);
-        LocalSendAuth.init(this);
+        SettingsManager.init(this);
         
+        startedServices.clear();
+        lastError = "";
+
         try {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AndroidNAS::CpuLock");
@@ -46,28 +48,36 @@ public class HttpServerService extends Service {
             wifiLock.acquire();
         } catch (Exception e) { e.printStackTrace(); }
 
-        lastError = "";
         String rootDir = Environment.getExternalStorageDirectory().getAbsolutePath();
 
+        // 1. 启动 Web 服务 (核心)
         try {
-            serverHttp = new NasHttpServer(PORT);
+            serverHttp = new NasHttpServer(SettingsManager.getWebPort());
             serverHttp.start();
-        } catch (Exception e) { lastError += "HTTP启动失败: " + e.getMessage() + "\n"; }
+            startedServices.add("Web");
+        } catch (Exception e) { lastError += "Web启动失败(端口占用): " + SettingsManager.getWebPort() + "\n"; }
         
-        try {
-            webDavHttp = new WebDavServer(rootDir);
-            webDavHttp.startServer(WEBDAV_PORT);
-        } catch (Exception e) { lastError += "WebDAV启动失败: " + e.getMessage() + "\n"; }
+        // 2. 启动 WebDAV (根据开关)
+        if (SettingsManager.isWebDavEnabled()) {
+            try {
+                webDavHttp = new WebDavServer(rootDir);
+                webDavHttp.startServer(SettingsManager.getWebDavPort());
+                startedServices.add("WebDAV");
+            } catch (Exception e) { lastError += "WebDAV启动失败: " + e.getMessage() + "\n"; }
+        }
 
-        // 启动 LocalSend
-        try {
-            lsServer = new LocalSendServer(LOCALSEND_PORT);
-            lsServer.start();
-            lsDiscovery = new LocalSendDiscovery(this);
-            lsDiscovery.start();
-        } catch (Exception e) { lastError += "LocalSend启动失败: " + e.getMessage() + "\n"; }
+        // 3. 启动 LocalSend (根据开关)
+        if (SettingsManager.isLocalSendEnabled()) {
+            try {
+                lsServer = new LocalSendServer(53317);
+                lsServer.start();
+                lsDiscovery = new LocalSendDiscovery(this);
+                lsDiscovery.start();
+                startedServices.add("LocalSend");
+            } catch (Exception e) { lastError += "LocalSend启动失败: " + e.getMessage() + "\n"; }
+        }
         
-        running = lastError.isEmpty();
+        running = true; // 只要 Web 服务跑起来就算成功，其他挂了不影响主体
     }
 
     private void goForeground() {
