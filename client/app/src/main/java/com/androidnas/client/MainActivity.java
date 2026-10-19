@@ -135,6 +135,8 @@ public class MainActivity extends AppCompatActivity {
                         });
                     }
                 }
+                                executor.shutdown();
+                }
             }).start();
         } catch (Exception e) {}
     }
@@ -252,7 +254,7 @@ public class MainActivity extends AppCompatActivity {
                     OkHttpClient client = new OkHttpClient();
                     final String authHeader = Credentials.basic(device.username, device.password);
 
-                    while (cursor.moveToNext() && count < 5) {
+                    while (cursor.moveToNext()) {
                         long id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID));
                         final String name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME));
                         Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
@@ -270,7 +272,6 @@ public class MainActivity extends AppCompatActivity {
                         };
                         Request req = new Request.Builder().url(targetUrl).put(body).header("Authorization", authHeader).build();
                         client.newCall(req).execute();
-                        count++;
                     }
                     cursor.close();
                     mainHandler.post(new Runnable() {

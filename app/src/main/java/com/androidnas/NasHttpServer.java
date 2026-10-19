@@ -124,7 +124,7 @@ public class NasHttpServer extends NanoHTTPD {
                     String ext = f.getName().contains(".") ? f.getName().substring(f.getName().lastIndexOf(".") + 1).toLowerCase() : "";
                     boolean isTxt = ext.equals("txt") || ext.equals("md") || ext.equals("json") || ext.equals("java") || ext.equals("html");
                     boolean isImg = ext.equals("jpg") || ext.equals("png");
-                    boolean isMedia = isImg || ext.equals("mp4") || ext.equals("mp3");
+                    boolean isMedia = (isImg || ext.equals("mp4") || ext.equals("mp3")) && SettingsManager.isStreamEnabled();
                     boolean isZip = ext.equals("zip");
                     sb.append("{\"name\":\"").append(escape(f.getName())).append("\",\"path\":\"").append(escape(f.getAbsolutePath().replace(ROOT, ""))).append("\",\"dir\":").append(f.isDirectory())
                       .append(",\"size\":\"").append(f.length()).append("\",\"isTxt\":").append(isTxt)
@@ -299,7 +299,7 @@ public class NasHttpServer extends NanoHTTPD {
             String ext = f.getName().contains(".") ? f.getName().substring(f.getName().lastIndexOf(".") + 1).toLowerCase() : "";
             boolean isTxt = ext.equals("txt") || ext.equals("md") || ext.equals("json") || ext.equals("java") || ext.equals("html");
             boolean isImg = ext.equals("jpg") || ext.equals("png");
-            boolean isMedia = isImg || ext.equals("mp4") || ext.equals("mp3");
+            boolean isMedia = (isImg || ext.equals("mp4") || ext.equals("mp3")) && SettingsManager.isStreamEnabled();
             boolean isZip = ext.equals("zip");
             sb.append("{\"name\":\"").append(escape(f.getName())).append("\",\"dir\":").append(f.isDirectory())
               .append(",\"size\":").append(f.length()).append(",\"isTxt\":").append(isTxt)
