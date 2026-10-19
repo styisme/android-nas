@@ -19,6 +19,7 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
+import android.widget.ScrollView;
 import android.widget.TextView;
 
 import org.json.JSONArray;
@@ -84,7 +85,7 @@ public class MainActivity extends Activity {
         } else if (item.getItemId() == 2) {
             new AlertDialog.Builder(this)
                 .setTitle("关于手表端")
-                .setMessage("版本: v1.0.0\n\n支持多协议与局域网协同投屏。\n\n⚠️ 本项目由 AI 辅助生成。")
+                .setMessage("版本: v3.2.0\n\n支持多协议与局域网协同投屏。\n\n⚠️ 本项目由 AI 辅助生成。")
                 .setPositiveButton("确定", null)
                 .show();
             return true;
@@ -132,9 +133,12 @@ public class MainActivity extends Activity {
     }
 
     private void showAddDeviceDialog() {
+        // 用 ScrollView 包裹，防止手表小屏幕显示不全
+        ScrollView scrollView = new ScrollView(this);
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(32, 16, 32, 16);
+        scrollView.addView(layout);
 
         EditText etName = new EditText(this); etName.setHint("设备名称"); layout.addView(etName);
         EditText etIp = new EditText(this); etIp.setHint("IP (如 192.168.1.100)"); layout.addView(etIp);
@@ -151,7 +155,7 @@ public class MainActivity extends Activity {
 
         new AlertDialog.Builder(this)
             .setTitle("添加设备")
-            .setView(layout)
+            .setView(scrollView)
             .setPositiveButton("添加", (dialog, which) -> {
                 String name = etName.getText().toString().trim();
                 String ip = etIp.getText().toString().trim();
