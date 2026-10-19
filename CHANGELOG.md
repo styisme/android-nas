@@ -1,71 +1,100 @@
 # Changelog
 
-本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范，
+格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
+
+## [2.6.0] - 2026-10-19
+
+**生态爆发版：拥抱 LocalSend 与全自动发版体系**
+
+### Added (Server & Web)
+- **LocalSend 协议原生接收**：
+  - 完全兼容 LocalSend v2.2 官方协议。内置 UDP 组播发现服务与独立的 HTTP 接收引擎（`LocalSendServer`）。
+  - 支持 PIN 验证机制（防爆破），文件安全落盘至 `/Download/LocalSend/`。
+  - 同名文件接收会自动重命名为 `(1)`、`(2)`，彻底防止文件覆盖。
+  - 加入 Session 定时清理机制，超过 5 分钟未活动的死连接自动销毁，防止内存泄漏。
+- **服务端控制中心**：
+  - 全新 UI 面板，支持一键开关 WebDAV 与 LocalSend、修改设备别名、动态重启服务。
+- **内网穿透系统**：
+  - 全自动一键穿透：遍历 7 大免注册节点（Tunnl.gg、Skytunnel、Serveo 等），连通即生成免密公网链接。
+  - 高级 SSH 穿透：支持自定义服务器进行加密映射。
+- **边缘化异常处理**：
+  - 核心服务异常隔离：单个端口冲突不再导致整个 App 崩溃。
+  - 断网守护重连：UDP 发现线程加入重连退避机制。
+
+### Added (Client)
+- **客户端设置中心重构**：
+  - 提供“跟随系统/浅色/深色”主题切换。
+  - 支持自定义局域网扫描超时时间，并提供“自动扫描”开关。
+
+### CI/CD & DevOps
+- **全自动化版本号同步**：新增 `sync_version.py`。GitHub Actions 会在编译前读取 `CHANGELOG.md` 的最新版本号，自动修改三端工程文件，并动态重命名最终产物，确保覆盖安装永不冲突。
+
+### Fixed
+- 修复客户端设置页面内容过长导致底端设置项被截断的问题，全面改用 `NestedScrollView` 布局。
+- 统一了 Android 双端的 `versionCode` 计算规则，彻底解决安装失败的问题。
+
+---
+
+## [2.5.0] - 2026-10-19
+
+**安全重构与体验打磨**
+
+### Added
+- **自定义内网穿透**：引入 `JSch` 库，实现基于 SSH 协议的高级反向端口映射（支持 AES 等端到端加密）。
+- **一键免注册穿透**：接入 `localhost.run`、`Tunnl.gg` 等免密隧道，方便小白用户直接生成公网链接。
+- **LocalSend 初步接入**：服务端增加 53317 端口，支持通过 PIN 码直接接收 LocalSend 客户端发来的文件。
+- **桌面端功能补全**：Windows/Linux Python 客户端补齐“新建文件夹”、“重命名”操作，并加入可视化进度条。
+
+### Changed
+- 将“内网穿透”功能移入二级菜单，主页加入“服务端控制中心”入口，界面更清爽。
+
+---
 
 ## [2.1.0] - 2026-10-19
 
-**旗舰版本：客户端全面进阶与全平台生态闭环**
+**旗舰版本：客户端全面进阶与系统深度整合**
 
-这是迄今为止最重要的一个里程碑版本。我们在保持服务端最低兼容 Android 2.2 的前提下，为客户端引入了现代化的多选与瀑布流体验，并将 Web 端与客户端的功能进行了完美的双向缝合。
-
-### Added (Android Client)
-- **网格瀑布流视图 (Grid View)**：文件列表现支持在“线性列表”与“三列网格”之间一键切换，大幅提升图片与视频的查阅体验。
-- **多选与批量操作**：新增长按进入多选模式（Multi-Select）。顶部 Toolbar 会实时显示已选文件数量，并支持在菜单中一键批量删除选中的多个文件/文件夹。
-- **文件重命名**：补齐了客户端缺失的重命名接口与 UI 弹窗。
-- **新建文件夹**：客户端现支持在当前目录下创建新目录。
-- **真实进度反馈**：上传与下载大文件时，引入 `LinearProgressIndicator` 弹窗，实时监听并渲染传输百分比进度。
-
-### Added (Server & Web)
-- **免密分享机制**：Web 端新增 `/api/share` 接口。点击文件的“分享”按钮，服务端会生成一个带 UUID Token 的短链接（`/share/:token`），外部用户点击后无需登录即可直接下载。
-- **代码高亮预览**：网页端集成了 `highlight.js`，点击 `.json`、`.java`、`.html` 等代码文件时，支持多语言语法高亮展示。
-- **全局递归搜索**：新增 `/api/search` 接口，Web 端顶部加入搜索框，支持在整个手机存储中匹配关键字。
-- **访客权限隔离 (Guest)**：`AuthManager` 引入角色概念。默认提供 `guest / guest` 账号，该账号仅能访问和读取手机下的 `/Public` 目录。
-- **运行日志面板**：服务端主页新增“运行日志”入口，实时记录谁在连接你的 NAS、访问了什么文件。
-
-### Added (Desktop)
-- **跨平台桌面客户端**：新增 `/desktop` 目录，使用 Python + Tkinter 开发的轻量级客户端。
-- **多平台自动打包**：GitHub Actions 加入 PyInstaller 流水线，自动打包出 Windows 的 `nas-client.exe` 和 Linux 的可执行文件。
-
-### Changed
-- **Web UI 重构**：网页端彻底重构为现代 Material Design 3 风格，支持浅色/深色模式自动适配、卡片化布局与悬浮按钮。
-- **接口数据增强**：`/api/list` 与 `/api/search` 返回的 JSON 中新增了 `isTxt`、`isImg` 标识，便于客户端直接调用系统组件预览媒体文件。
+### Added
+- **服务端 Web 增强**：
+  - **免密分享**：Web 端支持为文件生成 UUID Token，免登录下载。
+  - **代码高亮**：网页端文本预览接入 `highlight.js`。
+  - **全局搜索**：新增 `/api/search` 接口，支持全盘递归搜索。
+  - **访客权限 (Guest)**：新增 `guest/guest` 账号，限制只能访问 `/Public` 目录。
+- **Android 客户端进阶**：
+  - **网格瀑布流**：文件列表支持线性与网格视图一键切换。
+  - **多选与批量删除**：长按文件进入多选模式，顶部 Toolbar 实时显示选中数量。
+  - **进度反馈**：上传与下载大文件时加入 `LinearProgressIndicator` 进度条。
+- **安全与设备发现**：集成 ZXing，服务端生成连接二维码，客户端支持扫码秒连。
 
 ### Fixed
-- **大文件上传卡死 (致命修复)**：修复了 OkHttp 原生上传时未显式提供 `Content-Length` 请求头，导致老版本 NanoHTTPD 2.2.0 无限阻塞等待的问题。
-- **WebDAV 兼容性**：摒弃了容易崩溃的 `XmlPullParser`，改用正则表达式解析 WebDAV 返回的 XML 响应，彻底修复了对接群晖等外部 NAS 时的 `precondition: START_TAG` 崩溃。
-- **UI 遮挡问题**：修复了添加设备弹窗在软键盘弹出时被挤压截断的问题，全面替换为 MD3 `TextInputLayout` 并加入 `ScrollView` 包裹。
-- **编译工具链冲突**：解决了 GitHub Actions 中 JDK 17 与旧版 Gradle 6.7.1 不兼容导致构建失败的问题，锁定了 JDK 8 环境。
+- **大文件上传卡死 (致命修复)**：修复了 OkHttp 原生上传时未显式提供 `Content-Length` 请求头，导致 NanoHTTPD 2.2.0 无限阻塞等待的问题。
+- **WebDAV 兼容性**：摒弃容易崩溃的 `XmlPullParser`，改用正则表达式解析群晖等外部设备的 XML 响应。
+- **UI 遮挡问题**：修复了添加设备弹窗在软键盘弹出时被挤压截断的问题，全面替换为 MD3 `TextInputLayout`。
+
+---
+
+## [1.4.0] - 2026-10-19
+
+**安全防护与全平台铺路**
+
+### Added
+- **安全控制面板**：App 首页加入“账号验证”与“HTTPS加密”两个 CheckBox 开关，修改后自动重启生效。
+- **HTTPS 框架支持**：底层加入自签证书生成框架（8443端口），客户端 OkHttp 配置信任所有自签证书。
+- **后台保活升级**：加入 `PowerManager.WakeLock` (CPU锁) 和 `WifiManager.WifiLock` (Wi-Fi高性能锁)，彻底解决手机息屏断网问题。
+- **桌面端 (Desktop)**：新增 `/desktop` 目录，使用 Python + Tkinter 开发，并配置 PyInstaller 自动打包。
 
 ---
 
 ## [1.3.0] - 2026-10-19
 
-**安全特性增强：引入账号认证与加密开关**
-
-### Added
-- **Auth 认证系统**：新增 `AuthManager` 类。通过 HTTP Basic Auth 协议拦截网页端、JSON API 及 WebDAV 的未授权请求。
-- **安全控制面板**：`MainActivity` 新增“账号验证”与“HTTPS加密”两个 CheckBox 开关，修改后自动重启服务生效。
-- **密码修改功能**：在 App 右上角菜单中可随时修改管理员账号密码。
-- **HTTPS 占位支持**：底层加入自签证书生成框架，为现代设备开启 HTTPS (8443端口) 提供可能。
-- **客户端认证适配**：局域网扫描机制升级，扫描到 `401 Unauthorized` 时也能识别出 NAS 设备。请求时自动携带 `Authorization` 头。
-- **自签证书信任**：OkHttp 客户端全局配置了 `TrustManager`，信任所有自签证书。
-
-### Changed
-- **后台保活优化**：加入 CPU 唤醒锁 (`WakeLock`) 和 Wi-Fi 高性能锁，防止手机息屏后系统切断网络。
-- **电池优化引导**：首次启动服务时，弹窗引导用户忽略电池优化，提升后台存活率。
-
----
-
-## [1.2.1] - 2026-10-19
-
 **双端上传能力增强与错误排查优化**
 
 ### Added
-- **拖拽与进度条**：网页端全新加入大区域文件拖拽（Drag & Drop），基于 `xhr.upload.onprogress` 实现真实百分比上传进度条显示。
-- **HTTP PUT 支持**：`NasHttpServer` 新增 `PUT` 方法处理，允许第三方客户端以流式传输方式上传文件。
+- **拖拽与进度条**：网页端加入大区域文件拖拽（Drag & Drop），基于 `xhr.upload.onprogress` 实现真实百分比进度条。
+- **HTTP PUT 协议支持**：`NasHttpServer` 新增 `PUT` 方法处理，允许客户端以纯二进制流式传输方式上传文件。
 - **启动状态可视化**：若端口被占用导致 `BindException`，服务端首页会直接以红字显示错误原因，不再静默失败。
-- **启动器兼容**：修复 Gradle Wrapper 版本被污染问题，确保客户端与服务端的构建完全物理隔离。
+- **客户端原生上传**：Android 客户端新增悬浮上传按钮（FAB），接入 `PUT` 协议。
 
 ---
 
@@ -74,17 +103,16 @@
 **里程碑版本：双端架构成型与协议扩展**
 
 ### Added
-- **WebDAV 网络邻居**：通过纯 Socket 原生实现 WebDAV 协议栈（开启 8081 端口）。支持 `PROPFIND`、`MKCOL`、`PUT`、`DELETE`。
-- **MD3 客户端发布**：新增 `/client` 目录，纯 Java 编写的原生 Android 应用。全面采用 Material Design 3 规范，支持动态取色。
-- **局域网自动扫描**：利用 `WifiManager` 获取网关网段，通过 `ExecutorService` 开启 20 线程并发探测。
-- **外部 NAS 路由**：客户端支持添加外部 NAS（群晖、威联通），通过正则表达式解析 WebDAV 返回树。
-- **高级文件操作**：网页端新增多文件上传、在线编辑文本、新建/递归删除文件夹。
+- **WebDAV 网络邻居 (8081端口)**：通过纯 Socket 原生实现 WebDAV 协议栈。支持 `PROPFIND` (目录)、`MKCOL` (新建)、`PUT` (上传)、`DELETE` (删除)。
+- **MD3 客户端发布**：新增 `/client` 目录。纯 Java 编写的原生 Android 应用，全面采用 Material Design 3 规范，支持动态取色 (Material You)。
+- **局域网自动扫描**：客户端利用 `WifiManager` 获取网关网段，通过 `ExecutorService` 开启多线程并发探测 8080 端口。
+- **外部 NAS 路由**：客户端支持添加群晖等外部 NAS，通过正则表达式解析 WebDAV 返回树。
 
 ---
 
 ## [1.0.0] - 2026-10-19
 
-**首个正式版本：从零到一的突破**
+**从零到一的突破：首个正式版本**
 
 ### Added
 - **局域网网页管理**：内置 NanoHTTPD 服务器（8080 端口），提供基础的 Web UI 文件浏览、表单上传与下载。
