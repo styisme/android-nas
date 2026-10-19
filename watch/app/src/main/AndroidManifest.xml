@@ -22,5 +22,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 补充缺失的 FileListActivity 注册 -->
+        <activity
+            android:name=".FileListActivity"
+            android:exported="false" />
+        
     </application>
 </manifest>
