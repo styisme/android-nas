@@ -90,6 +90,48 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+
+    private void autoScan() {
+        Toast.makeText(this, "正在扫描局域网设备...", Toast.LENGTH_SHORT).show();
+        try {
+            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            int ipAddress = wm.getConnectionInfo().getIpAddress();
+            String subnet = String.format("%d.%d.%d.", (ipAddress & 0xff), (ipAddress >> 8 & 0xff), (ipAddress >> 16 & 0xff));
+
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(20);
+                    for (int i = 1; i < 255; i++) {
+                        final String targetIp = subnet + i;
+                        executor.execute(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    java.net.URL url = new java.net.URL("http://" + targetIp + ":8080/api/list?path=/");
+                                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                                    conn.setConnectTimeout(300);
+                                    conn.setReadTimeout(300);
+                                    if (conn.getResponseCode() == 200 || conn.getResponseCode() == 401) {
+                                        runOnUiThread(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                for (NasDevice d : devices) if (d.url.contains(targetIp)) return;
+                                                devices.add(new NasDevice("Android NAS (" + targetIp + ")", "http://" + targetIp + ":8080", true, "admin", "admin"));
+                                                saveDevices();
+                                                adapter.notifyDataSetChanged();
+                                            }
+                                        });
+                                    }
+                                } catch (Exception ignored) {}
+                            }
+                        });
+                    }
+                }
+            }).start();
+        } catch (Exception e) {}
+    }
+
     private void loadDevices() {
         SharedPreferences sp = getSharedPreferences("nas", Context.MODE_PRIVATE);
         String json = sp.getString("devices", "");

@@ -75,6 +75,14 @@ public class MainActivity extends Activity {
         adapter = new FileAdapter();
         listView.setAdapter(adapter);
 
+        listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
+            @Override
+            public boolean onItemLongClick(AdapterView<?> parent, View view, int position, long id) {
+                showFileMenu(items.get(position));
+                return true;
+            }
+        });
+
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
@@ -214,6 +222,7 @@ public class MainActivity extends Activity {
         CheckBox cbLs = new CheckBox(this); cbLs.setText("开启 LocalSend"); cbLs.setChecked(SettingsManager.isLocalSendEnabled()); layout.addView(cbLs);
         EditText etPin = new EditText(this); etPin.setHint("LocalSend PIN"); etPin.setText(SettingsManager.getLsPin()); layout.addView(etPin);
         
+        CheckBox cbHttps = new CheckBox(this); cbHttps.setText("开启 HTTPS 加密 (占位)"); layout.addView(cbHttps);
         CheckBox cbStream = new CheckBox(this); cbStream.setText("允许网页流媒体播放 (视频)"); cbStream.setChecked(SettingsManager.isStreamEnabled()); layout.addView(cbStream);
         CheckBox cbClipboard = new CheckBox(this); cbClipboard.setText("开启局域网剪贴板"); cbClipboard.setChecked(SettingsManager.isClipboardEnabled()); layout.addView(cbClipboard);
 
@@ -362,6 +371,88 @@ public class MainActivity extends Activity {
             if (ip == 0) return "127.0.0.1";
             return String.format(Locale.US, "%d.%d.%d.%d", (ip & 0xff), (ip >> 8 & 0xff), (ip >> 16 & 0xff), (ip >> 24 & 0xff));
         } catch (Throwable t) { return "127.0.0.1"; }
+    }
+
+
+    private void showFileMenu(final File f) {
+        final String[] actions = f.isDirectory() ? new String[]{"重命名", "删除", "属性"} : new String[]{"打开", "分享", "重命名", "删除", "属性"};
+        new AlertDialog.Builder(this).setTitle(f.getName()).setItems(actions, new android.content.DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(android.content.DialogInterface dialog, int which) {
+                String action = actions[which];
+                if (action.equals("打开")) openFile(f);
+                else if (action.equals("分享")) shareFile(f);
+                else if (action.equals("重命名")) renameFile(f);
+                else if (action.equals("删除")) deleteFile(f);
+                else if (action.equals("属性")) showInfo(f);
+            }
+        }).show();
+    }
+
+    private void openFile(File f) {
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setDataAndType(Uri.fromFile(f), getMimeType(f.getName()));
+            startActivity(i);
+        } catch (Exception e) { Toast.makeText(this, "无法打开", Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void shareFile(File f) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType(getMimeType(f.getName()));
+            intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(f));
+            startActivity(Intent.createChooser(intent, "分享文件"));
+        } catch (Exception e) { Toast.makeText(this, "分享失败", Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void renameFile(final File f) {
+        final EditText input = new EditText(this);
+        input.setText(f.getName());
+        new AlertDialog.Builder(this).setTitle("重命名").setView(input).setPositiveButton("确定", new android.content.DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(android.content.DialogInterface dialog, int which) {
+                String name = input.getText().toString().trim();
+                if (name.length() == 0) return;
+                File target = new File(f.getParentFile(), name);
+                if (target.exists()) { Toast.makeText(MainActivity.this, "目标已存在", Toast.LENGTH_SHORT).show(); return; }
+                if (f.renameTo(target)) refresh(); else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
+            }
+        }).setNegativeButton("取消", null).show();
+    }
+
+    private void deleteFile(final File f) {
+        new AlertDialog.Builder(this).setTitle("删除").setMessage("确定删除 " + f.getName() + "？").setPositiveButton("删除", new android.content.DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(android.content.DialogInterface dialog, int which) {
+                if (deleteRecursive(f)) refresh(); else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
+            }
+        }).setNegativeButton("取消", null).show();
+    }
+
+    private boolean deleteRecursive(File f) {
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) for (File c : children) if (!deleteRecursive(c)) return false;
+        }
+        return f.delete();
+    }
+
+    private void showInfo(File f) {
+        java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US);
+        String info = "路径：" + f.getAbsolutePath() + "\n大小：" + (f.length()/1024) + " KB\n修改时间：" + sdf.format(f.lastModified());
+        new AlertDialog.Builder(this).setTitle("属性").setMessage(info).setPositiveButton("确定", null).show();
+    }
+
+    private String getMimeType(String name) {
+        name = name.toLowerCase();
+        if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
+        if (name.endsWith(".png")) return "image/png";
+        if (name.endsWith(".mp4")) return "video/mp4";
+        if (name.endsWith(".mp3")) return "audio/mpeg";
+        if (name.endsWith(".txt")) return "text/plain";
+        if (name.endsWith(".pdf")) return "application/pdf";
+        return "*/*";
     }
 
     private void refresh() {
