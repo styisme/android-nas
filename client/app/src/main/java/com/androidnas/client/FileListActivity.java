@@ -3,6 +3,7 @@ package com.androidnas.client;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.OpenableColumns;
@@ -11,10 +12,12 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CheckBox;
-import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -25,6 +28,8 @@ import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
 import com.google.android.material.progressindicator.LinearProgressIndicator;
+import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -48,9 +53,6 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
-import com.google.android.material.textfield.TextInputEditText;
-import com.google.android.material.textfield.TextInputLayout;
-import android.widget.LinearLayout;
 
 public class FileListActivity extends AppCompatActivity {
     private String baseUrl;
@@ -61,7 +63,8 @@ public class FileListActivity extends AppCompatActivity {
     private FileAdapter adapter;
     private List<FileItem> files = new ArrayList<>();
     private OkHttpClient client;
-
+    private ActivityResultLauncher<Intent> filePickerLauncher;
+    
     private boolean isGridMode = false;
     private boolean isMultiSelect = false;
     private Set<String> selectedPaths = new HashSet<>();
@@ -88,9 +91,8 @@ public class FileListActivity extends AppCompatActivity {
         updateTitle();
 
         toolbar.setNavigationOnClickListener(v -> {
-            if (isMultiSelect) {
-                exitMultiSelect();
-            } else if (!currentPath.equals("/")) {
+            if (isMultiSelect) exitMultiSelect();
+            else if (!currentPath.equals("/")) {
                 String[] parts = currentPath.split("/");
                 StringBuilder sb = new StringBuilder();
                 for (int i = 1; i < parts.length - 1; i++) sb.append("/").append(parts[i]);
@@ -104,8 +106,19 @@ public class FileListActivity extends AppCompatActivity {
         adapter = new FileAdapter();
         recyclerView.setAdapter(adapter);
 
+        // 恢复上传按钮
         FloatingActionButton fab = findViewById(R.id.fabUpload);
         fab.setOnClickListener(v -> openFilePicker());
+
+        filePickerLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    Uri uri = result.getData().getData();
+                    if (uri != null) uploadFile(uri);
+                }
+            }
+        );
 
         loadFiles();
     }
@@ -165,7 +178,7 @@ public class FileListActivity extends AppCompatActivity {
         if (id == 3) { showMkdirDialog(); return true; }
         if (id == 4) { showSearchDialog(); return true; }
         if (id == 5) {
-            if (isMultiSelect) exitMultiSelect(); // 防抖
+            if (isMultiSelect) exitMultiSelect();
             isGridMode = !isGridMode;
             recyclerView.setLayoutManager(isGridMode ? new GridLayoutManager(this, 3) : new LinearLayoutManager(this));
             adapter = new FileAdapter();
@@ -202,9 +215,16 @@ public class FileListActivity extends AppCompatActivity {
     }
 
     private void showSearchDialog() {
-        EditText et = new EditText(this);
-        et.setHint("搜索关键字");
-        new MaterialAlertDialogBuilder(this).setTitle("全局搜索").setView(et)
+        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        til.setHint("搜索关键字");
+        TextInputEditText et = new TextInputEditText(this);
+        til.addView(et);
+        
+        LinearLayout container = new LinearLayout(this);
+        container.setPadding(48, 24, 48, 0);
+        container.addView(til);
+
+        new MaterialAlertDialogBuilder(this).setTitle("全局搜索").setView(container)
             .setPositiveButton("搜索", (d, w) -> {
                 String q = et.getText().toString();
                 if (q.isEmpty()) return;
@@ -299,65 +319,64 @@ public class FileListActivity extends AppCompatActivity {
         }
     }
 
+    // 恢复系统文件选择器
     private void openFilePicker() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("*/*");
-        startActivityForResult(Intent.createChooser(intent, "选择文件"), 100);
+        filePickerLauncher.launch(Intent.createChooser(intent, "选择要上传的文件"));
     }
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == 100 && resultCode == RESULT_OK && data != null && data.getData() != null) {
-            Uri uri = data.getData();
-            String fileName = getFileName(uri);
-            if (fileName == null) fileName = "upload_" + System.currentTimeMillis();
-            final String finalFileName = fileName;
+    private void uploadFile(Uri uri) {
+        String fileName = getFileName(uri);
+        if (fileName == null) fileName = "upload_" + System.currentTimeMillis();
+        final String finalFileName = fileName;
 
-            // 获取文件大小，必须传给 OkHttp
-            long tempSize = -1;
-            try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
-                if (cursor != null && cursor.moveToFirst()) {
-                    int sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE);
-                    if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) tempSize = cursor.getLong(sizeIndex);
-                }
-            } catch (Exception ignored) {}
-            final long finalSize = tempSize;
+        long tempSize = -1;
+        try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) tempSize = cursor.getLong(sizeIndex);
+            }
+        } catch (Exception ignored) {}
+        final long finalSize = tempSize;
 
-            com.google.android.material.progressindicator.LinearProgressIndicator progress = new com.google.android.material.progressindicator.LinearProgressIndicator(this);
-            progress.setIndeterminate(false);
-            progress.setMax(100);
-            androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle("上传中").setView(progress).setCancelable(false).show();
+        LinearProgressIndicator progress = new LinearProgressIndicator(this);
+        progress.setIndeterminate(true);
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle("上传中").setView(progress).setCancelable(false).show();
 
-            new Thread(() -> {
-                try {
-                    InputStream is = getContentResolver().openInputStream(uri);
-                    if (is == null) return;
+        new Thread(() -> {
+            try {
+                InputStream is = getContentResolver().openInputStream(uri);
+                if (is == null) return;
 
-                    String encodedName = URLEncoder.encode(finalFileName, "UTF-8").replace("+", "%20");
-                    String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + encodedName;
-                    
-                    RequestBody body = new RequestBody() {
-                        @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
-                        @Override public long contentLength() { return finalSize; }
-                        @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
-                            byte[] buf = new byte[8192]; int len;
-                            while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
-                        }
-                    };
-                    Request req = new Request.Builder().url(targetUrl).put(body).header("Authorization", authHeader).build();
-                    Response response = client.newCall(req).execute();
-                    
-                    mainHandler.post(() -> {
-                        dialog.dismiss();
-                        if (response.isSuccessful()) loadFiles();
-                        else Toast.makeText(FileListActivity.this, "上传失败", Toast.LENGTH_SHORT).show();
-                    });
-                } catch (Exception e) {
-                    mainHandler.post(() -> { dialog.dismiss(); Toast.makeText(FileListActivity.this, "上传失败", Toast.LENGTH_SHORT).show(); });
-                }
-            }).start();
-        }
+                String encodedName = URLEncoder.encode(finalFileName, "UTF-8").replace("+", "%20");
+                String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + encodedName;
+                
+                RequestBody body = new RequestBody() {
+                    @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
+                    @Override public long contentLength() { return finalSize; }
+                    @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
+                        byte[] buf = new byte[8192]; int len;
+                        while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
+                    }
+                };
+                Request req = new Request.Builder().url(targetUrl).put(body).header("Authorization", authHeader).build();
+                Response response = client.newCall(req).execute();
+                
+                mainHandler.post(() -> {
+                    if (isFinishing()) return;
+                    dialog.dismiss();
+                    if (response.isSuccessful()) loadFiles();
+                    else Toast.makeText(FileListActivity.this, "上传失败", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> { 
+                    if (isFinishing()) return;
+                    dialog.dismiss(); 
+                    Toast.makeText(FileListActivity.this, "上传失败", Toast.LENGTH_SHORT).show(); 
+                });
+            }
+        }).start();
     }
 
     private String getFileName(Uri uri) {
@@ -430,10 +449,17 @@ public class FileListActivity extends AppCompatActivity {
             try {
                 String encodedPath = URLEncoder.encode(f.path, "UTF-8");
                 String downloadUrl = baseUrl + "/api/download?path=" + encodedPath;
+                
                 Request req = new Request.Builder().url(downloadUrl).header("Authorization", authHeader).build();
                 Response response = client.newCall(req).execute();
-                if (response.isSuccessful() && response.body() != null) {
-                    File dest = new File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), f.name);
+                
+                String contentType = response.header("Content-Type", "");
+                if (response.isSuccessful() && response.body() != null && !contentType.contains("text/html")) {
+                    File destDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                    if (destDir == null) destDir = new File(Environment.getExternalStorageDirectory(), "Android/data/com.androidnas.client/files/Download");
+                    if (!destDir.exists()) destDir.mkdirs();
+                    
+                    File dest = new File(destDir, f.name);
                     long total = response.body().contentLength();
                     InputStream is = response.body().byteStream();
                     FileOutputStream fos = new FileOutputStream(dest);
@@ -443,16 +469,69 @@ public class FileListActivity extends AppCompatActivity {
                         downloaded += len;
                         if (total > 0) {
                             int p = (int) (downloaded * 100 / total);
-                            mainHandler.post(() -> progress.setProgressCompat(p, true));
+                            mainHandler.post(() -> { if (!isFinishing()) progress.setProgressCompat(p, true); });
                         }
                     }
                     fos.close(); is.close();
-                    mainHandler.post(() -> { dialog.dismiss(); Toast.makeText(this, "已保存至 Download 目录", Toast.LENGTH_LONG).show(); });
+                    mainHandler.post(() -> { 
+                        if (isFinishing()) return;
+                        dialog.dismiss(); 
+                        Toast.makeText(this, "已保存至: " + dest.getAbsolutePath(), Toast.LENGTH_LONG).show(); 
+                    });
+                } else {
+                    throw new Exception("文件不存在或服务端返回错误");
                 }
             } catch (Exception e) {
-                mainHandler.post(dialog::dismiss);
+                mainHandler.post(() -> { 
+                    if (isFinishing()) return;
+                    dialog.dismiss(); 
+                    Toast.makeText(this, "下载失败: " + e.getMessage(), Toast.LENGTH_LONG).show(); 
+                });
             }
         }).start();
+    }
+
+    private void showFileMenu(FileItem f) {
+        String[] actions;
+        String ext = f.name.contains(".") ? f.name.substring(f.name.lastIndexOf(".") + 1).toLowerCase() : "";
+        boolean isMedia = ext.equals("jpg") || ext.equals("png") || ext.equals("mp4") || ext.equals("mp3");
+        
+        if (isMedia) {
+            actions = new String[]{"预览/播放", "下载", "重命名", "删除", "属性"};
+        } else {
+            actions = new String[]{"下载", "重命名", "删除", "属性"};
+        }
+
+        new MaterialAlertDialogBuilder(this).setTitle(f.name).setItems(actions, (dialog, which) -> {
+            String action = actions[which];
+            if (action.equals("预览/播放")) {
+                try {
+                    Intent intent = new Intent(Intent.ACTION_VIEW);
+                    String encodedPath = URLEncoder.encode(f.path, "UTF-8");
+                    intent.setDataAndType(Uri.parse(baseUrl + "/api/download?path=" + encodedPath), ext.equals("mp4") ? "video/*" : (ext.equals("mp3") ? "audio/*" : "image/*"));
+                    startActivity(intent);
+                } catch (Exception e) { Toast.makeText(this, "无可用播放器", Toast.LENGTH_SHORT).show(); }
+            } else if (action.equals("下载")) {
+                downloadFile(f);
+            } else if (action.equals("重命名")) {
+                renameFile(f);
+            } else if (action.equals("删除")) {
+                new MaterialAlertDialogBuilder(this).setTitle("确认删除").setMessage("确定要删除此文件吗？")
+                    .setPositiveButton("删除", (d, w) -> {
+                        new Thread(() -> {
+                            try {
+                                RequestBody body = new okhttp3.FormBody.Builder().add("path", f.path).build();
+                                Request req = new Request.Builder().url(baseUrl + "/api/delete").post(body).header("Authorization", authHeader).build();
+                                client.newCall(req).execute();
+                                runOnUiThread(this::loadFiles);
+                            } catch (Exception e) {}
+                        }).start();
+                    }).setNegativeButton("取消", null).show();
+            } else if (action.equals("属性")) {
+                String info = "路径: " + f.path + "\n大小: " + (f.size / 1024) + " KB";
+                new MaterialAlertDialogBuilder(this).setTitle("文件属性").setMessage(info).setPositiveButton("确定", null).show();
+            }
+        }).show();
     }
 
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.VH> {
@@ -473,7 +552,7 @@ public class FileListActivity extends AppCompatActivity {
             holder.itemView.setOnClickListener(v -> {
                 if (isMultiSelect) toggleSelect(f.path);
                 else if (f.isDir) { currentPath = f.path; if (!currentPath.endsWith("/")) currentPath += "/"; loadFiles(); }
-                else downloadFile(f);
+                else showFileMenu(f);
             });
 
             holder.itemView.setOnLongClickListener(v -> {

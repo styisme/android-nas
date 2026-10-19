@@ -87,7 +87,6 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) { showAddDeviceDialog(); }
         });
         
-        // 动态申请权限（兼容 Android 13+）
         requestPermissions();
     }
 
@@ -162,7 +161,7 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
                     }
-                    executor.shutdown(); // 释放线程池
+                    executor.shutdown();
                 }
             }).start();
         } catch (Exception e) {}
@@ -407,6 +406,7 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
+            // 长按删除设备
             holder.itemView.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
