@@ -44,6 +44,7 @@
 <header>
     <h1>Android NAS</h1>
     <button class="btn" onclick="showClipboard()">📋 剪贴板</button>
+    <button class="btn" onclick="showAbout()">关于</button>
 </header>
 
 <div class="search-box">
@@ -78,6 +79,19 @@
 </div>
 
 <!-- 弹窗组 -->
+
+<!-- 关于弹窗 -->
+<div id="aboutModal" class="modal"><div class="modal-content">
+    <h3 style="margin-top:0; color:var(--primary);">关于 Android NAS</h3>
+    <p>版本: v3.0.0 旗舰版</p>
+    <p>一个极简的局域网 WebDAV 与网页文件管理服务器。</p>
+    <p>支持流媒体播放、局域网剪贴板、在线解压、全局搜索、免密分享。</p>
+    <p style="font-size:12px; color:var(--outline); margin-top:16px;">
+        ⚠️ 本项目大量代码由 AI 辅助生成，仅供学习与技术交流使用。
+    </p>
+    <div style="text-align:right; margin-top:16px;"><button class="btn" onclick="closeModal('aboutModal')">关闭</button></div>
+</div></div>
+
 <div id="editModal" class="modal"><div class="modal-content">
     <h3>编辑: <span id="editFileName"></span></h3>
     <textarea id="editContent"></textarea>
@@ -220,6 +234,8 @@ function goUp() {
     currentPath = parts.join('/') || '/';
     refresh();
 }
+
+function showAbout() { document.getElementById('aboutModal').style.display = 'flex'; }
 
 function showClipboard() {
     document.getElementById('clipModal').style.display = 'flex';

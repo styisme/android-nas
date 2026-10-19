@@ -142,6 +142,7 @@ public class MainActivity extends Activity {
         menu.add(0, 6, 0, "驾驶舱设置");
         menu.add(0, 3, 0, "内网穿透");
         menu.add(0, 4, 0, "运行日志");
+        menu.add(0, 7, 0, "关于");
         return true; 
     }
     
@@ -175,6 +176,13 @@ public class MainActivity extends Activity {
                 return true;
             }
             showTunnelCenter();
+            return true;
+        } else if (item.getItemId() == 7) {
+            new AlertDialog.Builder(this)
+                .setTitle("关于 Android NAS")
+                .setMessage("版本: v3.0.0 旗舰版\n\n支持流媒体、剪贴板、内网穿透。\n\n⚠️ 本项目大量代码由 AI 辅助生成。")
+                .setPositiveButton("确定", null)
+                .show();
             return true;
         } else if (item.getItemId() == 4) {
             new AlertDialog.Builder(this).setTitle("最近日志").setMessage(LogManager.getAllLogs()).setPositiveButton("关闭", null).show();

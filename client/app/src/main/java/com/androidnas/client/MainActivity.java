@@ -242,6 +242,7 @@ public class MainActivity extends AppCompatActivity {
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, 1, 0, "局域网剪贴板");
         menu.add(0, 2, 0, "设置");
+        menu.add(0, 3, 0, "关于");
         return true;
     }
 
@@ -249,6 +250,13 @@ public class MainActivity extends AppCompatActivity {
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == 1) {
             showClipboardDialog();
+            return true;
+        } else if (item.getItemId() == 3) {
+            new MaterialAlertDialogBuilder(this)
+                .setTitle("关于 NAS 客户端")
+                .setMessage("版本: v3.0.0 旗舰版\n\n支持多设备管理、WebDAV、相册备份与剪贴板同步。\n\n⚠️ 本项目大量代码由 AI 辅助生成。")
+                .setPositiveButton("确定", null)
+                .show();
             return true;
         } else if (item.getItemId() == 2) {
             startActivity(new Intent(MainActivity.this, SettingsActivity.class));
