@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/mainRoot"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#1A1A1A">
@@ -85,7 +86,7 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- 哔哩哔哩风格全屏搜索层 (默认隐藏) -->
+    <!-- 哔哩哔哩风格全屏搜索层 -->
     <LinearLayout
         android:id="@+id/searchOverlay"
         android:layout_width="match_parent"
@@ -95,7 +96,6 @@
         android:visibility="gone"
         android:padding="32dp">
 
-        <!-- 顶部输入框 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -125,7 +125,6 @@
                 android:text="|" />
         </LinearLayout>
 
-        <!-- 虚拟键盘区域 (动态生成) -->
         <LinearLayout
             android:id="@+id/keyboardContainer"
             android:layout_width="match_parent"
@@ -133,7 +132,6 @@
             android:orientation="vertical"
             android:layout_marginTop="16dp" />
 
-        <!-- 搜索结果列表 -->
         <ListView
             android:id="@+id/searchResults"
             android:layout_width="match_parent"
@@ -144,7 +142,6 @@
             android:dividerHeight="1dp"
             android:focusable="true"
             android:focusableInTouchMode="true" />
-
     </LinearLayout>
 
 </RelativeLayout>

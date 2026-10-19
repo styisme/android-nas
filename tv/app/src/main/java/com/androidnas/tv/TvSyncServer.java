@@ -1,9 +1,7 @@
 package com.androidnas.tv;
 
-import android.os.Environment;
 import java.io.*;
 import java.net.*;
-import java.util.*;
 
 public class TvSyncServer extends Thread {
     private ServerSocket serverSocket;
@@ -66,7 +64,6 @@ public class TvSyncServer extends Thread {
                 
                 String[] parts = line.split(" ");
                 if (parts.length < 2) return;
-                String method = parts[0];
                 String uri = parts[1];
 
                 int contentLength = 0;
@@ -92,7 +89,6 @@ public class TvSyncServer extends Thread {
                 writer.println("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n");
 
                 if (uri.startsWith("/sync")) {
-                    // 接收 NAS 配置
                     String[] params = body.split("&");
                     String ip = "", user = "", pass = "";
                     for (String p : params) {
@@ -102,7 +98,6 @@ public class TvSyncServer extends Thread {
                     }
                     activity.updateNasConfig(ip, user, pass);
                 } else if (uri.startsWith("/play")) {
-                    // 接收播放指令
                     String videoUrl = uri.substring(6);
                     videoUrl = URLDecoder.decode(videoUrl, "UTF-8");
                     activity.playVideoDirectly(videoUrl);

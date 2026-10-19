@@ -66,7 +66,7 @@ public class MainActivity extends Activity {
         searchResults = findViewById(com.androidnas.tv.R.id.searchResults);
         btnBackFromSearch = findViewById(com.androidnas.tv.R.id.btnBackFromSearch);
 
-        // 在屏幕底部加一个提示协同的TextView
+        // 底部协同提示
         tvSyncHint = new TextView(this);
         tvSyncHint.setTextColor(0xFF888888);
         tvSyncHint.setTextSize(14);
@@ -86,12 +86,11 @@ public class MainActivity extends Activity {
         setupKeyboard();
         setupListeners();
         
-        // 启动协同服务
         syncServer = new TvSyncServer(this);
         syncServer.start();
         
         String ip = getLocalIpAddress();
-        tvSyncHint.setText("📱 手机协同服务已开启，端口: 8090 | 本机IP: " + ip + " (请确保连接同一WiFi)");
+        tvSyncHint.setText("📱 手机协同服务已开启，端口: 8090 | 本机IP: " + ip);
 
         SharedPreferences sp = getSharedPreferences("tv_nas", Context.MODE_PRIVATE);
         baseUrl = sp.getString("url", "");
