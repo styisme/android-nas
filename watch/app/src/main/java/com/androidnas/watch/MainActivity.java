@@ -1,210 +1,218 @@
 package com.androidnas.watch;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.BaseAdapter;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
 import android.widget.Toast;
-import android.widget.LinearLayout;
-import android.widget.EditText;
-import android.app.AlertDialog;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.HttpURLConnection;
-import java.net.InetAddress;
-import java.net.URL;
-import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends Activity {
 
-    private ListView listView;
-    private TextView tvTitle;
-    private List<FileItem> files = new ArrayList<>();
-    private FileAdapter adapter;
-    private String baseUrl = "";
-    private String currentPath = "/";
-    private String authHeader = "";
+    private ListView deviceListView;
+    private List<WatchDevice> devices = new ArrayList<>();
+    private DeviceAdapter adapter;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        int padding = isRound() ? 48 : 16; 
-        root.setPadding(padding, padding, padding, padding);
+        setContentView(com.androidnas.watch.R.layout.activity_main);
 
-        tvTitle = new TextView(this);
-        tvTitle.setText("NAS 控制台");
-        tvTitle.setTextSize(16);
-        tvTitle.setPadding(0, 0, 0, 16);
-        root.addView(tvTitle);
+        deviceListView = findViewById(com.androidnas.watch.R.id.deviceListView);
+        Button btnAddDevice = findViewById(com.androidnas.watch.R.id.btnAddDevice);
 
-        listView = new ListView(this);
-        listView.setFocusable(true);
-        root.addView(listView, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT));
+        adapter = new DeviceAdapter();
+        deviceListView.setAdapter(adapter);
 
-        setContentView(root);
+        loadDevices();
 
-        adapter = new FileAdapter();
-        listView.setAdapter(adapter);
-
-        listView.setOnItemClickListener((parent, view, position, id) -> {
-            FileItem f = files.get(position);
-            if (f.isDir) {
-                if (currentPath.endsWith("/")) currentPath += f.name;
-                else currentPath += "/" + f.name;
-                loadFiles();
-            } else {
-                sendToTv(f);
-            }
+        deviceListView.setOnItemClickListener((parent, view, position, id) -> {
+            WatchDevice device = devices.get(position);
+            Intent intent = new Intent(MainActivity.this, FileListActivity.class);
+            intent.putExtra("device", device);
+            startActivity(intent);
         });
 
-        listView.setOnItemLongClickListener((parent, view, position, id) -> {
-            if (!currentPath.equals("/")) {
-                String[] parts = currentPath.split("/");
-                StringBuilder sb = new StringBuilder();
-                for (int i = 1; i < parts.length - 1; i++) sb.append("/").append(parts[i]);
-                currentPath = sb.length() == 0 ? "/" : sb.toString();
-                loadFiles();
-            }
+        // 长按删除设备
+        deviceListView.setOnItemLongClickListener((parent, view, position, id) -> {
+            showDeleteDeviceDialog(position);
             return true;
         });
 
-        SharedPreferences sp = getSharedPreferences("watch_nas", Context.MODE_PRIVATE);
-        baseUrl = sp.getString("url", "");
-        String user = sp.getString("user", "admin");
-        String pass = sp.getString("pass", "admin");
+        btnAddDevice.setOnClickListener(v -> showAddDeviceDialog());
+    }
 
-        if (baseUrl.isEmpty()) {
-            showConfigDialog();
-        } else {
-            authHeader = "Basic " + android.util.Base64.encodeToString((user + ":" + pass).getBytes(), android.util.Base64.NO_WRAP);
-            loadFiles();
+    @Override
+    public boolean onCreateOptionsMenu(Menu menu) {
+        menu.add(0, 1, 0, "设置");
+        menu.add(0, 2, 0, "关于");
+        return true;
+    }
+
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == 1) {
+            showSettingsDialog();
+            return true;
+        } else if (item.getItemId() == 2) {
+            new AlertDialog.Builder(this)
+                .setTitle("关于手表端")
+                .setMessage("版本: v1.0.0\n\n支持多设备、局域网协同投屏。")
+                .setPositiveButton("确定", null)
+                .show();
+            return true;
         }
+        return super.onOptionsItemSelected(item);
     }
 
-    private boolean isRound() {
-        return getResources().getConfiguration().isScreenRound();
+    private void loadDevices() {
+        SharedPreferences sp = getSharedPreferences("watch_devices", Context.MODE_PRIVATE);
+        String json = sp.getString("devices", "");
+        devices.clear();
+        if (!json.isEmpty()) {
+            try {
+                JSONArray arr = new JSONArray(json);
+                for (int i = 0; i < arr.length(); i++) {
+                    JSONObject obj = arr.getJSONObject(i);
+                    devices.add(new WatchDevice(
+                        obj.getString("name"), obj.getString("ip"), 
+                        obj.getString("port"), obj.getString("user"), obj.getString("pass")
+                    ));
+                }
+            } catch (Exception ignored) {}
+        }
+        adapter.notifyDataSetChanged();
     }
 
-    private void showConfigDialog() {
+    private void saveDevices() {
+        JSONArray arr = new JSONArray();
+        try {
+            for (WatchDevice d : devices) {
+                JSONObject obj = new JSONObject();
+                obj.put("name", d.name);
+                obj.put("ip", d.ip);
+                obj.put("port", d.port);
+                obj.put("user", d.user);
+                obj.put("pass", d.pass);
+                arr.put(obj);
+            }
+        } catch (Exception ignored) {}
+        SharedPreferences sp = getSharedPreferences("watch_devices", Context.MODE_PRIVATE);
+        sp.edit().putString("devices", arr.toString()).apply();
+    }
+
+    private void showAddDeviceDialog() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(32, 16, 32, 16);
+
+        EditText etName = new EditText(this);
+        etName.setHint("设备名称");
+        layout.addView(etName);
+
         EditText etIp = new EditText(this);
-        etIp.setHint("NAS IP (如 192.168.1.100)");
+        etIp.setHint("IP (如 192.168.1.100)");
         layout.addView(etIp);
-        
+
+        EditText etPort = new EditText(this);
+        etPort.setHint("端口 (默认 8080)");
+        layout.addView(etPort);
+
         new AlertDialog.Builder(this)
-            .setTitle("连接 NAS")
+            .setTitle("添加设备")
             .setView(layout)
-            .setPositiveButton("连接", (dialog, which) -> {
+            .setPositiveButton("添加", (dialog, which) -> {
+                String name = etName.getText().toString().trim();
                 String ip = etIp.getText().toString().trim();
-                if (!ip.startsWith("http")) ip = "http://" + ip + ":8080";
-                baseUrl = ip;
-                authHeader = "Basic " + android.util.Base64.encodeToString(("admin:admin").getBytes(), android.util.Base64.NO_WRAP);
-                SharedPreferences sp = getSharedPreferences("watch_nas", Context.MODE_PRIVATE);
-                sp.edit().putString("url", baseUrl).apply();
-                loadFiles();
+                String port = etPort.getText().toString().trim();
+                if (name.isEmpty() || ip.isEmpty()) return;
+                if (port.isEmpty()) port = "8080";
+
+                devices.add(new WatchDevice(name, ip, port, "admin", "admin"));
+                saveDevices();
+                adapter.notifyDataSetChanged();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+
+    private void showDeleteDeviceDialog(final int position) {
+        new AlertDialog.Builder(this)
+            .setTitle("删除设备")
+            .setMessage("确定删除 " + devices.get(position).name + " 吗？")
+            .setPositiveButton("删除", (dialog, which) -> {
+                devices.remove(position);
+                saveDevices();
+                adapter.notifyDataSetChanged();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+
+    private void showSettingsDialog() {
+        new AlertDialog.Builder(this)
+            .setTitle("设置")
+            .setItems(new String[]{"清空所有设备"}, (dialog, which) -> {
+                if (which == 0) {
+                    devices.clear();
+                    saveDevices();
+                    adapter.notifyDataSetChanged();
+                }
             }).show();
     }
 
-    private void loadFiles() {
-        files.clear();
-        tvTitle.setText("路径: " + currentPath);
-        adapter.notifyDataSetChanged();
-
-        new Thread(() -> {
-            try {
-                String apiUrl = baseUrl + "/api/list?path=" + URLEncoder.encode(currentPath, "UTF-8");
-                URL url = new URL(apiUrl);
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                conn.setRequestProperty("Authorization", authHeader);
-                
-                if (conn.getResponseCode() == 200) {
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
-                    StringBuilder sb = new StringBuilder();
-                    String line;
-                    while ((line = reader.readLine()) != null) sb.append(line);
-                    reader.close();
-
-                    JSONObject obj = new JSONObject(sb.toString());
-                    JSONArray arr = obj.getJSONArray("files");
-                    for (int i = 0; i < arr.length(); i++) {
-                        JSONObject f = arr.getJSONObject(i);
-                        files.add(new FileItem(f.getString("name"), f.getBoolean("dir")));
-                    }
-                    mainHandler.post(() -> adapter.notifyDataSetChanged());
-                }
-            } catch (Exception ignored) {}
-        }).start();
-    }
-
-    private void sendToTv(FileItem f) {
-        Toast.makeText(this, "正在投屏到电视...", Toast.LENGTH_SHORT).show();
-        String fullPath = currentPath.endsWith("/") ? currentPath + f.name : currentPath + "/" + f.name;
-        final String videoUrl = baseUrl + "/api/download?path=" + URLEncoder.encode(fullPath);
-        
-        new Thread(() -> {
-            try {
-                DatagramSocket socket = new DatagramSocket();
-                socket.setBroadcast(true);
-                socket.setSoTimeout(1500);
-                byte[] sendData = "DISCOVER_TV".getBytes();
-                socket.send(new DatagramPacket(sendData, sendData.length, InetAddress.getByName("255.255.255.255"), 8090));
-                
-                byte[] receiveData = new byte[1024];
-                DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-                socket.receive(receivePacket);
-                
-                String tvIp = receivePacket.getAddress().getHostAddress();
-                socket.close();
-
-                URL url = new URL("http://" + tvIp + ":8090/play?" + URLEncoder.encode(videoUrl));
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                if (conn.getResponseCode() == 200) {
-                    mainHandler.post(() -> Toast.makeText(this, "投屏成功！", Toast.LENGTH_SHORT).show());
-                }
-            } catch (Exception e) {
-                mainHandler.post(() -> Toast.makeText(this, "未找到电视或投屏失败", Toast.LENGTH_SHORT).show());
-            }
-        }).start();
-    }
-
-    private static class FileItem {
-        String name;
-        boolean isDir;
-        FileItem(String name, boolean isDir) { this.name = name; this.isDir = isDir; }
-    }
-
-    private class FileAdapter extends BaseAdapter {
-        @Override public int getCount() { return files.size(); }
-        @Override public Object getItem(int position) { return files.get(position); }
+    private class DeviceAdapter extends BaseAdapter {
+        @Override public int getCount() { return devices.size(); }
+        @Override public Object getItem(int position) { return devices.get(position); }
         @Override public long getItemId(int position) { return position; }
         @Override public View getView(int position, View convertView, ViewGroup parent) {
-            TextView tv = new TextView(MainActivity.this);
-            tv.setPadding(16, 16, 16, 16);
-            tv.setTextSize(18);
-            FileItem f = files.get(position);
-            tv.setText((f.isDir ? "📁 " : "🎬 ") + f.name);
-            return tv;
+            // 使用 MD3 卡片风格
+            LinearLayout layout = new LinearLayout(MainActivity.this);
+            layout.setOrientation(LinearLayout.VERTICAL);
+            layout.setPadding(24, 16, 24, 16);
+            
+            // 动态圆角背景
+            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
+            bg.setColor(0xFF2B2930); // MD3 表面容器色
+            bg.setCornerRadius(32);   // 大圆角
+            layout.setBackground(bg);
+
+            TextView tvName = new TextView(MainActivity.this);
+            tvName.setText(devices.get(position).name);
+            tvName.setTextColor(0xFFD0BCFF);
+            tvName.setTextSize(16);
+            tvName.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+
+            TextView tvIp = new TextView(MainActivity.this);
+            tvIp.setText(devices.get(position).ip);
+            tvIp.setTextColor(0xFFCAC4D0);
+            tvIp.setTextSize(12);
+            tvIp.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+
+            layout.addView(tvName);
+            layout.addView(tvIp);
+            return layout;
         }
     }
 }
