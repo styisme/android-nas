@@ -1,0 +1,32 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.androidnas.watch'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "com.androidnas.watch"
+        minSdk 21 // 已降至 Android 5.0
+        targetSdk 33
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'com.google.android.support:wearable:2.9.0'
+    compileOnly 'com.google.android.wearable:wearable:2.9.0'
+}
