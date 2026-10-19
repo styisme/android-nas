@@ -119,19 +119,16 @@ public class MainActivity extends AppCompatActivity {
         ScrollView scrollView = new ScrollView(this);
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
-        // 设置适当的边距
         layout.setPadding(48, 32, 48, 16);
         scrollView.addView(layout, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // 设备名称
         TextInputLayout tilName = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
         tilName.setHint("设备名称 (如: 我的NAS)");
         TextInputEditText etName = new TextInputEditText(this);
         tilName.addView(etName);
         layout.addView(tilName);
 
-        // 地址
         TextInputLayout tilUrl = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
         tilUrl.setHint("地址 (如 192.168.1.100:8080)");
         TextInputEditText etUrl = new TextInputEditText(this);
@@ -141,14 +138,12 @@ public class MainActivity extends AppCompatActivity {
         params.topMargin = 24;
         layout.addView(tilUrl, params);
 
-        // 账号
         TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
         tilUser.setHint("服务端账号 (默认 admin)");
         TextInputEditText etUser = new TextInputEditText(this);
         tilUser.addView(etUser);
         layout.addView(tilUser, params);
 
-        // 密码
         TextInputLayout tilPass = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
         tilPass.setHint("服务端密码 (默认 admin)");
         TextInputEditText etPass = new TextInputEditText(this);
@@ -191,7 +186,7 @@ public class MainActivity extends AppCompatActivity {
                     OkHttpClient client = new OkHttpClient();
                     final String authHeader = Credentials.basic(device.username, device.password);
 
-                    while (cursor.moveToNext() && count < 5) { // 测试传 5 张
+                    while (cursor.moveToNext() && count < 5) {
                         long id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID));
                         final String name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME));
                         Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
@@ -214,16 +209,12 @@ public class MainActivity extends AppCompatActivity {
                     cursor.close();
                     mainHandler.post(new Runnable() {
                         @Override
-                        public void run() {
-                            Toast.makeText(MainActivity.this, "相册备份完成！", Toast.LENGTH_SHORT).show();
-                        }
+                        public void run() { Toast.makeText(MainActivity.this, "相册备份完成！", Toast.LENGTH_SHORT).show(); }
                     });
                 } catch (Exception e) {
                     mainHandler.post(new Runnable() {
                         @Override
-                        public void run() {
-                            Toast.makeText(MainActivity.this, "备份失败", Toast.LENGTH_SHORT).show();
-                        }
+                        public void run() { Toast.makeText(MainActivity.this, "备份失败", Toast.LENGTH_SHORT).show(); }
                     });
                 }
             }
@@ -326,7 +317,6 @@ public class MainActivity extends AppCompatActivity {
                 }
             });
 
-            // 新增：长按编辑设备信息（解决扫码/扫描后无法修改密码的问题）
             holder.itemView.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
@@ -352,7 +342,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // 新增：修改设备信息弹窗
     private void showEditDeviceDialog(final int position) {
         final NasDevice d = devices.get(position);
         ScrollView scrollView = new ScrollView(this);
@@ -407,6 +396,4 @@ public class MainActivity extends AppCompatActivity {
                 adapter.notifyDataSetChanged();
             }).setNegativeButton("取消", null).show();
     }
-
-
 }
