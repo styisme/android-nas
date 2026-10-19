@@ -223,14 +223,9 @@ public class MainActivity extends AppCompatActivity {
         rbFtp.setText("FTP 协议");
         rbFtp.setId(View.generateViewId());
         
-        RadioButton rbSmb = new RadioButton(this);
-        rbSmb.setText("SMB (Windows 共享)");
-        rbSmb.setId(View.generateViewId());
-        
         rgType.addView(rbAndroid); 
         rgType.addView(rbWebDav);
         rgType.addView(rbFtp);
-        rgType.addView(rbSmb);
         layout.addView(rgType, params);
 
         TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
@@ -262,7 +257,6 @@ public class MainActivity extends AppCompatActivity {
                 int type = NasDevice.TYPE_ANDROID;
                 if (rgType.getCheckedRadioButtonId() == rbWebDav.getId()) type = NasDevice.TYPE_WEBDAV;
                 else if (rgType.getCheckedRadioButtonId() == rbFtp.getId()) type = NasDevice.TYPE_FTP;
-                else if (rgType.getCheckedRadioButtonId() == rbSmb.getId()) type = NasDevice.TYPE_SMB;
                 
                 devices.add(new NasDevice(name, url, type, user, pass));
                 saveDevices();
@@ -334,7 +328,7 @@ public class MainActivity extends AppCompatActivity {
         } else if (item.getItemId() == 3) {
             new MaterialAlertDialogBuilder(this)
                 .setTitle("关于 NAS 客户端")
-                .setMessage("版本: v3.1.0 旗舰版\n\n支持多设备管理、WebDAV、FTP、SMB、相册备份。")
+                .setMessage("版本: v3.1.0 旗舰版\n\n支持多设备管理、WebDAV、FTP、相册备份。")
                 .setPositiveButton("确定", null)
                 .show();
             return true;
@@ -407,7 +401,6 @@ public class MainActivity extends AppCompatActivity {
             if (d.type == NasDevice.TYPE_ANDROID) holder.tvIcon.setText("📱");
             else if (d.type == NasDevice.TYPE_WEBDAV) holder.tvIcon.setText("🖥️");
             else if (d.type == NasDevice.TYPE_FTP) holder.tvIcon.setText("📂");
-            else if (d.type == NasDevice.TYPE_SMB) holder.tvIcon.setText("🪟");
             
             holder.itemView.setOnClickListener(new View.OnClickListener() {
                 @Override

@@ -60,20 +60,6 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
-// SMB 依赖
-import com.hierynomus.msdtyp.AccessMask;
-import com.hierynomus.msfscc.FileAttributes;
-import com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation;
-import com.hierynomus.mssmb2.SMB2CreateDisposition;
-import com.hierynomus.mssmb2.SMB2ShareAccess;
-import com.hierynomus.protocol.commons.EnumWithValue;
-import com.hierynomus.smbj.SMBClient;
-import com.hierynomus.smbj.auth.AuthenticationContext;
-import com.hierynomus.smbj.connection.Connection;
-import com.hierynomus.smbj.session.Session;
-import com.hierynomus.smbj.share.DiskShare;
-import com.hierynomus.smbj.share.FileAccessor;
-
 public class FileListActivity extends AppCompatActivity {
     private String baseUrl;
     private int type;
@@ -221,7 +207,6 @@ public class FileListActivity extends AppCompatActivity {
                 if (type == NasDevice.TYPE_ANDROID) loadAndroidNasFiles();
                 else if (type == NasDevice.TYPE_WEBDAV) loadWebDavFiles();
                 else if (type == NasDevice.TYPE_FTP) loadFtpFiles();
-                else if (type == NasDevice.TYPE_SMB) loadSmbFiles();
                 runOnUiThread(() -> adapter.notifyDataSetChanged());
             } catch (Exception e) {
                 runOnUiThread(() -> Toast.makeText(this, "加载失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
@@ -229,7 +214,6 @@ public class FileListActivity extends AppCompatActivity {
         }).start();
     }
 
-    // --- 协议 1: 原生 Android NAS ---
     private void loadAndroidNasFiles() throws Exception {
         String apiUrl = baseUrl + "/api/list?path=" + URLEncoder.encode(currentPath, "UTF-8");
         Request request = new Request.Builder().url(apiUrl).header("Authorization", authHeader).build();
@@ -247,7 +231,6 @@ public class FileListActivity extends AppCompatActivity {
         }
     }
 
-    // --- 协议 2: WebDAV ---
     private void loadWebDavFiles() throws Exception {
         String url = baseUrl + currentPath;
         if (!url.endsWith("/")) url += "/";
@@ -280,7 +263,6 @@ public class FileListActivity extends AppCompatActivity {
         }
     }
 
-    // --- 协议 3: FTP ---
     private void loadFtpFiles() throws Exception {
         String ip = baseUrl.replace("http://", "").replace("https://", "");
         int port = 21;
@@ -315,33 +297,6 @@ public class FileListActivity extends AppCompatActivity {
         ftp.disconnect();
     }
 
-    // --- 协议 4: SMB (Windows) ---
-    private void loadSmbFiles() throws Exception {
-        // baseUrl 格式: smb://192.168.1.100/ShareName
-        String cleanUrl = baseUrl.replace("smb://", "");
-        String[] parts = cleanUrl.split("/", 2);
-        String host = parts[0];
-        String shareName = parts.length > 1 ? parts[1] : "";
-        
-        SMBClient smbClient = new SMBClient();
-        try (Connection connection = smbClient.connect(host)) {
-            AuthenticationContext ac = new AuthenticationContext(username, password.toCharArray(), null);
-            Session session = connection.authenticate(ac);
-            
-            try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
-                String path = currentPath.equals("/") ? "" : currentPath;
-                for (FileIdBothDirectoryInformation f : share.list(path)) {
-                    String name = f.getFileName();
-                    if (name.equals(".") || name.equals("..")) continue;
-                    boolean isDir = EnumWithValue.EnumUtils.isSet(f.getFileAttributes(), FileAttributes.FILE_ATTRIBUTE_DIRECTORY);
-                    String fullPath = currentPath.endsWith("/") ? currentPath + name : currentPath + "/" + name;
-                    files.add(new FileItem(name, fullPath, isDir, f.getEndOfFile()));
-                }
-            }
-        }
-    }
-
-    // --- 下载 (通用与专用) ---
     private void downloadFile(FileItem f) {
         LinearProgressIndicator progress = new LinearProgressIndicator(this);
         progress.setIndeterminate(true);
@@ -388,28 +343,6 @@ public class FileListActivity extends AppCompatActivity {
                     os.close();
                     ftp.logout();
                     ftp.disconnect();
-                } else if (type == NasDevice.TYPE_SMB) {
-                    String cleanUrl = baseUrl.replace("smb://", "");
-                    String[] parts = cleanUrl.split("/", 2);
-                    String shareName = parts.length > 1 ? parts[1] : "";
-                    
-                    SMBClient smbClient = new SMBClient();
-                    try (Connection connection = smbClient.connect(parts[0])) {
-                        AuthenticationContext ac = new AuthenticationContext(username, password.toCharArray(), null);
-                        Session session = connection.authenticate(ac);
-                        try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
-                            FileAccessor file = share.openFile(f.path, 
-                                java.util.EnumSet.of(AccessMask.GENERIC_READ), 
-                                null, 
-                                java.util.EnumSet.of(SMB2ShareAccess.FILE_SHARE_READ), 
-                                SMB2CreateDisposition.FILE_OPEN, 
-                                null);
-                            try (InputStream is = file.getInputStream(); FileOutputStream fos = new FileOutputStream(dest)) {
-                                byte[] buf = new byte[8192]; int len;
-                                while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
-                            }
-                        }
-                    }
                 }
                 
                 mainHandler.post(() -> { 
@@ -427,7 +360,6 @@ public class FileListActivity extends AppCompatActivity {
         }).start();
     }
 
-    // --- 上传 ---
     private void openFilePicker() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("*/*");
@@ -482,30 +414,6 @@ public class FileListActivity extends AppCompatActivity {
                     ftp.storeFile((currentPath.endsWith("/") ? currentPath : currentPath + "/") + finalFileName, is);
                     ftp.logout();
                     ftp.disconnect();
-                } else if (type == NasDevice.TYPE_SMB) {
-                    String cleanUrl = baseUrl.replace("smb://", "");
-                    String[] parts = cleanUrl.split("/", 2);
-                    String shareName = parts.length > 1 ? parts[1] : "";
-                    
-                    SMBClient smbClient = new SMBClient();
-                    try (Connection connection = smbClient.connect(parts[0])) {
-                        AuthenticationContext ac = new AuthenticationContext(username, password.toCharArray(), null);
-                        Session session = connection.authenticate(ac);
-                        try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
-                            String targetPath = (currentPath.endsWith("/") ? currentPath : currentPath + "/") + finalFileName;
-                            if (targetPath.startsWith("/")) targetPath = targetPath.substring(1);
-                            FileAccessor file = share.openFile(targetPath, 
-                                java.util.EnumSet.of(AccessMask.GENERIC_WRITE), 
-                                null, 
-                                java.util.EnumSet.of(SMB2ShareAccess.FILE_SHARE_WRITE), 
-                                SMB2CreateDisposition.FILE_OVERWRITE_IF, 
-                                null);
-                            try (OutputStream os = file.getOutputStream()) {
-                                byte[] buf = new byte[8192]; int len;
-                                while ((len = is.read(buf)) > 0) os.write(buf, 0, len);
-                            }
-                        }
-                    }
                 }
                 
                 mainHandler.post(() -> {
@@ -541,7 +449,6 @@ public class FileListActivity extends AppCompatActivity {
         return result;
     }
 
-    // --- 其他文件操作 (防止外部协议不支持报错，做兜底) ---
     private void deleteSelected() {
         Toast.makeText(this, "外部协议暂不支持批量删除", Toast.LENGTH_SHORT).show();
         exitMultiSelect();

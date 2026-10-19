@@ -4,7 +4,6 @@ public class NasDevice {
     public static final int TYPE_ANDROID = 1;
     public static final int TYPE_WEBDAV = 2;
     public static final int TYPE_FTP = 3;
-    public static final int TYPE_SMB = 4;
 
     public String name;
     public String url;
@@ -23,7 +22,7 @@ public class NasDevice {
     public String getBaseUrl() {
         if (url == null) return "";
         String base = url.trim();
-        if (type != TYPE_SMB && !base.startsWith("http://") && !base.startsWith("https://")) {
+        if (type != TYPE_FTP && !base.startsWith("http://") && !base.startsWith("https://")) {
             base = "http://" + base;
         }
         if (base.endsWith("/")) {
