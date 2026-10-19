@@ -3,6 +3,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [3.0.0] - 开发中
+
+此版本正在开发中（包含流媒体播放、相册备份、在线解压与局域网剪贴板等重磅功能）。
+
+---
+
 ## [2.6.0] - 2026-10-19
 
 **生态爆发版：拥抱 LocalSend 与全自动发版体系**

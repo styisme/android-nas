@@ -1,27 +1,31 @@
 package com.androidnas.client;
 
+import android.Manifest;
+import android.content.ContentUris;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.provider.MediaStore;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.LinearLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
-
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -31,33 +35,28 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanOptions;
-
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import okhttp3.Credentials;
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
-
-    private MaterialToolbar toolbar;
     private RecyclerView recyclerView;
-    private SwipeRefreshLayout swipeRefresh;
     private List<NasDevice> devices = new ArrayList<>();
     private Gson gson = new Gson();
     private DeviceAdapter adapter;
-    private ExecutorService executor = Executors.newFixedThreadPool(20);
+    private Handler mainHandler = new Handler(Looper.getMainLooper());
 
     private ActivityResultLauncher<ScanOptions> barcodeLauncher = registerForActivityResult(new ScanContract(), result -> {
         if (result.getContents() != null) {
-            String url = result.getContents();
-            if (url.startsWith("http")) {
-                devices.add(new NasDevice("扫码设备", url, true, "admin", "admin"));
-                saveDevices();
-                adapter.notifyDataSetChanged();
-                Toast.makeText(this, "添加成功", Toast.LENGTH_SHORT).show();
-            }
+            devices.add(new NasDevice("扫码设备", result.getContents(), true, "admin", "admin"));
+            saveDevices();
+            adapter.notifyDataSetChanged();
         }
     });
 
@@ -66,21 +65,20 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        toolbar = findViewById(R.id.toolbar);
+        MaterialToolbar toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         recyclerView = findViewById(R.id.recyclerView);
-        swipeRefresh = findViewById(R.id.swipeRefresh);
         FloatingActionButton fab = findViewById(R.id.fabAddDevice);
-
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
         adapter = new DeviceAdapter();
         recyclerView.setAdapter(adapter);
 
         loadDevices();
-        swipeRefresh.setOnRefreshListener(this::autoScan);
         fab.setOnClickListener(v -> showAddDeviceDialog());
         
-        if (devices.isEmpty()) autoScan();
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 100);
+        }
     }
 
     private void loadDevices() {
@@ -97,59 +95,14 @@ public class MainActivity extends AppCompatActivity {
         sp.edit().putString("devices", gson.toJson(devices)).apply();
     }
 
-    private void autoScan() {
-        swipeRefresh.setRefreshing(true);
-        devices.clear();
-        loadDevices();
-
-        try {
-            android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            int ipAddress = wm.getConnectionInfo().getIpAddress();
-            String subnet = String.format("%d.%d.%d.", (ipAddress & 0xff), (ipAddress >> 8 & 0xff), (ipAddress >> 16 & 0xff));
-
-            new Thread(() -> {
-                for (int i = 1; i < 255; i++) {
-                    final String targetIp = subnet + i;
-                    executor.execute(() -> {
-                        try {
-                            URL url = new URL("http://" + targetIp + ":8080/api/list?path=/");
-                            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                            conn.setConnectTimeout(300);
-                            conn.setReadTimeout(300);
-                            if (conn.getResponseCode() == 200 || conn.getResponseCode() == 401) {
-                                runOnUiThread(() -> addScannedDevice(targetIp));
-                            }
-                        } catch (Exception ignored) {}
-                    });
-                }
-                runOnUiThread(() -> {
-                    try { Thread.sleep(800); } catch (Exception e) {}
-                    swipeRefresh.setRefreshing(false);
-                });
-            }).start();
-        } catch (Exception e) {
-            swipeRefresh.setRefreshing(false);
-            Toast.makeText(this, "扫描失败，请检查 WiFi", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void addScannedDevice(String ip) {
-        for (NasDevice d : devices) if (d.url.contains(ip)) return;
-        devices.add(new NasDevice("Android NAS (" + ip + ")", "http://" + ip + ":8080", true, "admin", "admin"));
-        saveDevices();
-        adapter.notifyDataSetChanged();
-    }
-
     private void showAddDeviceDialog() {
         new MaterialAlertDialogBuilder(this)
             .setTitle("添加设备")
-            .setItems(new String[]{"手动输入", "扫描二维码"}, (dialog, which) -> {
+            .setItems(new String[]{"手动输入 IP", "扫描二维码"}, (dialog, which) -> {
                 if (which == 0) showManualDialog();
                 else {
                     ScanOptions options = new ScanOptions();
                     options.setDesiredBarcodeFormats(ScanOptions.QR_CODE);
-                    options.setPrompt("扫描 NAS 二维码");
-                    options.setBeepEnabled(false);
                     barcodeLauncher.launch(options);
                 }
             }).show();
@@ -172,68 +125,111 @@ public class MainActivity extends AppCompatActivity {
         tilUrl.setHint("地址 (如 192.168.1.100:8080)");
         TextInputEditText etUrl = new TextInputEditText(this);
         tilUrl.addView(etUrl);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        params.topMargin = 32;
-        layout.addView(tilUrl, params);
-
-        RadioGroup rgType = new RadioGroup(this);
-        RadioButton rbAndroid = new RadioButton(this);
-        rbAndroid.setText("Android NAS (原生接口)");
-        rbAndroid.setId(View.generateViewId());
-        rbAndroid.setChecked(true);
-        RadioButton rbOther = new RadioButton(this);
-        rbOther.setText("外部 NAS (WebDAV)");
-        rbOther.setId(View.generateViewId());
-        rgType.addView(rbAndroid); rgType.addView(rbOther);
-        layout.addView(rgType, params);
-
-        TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilUser.setHint("账号 (admin 或 guest)");
-        TextInputEditText etUser = new TextInputEditText(this);
-        tilUser.addView(etUser);
-        layout.addView(tilUser, params);
-
-        TextInputLayout tilPass = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilPass.setHint("密码");
-        TextInputEditText etPass = new TextInputEditText(this);
-        tilPass.addView(etPass);
-        layout.addView(tilPass, params);
+        layout.addView(tilUrl);
 
         new MaterialAlertDialogBuilder(this)
-            .setTitle("添加设备")
+            .setTitle("手动添加")
             .setView(scrollView)
             .setPositiveButton("添加", (dialog, which) -> {
-                String name = etName.getText() != null ? etName.getText().toString() : "";
-                String url = etUrl.getText() != null ? etUrl.getText().toString().trim() : "";
+                String name = etName.getText().toString();
+                String url = etUrl.getText().toString().trim();
                 if (name.isEmpty() || url.isEmpty()) return;
                 if (!url.startsWith("http")) url = "http://" + url;
-                
-                boolean isAndroid = rgType.getCheckedRadioButtonId() == rbAndroid.getId();
-                String user = etUser.getText() != null ? etUser.getText().toString() : "admin";
-                String pass = etPass.getText() != null ? etPass.getText().toString() : "admin";
-                
-                devices.add(new NasDevice(name, url, isAndroid, user, pass));
+                devices.add(new NasDevice(name, url, true, "admin", "admin"));
                 saveDevices();
                 adapter.notifyDataSetChanged();
-            })
-            .setNegativeButton("取消", null)
-            .show();
+            }).show();
+    }
+
+    private void startPhotoBackup(NasDevice device) {
+        Toast.makeText(this, "开始扫描相册...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                String[] projection = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME};
+                String sortOrder = MediaStore.Images.Media.DATE_ADDED + " DESC";
+                Cursor cursor = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder);
+                
+                if (cursor == null) return;
+                int count = 0;
+                OkHttpClient client = new OkHttpClient();
+                String authHeader = Credentials.basic(device.username, device.password);
+
+                while (cursor.moveToNext() && count < 5) { // 测试传 5 张
+                    long id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID));
+                    String name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME));
+                    Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+                    
+                    InputStream is = getContentResolver().openInputStream(uri);
+                    if (is == null) continue;
+
+                    String targetUrl = device.getBaseUrl() + "/Photos/" + name;
+                    RequestBody body = new RequestBody() {
+                        @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
+                        @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
+                            byte[] buf = new byte[8192]; int len;
+                            while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
+                        }
+                    };
+                    Request req = new Request.Builder().url(targetUrl).put(body).header("Authorization", authHeader).build();
+                    client.newCall(req).execute();
+                    count++;
+                }
+                cursor.close();
+                mainHandler.post(() -> Toast.makeText(this, "相册备份完成！", Toast.LENGTH_SHORT).show());
+            } catch (Exception e) {
+                mainHandler.post(() -> Toast.makeText(this, "备份失败", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
     }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        menu.add(0, 1, 0, "设置");
+        menu.add(0, 1, 0, "局域网剪贴板");
         return true;
     }
 
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == 1) {
-            startActivity(new Intent(this, SettingsActivity.class));
+            showClipboardDialog();
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    private void showClipboardDialog() {
+        if (devices.isEmpty()) {
+            Toast.makeText(this, "请先添加设备", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        NasDevice d = devices.get(0);
+        new Thread(() -> {
+            try {
+                OkHttpClient client = new OkHttpClient();
+                Request req = new Request.Builder().url(d.getBaseUrl() + "/api/clipboard").header("Authorization", Credentials.basic(d.username, d.password)).build();
+                Response res = client.newCall(req).execute();
+                if (res.isSuccessful() && res.body() != null) {
+                    String txt = res.body().string();
+                    mainHandler.post(() -> {
+                        TextInputEditText et = new TextInputEditText(this);
+                        et.setText(txt);
+                        new MaterialAlertDialogBuilder(this)
+                            .setTitle("局域网剪贴板")
+                            .setView(et)
+                            .setPositiveButton("保存", (dialog, which) -> {
+                                new Thread(() -> {
+                                    try {
+                                        RequestBody body = new okhttp3.FormBody.Builder().add("content", et.getText().toString()).build();
+                                        Request post = new Request.Builder().url(d.getBaseUrl() + "/api/clipboard").post(body).header("Authorization", Credentials.basic(d.username, d.password)).build();
+                                        client.newCall(post).execute();
+                                        mainHandler.post(() -> Toast.makeText(this, "已同步", Toast.LENGTH_SHORT).show());
+                                    } catch (Exception e) {}
+                                }).start();
+                            }).setNegativeButton("取消", null).show();
+                    });
+                }
+            } catch (Exception e) {}
+        }).start();
     }
 
     private class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.VH> {
@@ -244,31 +240,28 @@ public class MainActivity extends AppCompatActivity {
             NasDevice d = devices.get(position);
             holder.tvName.setText(d.name);
             holder.tvIp.setText(d.url);
-            holder.tvIcon.setText(d.isAndroidNas ? "📱" : "🖥️");
-            
+            holder.tvIcon.setText("📱");
             holder.itemView.setOnClickListener(v -> {
-                Intent intent = new Intent(MainActivity.this, FileListActivity.class);
-                intent.putExtra("url", d.url);
-                intent.putExtra("isAndroidNas", d.isAndroidNas);
-                intent.putExtra("username", d.username);
-                intent.putExtra("password", d.password);
-                startActivity(intent);
-            });
-
-            holder.btnDelete.setOnClickListener(v -> {
-                devices.remove(position);
-                saveDevices();
-                notifyDataSetChanged();
+                new MaterialAlertDialogBuilder(MainActivity.this)
+                    .setTitle(d.name)
+                    .setItems(new String[]{"进入文件管理", "一键备份相册"}, (dialog, which) -> {
+                        if (which == 0) {
+                            Intent intent = new Intent(MainActivity.this, FileListActivity.class);
+                            intent.putExtra("url", d.getBaseUrl());
+                            intent.putExtra("isAndroidNas", true);
+                            intent.putExtra("username", d.username);
+                            intent.putExtra("password", d.password);
+                            startActivity(intent);
+                        } else {
+                            startPhotoBackup(d);
+                        }
+                    }).show();
             });
         }
         @Override public int getItemCount() { return devices.size(); }
         class VH extends RecyclerView.ViewHolder {
             TextView tvName, tvIcon, tvIp;
-            View btnDelete;
-            VH(View v) { 
-                super(v); 
-                tvName = v.findViewById(R.id.tvName); tvIcon = v.findViewById(R.id.tvIcon); tvIp = v.findViewById(R.id.tvIp); btnDelete = v.findViewById(R.id.btnDelete);
-            }
+            VH(View v) { super(v); tvName = v.findViewById(R.id.tvName); tvIcon = v.findViewById(R.id.tvIcon); tvIp = v.findViewById(R.id.tvIp); }
         }
     }
 }
