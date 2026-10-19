@@ -109,14 +109,20 @@ public class NasHttpServer extends NanoHTTPD {
                     long start = Long.parseLong(ranges[0]);
                     long end = ranges.length > 1 && !ranges[1].isEmpty() ? Long.parseLong(ranges[1]) : fileLen - 1;
                     if (end >= fileLen) end = fileLen - 1;
-                    long contentLen = end - start + 1;
+                    final long contentLen = end - start + 1;
                     
                     RandomAccessFile raf = new RandomAccessFile(file, "r");
                     raf.seek(start);
-                    InputStream is = new FileInputStream(raf.getFD()) {
-                        @Override public int read(byte[] b, int off, int len) throws IOException {
+                    final FileInputStream fis = new FileInputStream(raf.getFD());
+                    InputStream is = new InputStream() {
+                        @Override 
+                        public int read() throws IOException {
+                            return fis.read();
+                        }
+                        @Override 
+                        public int read(byte[] b, int off, int len) throws IOException {
                             if (len > contentLen) len = (int) contentLen;
-                            return super.read(b, off, len);
+                            return fis.read(b, off, len);
                         }
                     };
                     
@@ -158,10 +164,13 @@ public class NasHttpServer extends NanoHTTPD {
     private String buildJson(File dir, String currentPath) {
         File[] files = dir.listFiles();
         if (files == null) files = new File[0];
-        Arrays.sort(files, (a, b) -> {
-            if (a.isDirectory() && !b.isDirectory()) return -1;
-            if (!a.isDirectory() && b.isDirectory()) return 1;
-            return a.getName().compareToIgnoreCase(b.getName());
+        Arrays.sort(files, new Comparator<File>() {
+            @Override
+            public int compare(File a, File b) {
+                if (a.isDirectory() && !b.isDirectory()) return -1;
+                if (!a.isDirectory() && b.isDirectory()) return 1;
+                return a.getName().compareToIgnoreCase(b.getName());
+            }
         });
         StringBuilder sb = new StringBuilder("{\"path\":\"" + currentPath + "\",\"files\":[");
         for (int i = 0; i < files.length; i++) {

@@ -20,12 +20,14 @@ import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
+
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -35,9 +37,11 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanOptions;
+
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+
 import okhttp3.Credentials;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -47,7 +51,7 @@ import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
     private RecyclerView recyclerView;
-    private List<NasDevice> devices = new ArrayList<>();
+    private List<NasDevice> devices = new ArrayList<NasDevice>();
     private Gson gson = new Gson();
     private DeviceAdapter adapter;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -74,7 +78,10 @@ public class MainActivity extends AppCompatActivity {
         recyclerView.setAdapter(adapter);
 
         loadDevices();
-        fab.setOnClickListener(v -> showAddDeviceDialog());
+        fab.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) { showAddDeviceDialog(); }
+        });
         
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, 100);
@@ -141,43 +148,56 @@ public class MainActivity extends AppCompatActivity {
             }).show();
     }
 
-    private void startPhotoBackup(NasDevice device) {
+    private void startPhotoBackup(final NasDevice device) {
         Toast.makeText(this, "开始扫描相册...", Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
-            try {
-                String[] projection = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME};
-                String sortOrder = MediaStore.Images.Media.DATE_ADDED + " DESC";
-                Cursor cursor = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder);
-                
-                if (cursor == null) return;
-                int count = 0;
-                OkHttpClient client = new OkHttpClient();
-                String authHeader = Credentials.basic(device.username, device.password);
-
-                while (cursor.moveToNext() && count < 5) { // 测试传 5 张
-                    long id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID));
-                    String name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME));
-                    Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    String[] projection = {MediaStore.Images.Media._ID, MediaStore.Images.Media.DISPLAY_NAME};
+                    String sortOrder = MediaStore.Images.Media.DATE_ADDED + " DESC";
+                    Cursor cursor = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder);
                     
-                    InputStream is = getContentResolver().openInputStream(uri);
-                    if (is == null) continue;
+                    if (cursor == null) return;
+                    int count = 0;
+                    OkHttpClient client = new OkHttpClient();
+                    final String authHeader = Credentials.basic(device.username, device.password);
 
-                    String targetUrl = device.getBaseUrl() + "/Photos/" + name;
-                    RequestBody body = new RequestBody() {
-                        @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
-                        @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
-                            byte[] buf = new byte[8192]; int len;
-                            while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
+                    while (cursor.moveToNext() && count < 5) { // 测试传 5 张
+                        long id = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID));
+                        final String name = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME));
+                        Uri uri = ContentUris.withAppendedId(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, id);
+                        
+                        final InputStream is = getContentResolver().openInputStream(uri);
+                        if (is == null) continue;
+
+                        String targetUrl = device.getBaseUrl() + "/Photos/" + name;
+                        RequestBody body = new RequestBody() {
+                            @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
+                            @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
+                                byte[] buf = new byte[8192]; int len;
+                                while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
+                            }
+                        };
+                        Request req = new Request.Builder().url(targetUrl).put(body).header("Authorization", authHeader).build();
+                        client.newCall(req).execute();
+                        count++;
+                    }
+                    cursor.close();
+                    mainHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "相册备份完成！", Toast.LENGTH_SHORT).show();
                         }
-                    };
-                    Request req = new Request.Builder().url(targetUrl).put(body).header("Authorization", authHeader).build();
-                    client.newCall(req).execute();
-                    count++;
+                    });
+                } catch (Exception e) {
+                    mainHandler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            Toast.makeText(MainActivity.this, "备份失败", Toast.LENGTH_SHORT).show();
+                        }
+                    });
                 }
-                cursor.close();
-                mainHandler.post(() -> Toast.makeText(this, "相册备份完成！", Toast.LENGTH_SHORT).show());
-            } catch (Exception e) {
-                mainHandler.post(() -> Toast.makeText(this, "备份失败", Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
@@ -202,33 +222,45 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "请先添加设备", Toast.LENGTH_SHORT).show();
             return;
         }
-        NasDevice d = devices.get(0);
-        new Thread(() -> {
-            try {
-                OkHttpClient client = new OkHttpClient();
-                Request req = new Request.Builder().url(d.getBaseUrl() + "/api/clipboard").header("Authorization", Credentials.basic(d.username, d.password)).build();
-                Response res = client.newCall(req).execute();
-                if (res.isSuccessful() && res.body() != null) {
-                    String txt = res.body().string();
-                    mainHandler.post(() -> {
-                        TextInputEditText et = new TextInputEditText(this);
-                        et.setText(txt);
-                        new MaterialAlertDialogBuilder(this)
-                            .setTitle("局域网剪贴板")
-                            .setView(et)
-                            .setPositiveButton("保存", (dialog, which) -> {
-                                new Thread(() -> {
-                                    try {
-                                        RequestBody body = new okhttp3.FormBody.Builder().add("content", et.getText().toString()).build();
-                                        Request post = new Request.Builder().url(d.getBaseUrl() + "/api/clipboard").post(body).header("Authorization", Credentials.basic(d.username, d.password)).build();
-                                        client.newCall(post).execute();
-                                        mainHandler.post(() -> Toast.makeText(this, "已同步", Toast.LENGTH_SHORT).show());
-                                    } catch (Exception e) {}
-                                }).start();
-                            }).setNegativeButton("取消", null).show();
-                    });
-                }
-            } catch (Exception e) {}
+        final NasDevice d = devices.get(0);
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    OkHttpClient client = new OkHttpClient();
+                    Request req = new Request.Builder().url(d.getBaseUrl() + "/api/clipboard").header("Authorization", Credentials.basic(d.username, d.password)).build();
+                    Response res = client.newCall(req).execute();
+                    if (res.isSuccessful() && res.body() != null) {
+                        final String txt = res.body().string();
+                        mainHandler.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                TextInputEditText et = new TextInputEditText(MainActivity.this);
+                                et.setText(txt);
+                                new MaterialAlertDialogBuilder(MainActivity.this)
+                                    .setTitle("局域网剪贴板")
+                                    .setView(et)
+                                    .setPositiveButton("保存", (dialog, which) -> {
+                                        new Thread(new Runnable() {
+                                            @Override
+                                            public void run() {
+                                                try {
+                                                    OkHttpClient client = new OkHttpClient();
+                                                    RequestBody body = new okhttp3.FormBody.Builder().add("content", et.getText().toString()).build();
+                                                    Request post = new Request.Builder().url(d.getBaseUrl() + "/api/clipboard").post(body).header("Authorization", Credentials.basic(d.username, d.password)).build();
+                                                    client.newCall(post).execute();
+                                                    mainHandler.post(new Runnable() {
+                                                        @Override public void run() { Toast.makeText(MainActivity.this, "已同步", Toast.LENGTH_SHORT).show(); }
+                                                    });
+                                                } catch (Exception e) {}
+                                            }
+                                        }).start();
+                                    }).setNegativeButton("取消", null).show();
+                            }
+                        });
+                    }
+                } catch (Exception e) {}
+            }
         }).start();
     }
 
@@ -241,21 +273,24 @@ public class MainActivity extends AppCompatActivity {
             holder.tvName.setText(d.name);
             holder.tvIp.setText(d.url);
             holder.tvIcon.setText("📱");
-            holder.itemView.setOnClickListener(v -> {
-                new MaterialAlertDialogBuilder(MainActivity.this)
-                    .setTitle(d.name)
-                    .setItems(new String[]{"进入文件管理", "一键备份相册"}, (dialog, which) -> {
-                        if (which == 0) {
-                            Intent intent = new Intent(MainActivity.this, FileListActivity.class);
-                            intent.putExtra("url", d.getBaseUrl());
-                            intent.putExtra("isAndroidNas", true);
-                            intent.putExtra("username", d.username);
-                            intent.putExtra("password", d.password);
-                            startActivity(intent);
-                        } else {
-                            startPhotoBackup(d);
-                        }
-                    }).show();
+            holder.itemView.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    new MaterialAlertDialogBuilder(MainActivity.this)
+                        .setTitle(d.name)
+                        .setItems(new String[]{"进入文件管理", "一键备份相册"}, (dialog, which) -> {
+                            if (which == 0) {
+                                Intent intent = new Intent(MainActivity.this, FileListActivity.class);
+                                intent.putExtra("url", d.getBaseUrl());
+                                intent.putExtra("isAndroidNas", true);
+                                intent.putExtra("username", d.username);
+                                intent.putExtra("password", d.password);
+                                startActivity(intent);
+                            } else {
+                                startPhotoBackup(d);
+                            }
+                        }).show();
+                }
             });
         }
         @Override public int getItemCount() { return devices.size(); }
