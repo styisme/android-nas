@@ -1,25 +1,29 @@
 package com.androidnas.client;
 
 public class NasDevice {
+    public static final int TYPE_ANDROID = 1;
+    public static final int TYPE_WEBDAV = 2;
+    public static final int TYPE_FTP = 3;
+    public static final int TYPE_SMB = 4;
+
     public String name;
     public String url;
-    public boolean isAndroidNas;
+    public int type;
     public String username;
     public String password;
 
-    public NasDevice(String name, String url, boolean isAndroidNas, String username, String password) {
+    public NasDevice(String name, String url, int type, String username, String password) {
         this.name = name;
         this.url = url;
-        this.isAndroidNas = isAndroidNas;
+        this.type = type;
         this.username = username;
         this.password = password;
     }
 
-    // 补齐由于重构丢失的 getBaseUrl 方法
     public String getBaseUrl() {
         if (url == null) return "";
         String base = url.trim();
-        if (!base.startsWith("http://") && !base.startsWith("https://")) {
+        if (type != TYPE_SMB && !base.startsWith("http://") && !base.startsWith("https://")) {
             base = "http://" + base;
         }
         if (base.endsWith("/")) {

@@ -62,7 +62,7 @@ public class MainActivity extends AppCompatActivity {
 
     private ActivityResultLauncher<ScanOptions> barcodeLauncher = registerForActivityResult(new ScanContract(), result -> {
         if (result.getContents() != null) {
-            devices.add(new NasDevice("扫码设备", result.getContents(), true, "admin", "admin"));
+            devices.add(new NasDevice("扫码设备", result.getContents(), NasDevice.TYPE_ANDROID, "admin", "admin"));
             saveDevices();
             adapter.notifyDataSetChanged();
         }
@@ -115,6 +115,11 @@ public class MainActivity extends AppCompatActivity {
         String json = sp.getString("devices", "");
         if (!json.isEmpty()) {
             devices = gson.fromJson(json, new TypeToken<List<NasDevice>>(){}.getType());
+            if (devices != null) {
+                for (NasDevice d : devices) {
+                    if (d.type == 0) d.type = d.url.contains("8080") ? NasDevice.TYPE_ANDROID : NasDevice.TYPE_WEBDAV;
+                }
+            }
         }
         adapter.notifyDataSetChanged();
     }
@@ -125,7 +130,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void autoScan() {
-        Toast.makeText(this, "正在扫描局域网设备...", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "正在扫描局域网...", Toast.LENGTH_SHORT).show();
         try {
             android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             int ipAddress = wm.getConnectionInfo().getIpAddress();
@@ -144,15 +149,14 @@ public class MainActivity extends AppCompatActivity {
                                     int scanPort = getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("scan_port", 8080);
                                     java.net.URL url = new java.net.URL("http://" + targetIp + ":" + scanPort + "/api/list?path=/");
                                     java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-                                    int timeout = getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("scan_timeout", 500);
-                                    conn.setConnectTimeout(timeout);
-                                    conn.setReadTimeout(timeout);
+                                    conn.setConnectTimeout(500);
+                                    conn.setReadTimeout(500);
                                     if (conn.getResponseCode() == 200 || conn.getResponseCode() == 401) {
                                         runOnUiThread(new Runnable() {
                                             @Override
                                             public void run() {
                                                 for (NasDevice d : devices) if (d.url.contains(targetIp)) return;
-                                                devices.add(new NasDevice("Android NAS (" + targetIp + ")", "http://" + targetIp + ":" + scanPort, true, "admin", "admin"));
+                                                devices.add(new NasDevice("Android NAS (" + targetIp + ")", "http://" + targetIp + ":" + scanPort, NasDevice.TYPE_ANDROID, "admin", "admin"));
                                                 saveDevices();
                                                 adapter.notifyDataSetChanged();
                                             }
@@ -171,8 +175,9 @@ public class MainActivity extends AppCompatActivity {
     private void showAddDeviceDialog() {
         new MaterialAlertDialogBuilder(this)
             .setTitle("添加设备")
-            .setItems(new String[]{"手动输入 IP", "扫描二维码"}, (dialog, which) -> {
+            .setItems(new String[]{"手动输入", "扫描局域网 NAS", "扫描二维码"}, (dialog, which) -> {
                 if (which == 0) showManualDialog();
+                else if (which == 1) autoScan();
                 else {
                     ScanOptions options = new ScanOptions();
                     options.setDesiredBarcodeFormats(ScanOptions.QR_CODE);
@@ -206,14 +211,26 @@ public class MainActivity extends AppCompatActivity {
 
         RadioGroup rgType = new RadioGroup(this);
         RadioButton rbAndroid = new RadioButton(this);
-        rbAndroid.setText("Android NAS (原生接口)");
+        rbAndroid.setText("自家 NAS (原生接口)");
         rbAndroid.setId(View.generateViewId());
         rbAndroid.setChecked(true);
+        
         RadioButton rbWebDav = new RadioButton(this);
-        rbWebDav.setText("外部 NAS (WebDAV 协议)");
+        rbWebDav.setText("WebDAV 协议");
         rbWebDav.setId(View.generateViewId());
+        
+        RadioButton rbFtp = new RadioButton(this);
+        rbFtp.setText("FTP 协议");
+        rbFtp.setId(View.generateViewId());
+        
+        RadioButton rbSmb = new RadioButton(this);
+        rbSmb.setText("SMB (Windows 共享)");
+        rbSmb.setId(View.generateViewId());
+        
         rgType.addView(rbAndroid); 
         rgType.addView(rbWebDav);
+        rgType.addView(rbFtp);
+        rgType.addView(rbSmb);
         layout.addView(rgType, params);
 
         TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
@@ -241,11 +258,13 @@ public class MainActivity extends AppCompatActivity {
                     Toast.makeText(MainActivity.this, "名称和地址不能为空", Toast.LENGTH_SHORT).show();
                     return;
                 }
-                if (!url.startsWith("http")) url = "http://" + url;
                 
-                boolean isAndroid = rgType.getCheckedRadioButtonId() == rbAndroid.getId();
+                int type = NasDevice.TYPE_ANDROID;
+                if (rgType.getCheckedRadioButtonId() == rbWebDav.getId()) type = NasDevice.TYPE_WEBDAV;
+                else if (rgType.getCheckedRadioButtonId() == rbFtp.getId()) type = NasDevice.TYPE_FTP;
+                else if (rgType.getCheckedRadioButtonId() == rbSmb.getId()) type = NasDevice.TYPE_SMB;
                 
-                devices.add(new NasDevice(name, url, isAndroid, user, pass));
+                devices.add(new NasDevice(name, url, type, user, pass));
                 saveDevices();
                 adapter.notifyDataSetChanged();
             }).setNegativeButton("取消", null).show();
@@ -301,7 +320,6 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        menu.add(0, 0, 0, "扫描局域网");
         menu.add(0, 1, 0, "局域网剪贴板");
         menu.add(0, 2, 0, "设置");
         menu.add(0, 3, 0, "关于");
@@ -310,16 +328,13 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == 0) {
-            autoScan();
-            return true;
-        } else if (item.getItemId() == 1) {
+        if (item.getItemId() == 1) {
             showClipboardDialog();
             return true;
         } else if (item.getItemId() == 3) {
             new MaterialAlertDialogBuilder(this)
                 .setTitle("关于 NAS 客户端")
-                .setMessage("版本: v3.0.0 旗舰版\n\n支持多设备管理、WebDAV、相册备份与剪贴板同步。\n\n⚠️ 本项目大量代码由 AI 辅助生成。")
+                .setMessage("版本: v3.1.0 旗舰版\n\n支持多设备管理、WebDAV、FTP、SMB、相册备份。")
                 .setPositiveButton("确定", null)
                 .show();
             return true;
@@ -336,6 +351,10 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         final NasDevice d = devices.get(0);
+        if (d.type != NasDevice.TYPE_ANDROID) {
+            Toast.makeText(this, "仅支持自家 NAS 的剪贴板", Toast.LENGTH_SHORT).show();
+            return;
+        }
         new Thread(new Runnable() {
             @Override
             public void run() {
@@ -385,29 +404,40 @@ public class MainActivity extends AppCompatActivity {
             final NasDevice d = devices.get(position);
             holder.tvName.setText(d.name);
             holder.tvIp.setText(d.url);
-            holder.tvIcon.setText(d.isAndroidNas ? "📱" : "🖥️");
+            if (d.type == NasDevice.TYPE_ANDROID) holder.tvIcon.setText("📱");
+            else if (d.type == NasDevice.TYPE_WEBDAV) holder.tvIcon.setText("🖥️");
+            else if (d.type == NasDevice.TYPE_FTP) holder.tvIcon.setText("📂");
+            else if (d.type == NasDevice.TYPE_SMB) holder.tvIcon.setText("🪟");
             
             holder.itemView.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    new MaterialAlertDialogBuilder(MainActivity.this)
-                        .setTitle(d.name)
-                        .setItems(new String[]{"进入文件管理", "一键备份相册"}, (dialog, which) -> {
-                            if (which == 0) {
-                                Intent intent = new Intent(MainActivity.this, FileListActivity.class);
-                                intent.putExtra("url", d.getBaseUrl());
-                                intent.putExtra("isAndroidNas", d.isAndroidNas);
-                                intent.putExtra("username", d.username);
-                                intent.putExtra("password", d.password);
-                                startActivity(intent);
-                            } else {
-                                startPhotoBackup(d);
-                            }
-                        }).show();
+                    if (d.type == NasDevice.TYPE_ANDROID) {
+                        new MaterialAlertDialogBuilder(MainActivity.this)
+                            .setTitle(d.name)
+                            .setItems(new String[]{"进入文件管理", "一键备份相册"}, (dialog, which) -> {
+                                if (which == 0) {
+                                    Intent intent = new Intent(MainActivity.this, FileListActivity.class);
+                                    intent.putExtra("url", d.getBaseUrl());
+                                    intent.putExtra("type", d.type);
+                                    intent.putExtra("username", d.username);
+                                    intent.putExtra("password", d.password);
+                                    startActivity(intent);
+                                } else {
+                                    startPhotoBackup(d);
+                                }
+                            }).show();
+                    } else {
+                        Intent intent = new Intent(MainActivity.this, FileListActivity.class);
+                        intent.putExtra("url", d.getBaseUrl());
+                        intent.putExtra("type", d.type);
+                        intent.putExtra("username", d.username);
+                        intent.putExtra("password", d.password);
+                        startActivity(intent);
+                    }
                 }
             });
 
-            // 长按删除设备
             holder.itemView.setOnLongClickListener(new View.OnLongClickListener() {
                 @Override
                 public boolean onLongClick(View v) {
@@ -449,7 +479,7 @@ public class MainActivity extends AppCompatActivity {
         layout.addView(tilName);
 
         TextInputLayout tilUrl = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilUrl.setHint("地址 (如 192.168.1.100:8080)");
+        tilUrl.setHint("地址");
         final TextInputEditText etUrl = new TextInputEditText(this);
         etUrl.setText(d.url);
         tilUrl.addView(etUrl);
@@ -458,14 +488,14 @@ public class MainActivity extends AppCompatActivity {
         layout.addView(tilUrl, params);
 
         TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilUser.setHint("服务端账号 (默认 admin)");
+        tilUser.setHint("账号");
         final TextInputEditText etUser = new TextInputEditText(this);
         etUser.setText(d.username);
         tilUser.addView(etUser);
         layout.addView(tilUser, params);
 
         TextInputLayout tilPass = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilPass.setHint("服务端密码 (默认 admin)");
+        tilPass.setHint("密码");
         final TextInputEditText etPass = new TextInputEditText(this);
         etPass.setText(d.password);
         tilPass.addView(etPass);
@@ -480,9 +510,8 @@ public class MainActivity extends AppCompatActivity {
                 String user = etUser.getText() != null ? etUser.getText().toString() : "admin";
                 String pass = etPass.getText() != null ? etPass.getText().toString() : "admin";
                 if (name.isEmpty() || url.isEmpty()) return;
-                if (!url.startsWith("http")) url = "http://" + url;
 
-                devices.set(position, new NasDevice(name, url, d.isAndroidNas, user, pass));
+                devices.set(position, new NasDevice(name, url, d.type, user, pass));
                 saveDevices();
                 adapter.notifyDataSetChanged();
             }).setNegativeButton("取消", null).show();

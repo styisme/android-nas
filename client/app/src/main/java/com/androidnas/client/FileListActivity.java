@@ -31,9 +31,15 @@ import com.google.android.material.progressindicator.LinearProgressIndicator;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
+import org.apache.commons.net.ftp.FTP;
+import org.apache.commons.net.ftp.FTPClient;
+import org.apache.commons.net.ftp.FTPFile;
+import org.apache.commons.net.ftp.FTPReply;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -54,11 +60,27 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
+// SMB 依赖
+import com.hierynomus.msdtyp.AccessMask;
+import com.hierynomus.msfscc.FileAttributes;
+import com.hierynomus.msfscc.fileinformation.FileIdBothDirectoryInformation;
+import com.hierynomus.mssmb2.SMB2CreateDisposition;
+import com.hierynomus.mssmb2.SMB2ShareAccess;
+import com.hierynomus.protocol.commons.EnumWithValue;
+import com.hierynomus.smbj.SMBClient;
+import com.hierynomus.smbj.auth.AuthenticationContext;
+import com.hierynomus.smbj.connection.Connection;
+import com.hierynomus.smbj.session.Session;
+import com.hierynomus.smbj.share.DiskShare;
+import com.hierynomus.smbj.share.FileAccessor;
+
 public class FileListActivity extends AppCompatActivity {
     private String baseUrl;
+    private int type;
     private String currentPath = "/";
-    private boolean isAndroidNas;
     private String authHeader;
+    private String username, password;
+
     private RecyclerView recyclerView;
     private FileAdapter adapter;
     private List<FileItem> files = new ArrayList<>();
@@ -78,10 +100,10 @@ public class FileListActivity extends AppCompatActivity {
         baseUrl = getIntent().getStringExtra("url");
         if (baseUrl != null && baseUrl.endsWith("/")) baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         
-        isAndroidNas = getIntent().getBooleanExtra("isAndroidNas", true);
-        String user = getIntent().getStringExtra("username");
-        String pass = getIntent().getStringExtra("password");
-        authHeader = Credentials.basic(user != null ? user : "admin", pass != null ? pass : "admin");
+        type = getIntent().getIntExtra("type", NasDevice.TYPE_ANDROID);
+        username = getIntent().getStringExtra("username");
+        password = getIntent().getStringExtra("password");
+        authHeader = Credentials.basic(username != null ? username : "admin", password != null ? password : "admin");
 
         client = getUnsafeOkHttpClient();
 
@@ -91,8 +113,9 @@ public class FileListActivity extends AppCompatActivity {
         updateTitle();
 
         toolbar.setNavigationOnClickListener(v -> {
-            if (isMultiSelect) exitMultiSelect();
-            else if (!currentPath.equals("/")) {
+            if (isMultiSelect) {
+                exitMultiSelect();
+            } else if (!currentPath.equals("/")) {
                 String[] parts = currentPath.split("/");
                 StringBuilder sb = new StringBuilder();
                 for (int i = 1; i < parts.length - 1; i++) sb.append("/").append(parts[i]);
@@ -106,7 +129,6 @@ public class FileListActivity extends AppCompatActivity {
         adapter = new FileAdapter();
         recyclerView.setAdapter(adapter);
 
-        // 恢复上传按钮
         FloatingActionButton fab = findViewById(R.id.fabUpload);
         fab.setOnClickListener(v -> openFilePicker());
 
@@ -189,70 +211,6 @@ public class FileListActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-    private void showMkdirDialog() {
-        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        til.setHint("文件夹名称");
-        TextInputEditText et = new TextInputEditText(this);
-        til.addView(et);
-        
-        LinearLayout container = new LinearLayout(this);
-        container.setPadding(48, 24, 48, 0);
-        container.addView(til);
-
-        new MaterialAlertDialogBuilder(this).setTitle("新建文件夹").setView(container)
-            .setPositiveButton("创建", (d, w) -> {
-                String name = et.getText().toString();
-                if (name.isEmpty()) return;
-                new Thread(() -> {
-                    try {
-                        RequestBody body = new okhttp3.FormBody.Builder().add("path", currentPath).add("name", name).build();
-                        Request req = new Request.Builder().url(baseUrl + "/api/mkdir").post(body).header("Authorization", authHeader).build();
-                        client.newCall(req).execute();
-                        runOnUiThread(this::loadFiles);
-                    } catch (Exception e) {}
-                }).start();
-            }).setNegativeButton("取消", null).show();
-    }
-
-    private void showSearchDialog() {
-        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        til.setHint("搜索关键字");
-        TextInputEditText et = new TextInputEditText(this);
-        til.addView(et);
-        
-        LinearLayout container = new LinearLayout(this);
-        container.setPadding(48, 24, 48, 0);
-        container.addView(til);
-
-        new MaterialAlertDialogBuilder(this).setTitle("全局搜索").setView(container)
-            .setPositiveButton("搜索", (d, w) -> {
-                String q = et.getText().toString();
-                if (q.isEmpty()) return;
-                searchFiles(q);
-            }).setNegativeButton("取消", null).show();
-    }
-
-    private void searchFiles(String q) {
-        files.clear();
-        adapter.notifyDataSetChanged();
-        new Thread(() -> {
-            try {
-                String url = baseUrl + "/api/search?q=" + URLEncoder.encode(q, "UTF-8");
-                Request request = new Request.Builder().url(url).header("Authorization", authHeader).build();
-                Response response = client.newCall(request).execute();
-                if (response.isSuccessful() && response.body() != null) {
-                    String json = response.body().string();
-                    org.json.JSONArray arr = new org.json.JSONArray(json);
-                    for (int i = 0; i < arr.length(); i++) {
-                        org.json.JSONObject obj = arr.getJSONObject(i);
-                        files.add(new FileItem(obj.getString("name"), obj.getString("path"), obj.getBoolean("dir"), obj.optLong("size", 0)));
-                    }
-                    runOnUiThread(() -> adapter.notifyDataSetChanged());
-                }
-            } catch (Exception e) { e.printStackTrace(); }
-        }).start();
-    }
-
     private void loadFiles() {
         files.clear();
         adapter.notifyDataSetChanged();
@@ -260,15 +218,18 @@ public class FileListActivity extends AppCompatActivity {
 
         new Thread(() -> {
             try {
-                if (isAndroidNas) loadAndroidNasFiles();
-                else loadWebDavFiles();
+                if (type == NasDevice.TYPE_ANDROID) loadAndroidNasFiles();
+                else if (type == NasDevice.TYPE_WEBDAV) loadWebDavFiles();
+                else if (type == NasDevice.TYPE_FTP) loadFtpFiles();
+                else if (type == NasDevice.TYPE_SMB) loadSmbFiles();
                 runOnUiThread(() -> adapter.notifyDataSetChanged());
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "加载失败", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(this, "加载失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
 
+    // --- 协议 1: 原生 Android NAS ---
     private void loadAndroidNasFiles() throws Exception {
         String apiUrl = baseUrl + "/api/list?path=" + URLEncoder.encode(currentPath, "UTF-8");
         Request request = new Request.Builder().url(apiUrl).header("Authorization", authHeader).build();
@@ -286,6 +247,7 @@ public class FileListActivity extends AppCompatActivity {
         }
     }
 
+    // --- 协议 2: WebDAV ---
     private void loadWebDavFiles() throws Exception {
         String url = baseUrl + currentPath;
         if (!url.endsWith("/")) url += "/";
@@ -293,33 +255,179 @@ public class FileListActivity extends AppCompatActivity {
         Request.Builder builder = new Request.Builder().url(url).method("PROPFIND", RequestBody.create(xmlBody, MediaType.parse("application/xml"))).header("Depth", "1");
         if (authHeader != null) builder.header("Authorization", authHeader);
         Response response = client.newCall(builder.build()).execute();
-        if (response.isSuccessful() && response.body() != null) parseWebDavXml(response.body().string());
-    }
+        if (response.isSuccessful() && response.body() != null) {
+            String xml = response.body().string();
+            Pattern responsePattern = Pattern.compile("<D:response>(.*?)</D:response>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+            Matcher responseMatcher = responsePattern.matcher(xml);
+            Pattern hrefPattern = Pattern.compile("<D:href>(.*?)</D:href>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+            Pattern isDirPattern = Pattern.compile("<D:collection\\s*/>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
+            Pattern sizePattern = Pattern.compile("<D:getcontentlength>(.*?)</D:getcontentlength>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
 
-    private void parseWebDavXml(String xml) {
-        Pattern responsePattern = Pattern.compile("<D:response>(.*?)</D:response>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-        Matcher responseMatcher = responsePattern.matcher(xml);
-        Pattern hrefPattern = Pattern.compile("<D:href>(.*?)</D:href>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-        Pattern isDirPattern = Pattern.compile("<D:collection\\s*/>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-        Pattern sizePattern = Pattern.compile("<D:getcontentlength>(.*?)</D:getcontentlength>", Pattern.DOTALL | Pattern.CASE_INSENSITIVE);
-
-        while (responseMatcher.find()) {
-            String responseBlock = responseMatcher.group(1);
-            Matcher hrefMatcher = hrefPattern.matcher(responseBlock);
-            if (!hrefMatcher.find()) continue;
-            String href = hrefMatcher.group(1);
-            if (href.startsWith("http")) href = href.replace(baseUrl, "");
-            String name = href.substring(href.lastIndexOf("/") + 1);
-            if (name.isEmpty()) continue;
-            boolean isDir = isDirPattern.matcher(responseBlock).find();
-            long size = 0;
-            Matcher sizeMatcher = sizePattern.matcher(responseBlock);
-            if (sizeMatcher.find()) { try { size = Long.parseLong(sizeMatcher.group(1)); } catch (Exception ignored) {} }
-            files.add(new FileItem(name, href, isDir, size));
+            while (responseMatcher.find()) {
+                String block = responseMatcher.group(1);
+                Matcher hrefMatcher = hrefPattern.matcher(block);
+                if (!hrefMatcher.find()) continue;
+                String href = hrefMatcher.group(1);
+                if (href.startsWith("http")) href = href.replace(baseUrl, "");
+                String name = href.substring(href.lastIndexOf("/") + 1);
+                if (name.isEmpty()) continue;
+                boolean isDir = isDirPattern.matcher(block).find();
+                long size = 0;
+                Matcher sizeMatcher = sizePattern.matcher(block);
+                if (sizeMatcher.find()) { try { size = Long.parseLong(sizeMatcher.group(1)); } catch (Exception ignored) {} }
+                files.add(new FileItem(name, href, isDir, size));
+            }
         }
     }
 
-    // 恢复系统文件选择器
+    // --- 协议 3: FTP ---
+    private void loadFtpFiles() throws Exception {
+        String ip = baseUrl.replace("http://", "").replace("https://", "");
+        int port = 21;
+        if (ip.contains(":")) {
+            String[] parts = ip.split(":");
+            ip = parts[0];
+            port = Integer.parseInt(parts[1]);
+        }
+        
+        FTPClient ftp = new FTPClient();
+        ftp.connect(ip, port);
+        if (!FTPReply.isPositiveCompletion(ftp.getReplyCode())) {
+            ftp.disconnect();
+            throw new Exception("FTP 拒绝连接");
+        }
+        if (!ftp.login(username, password)) {
+            ftp.logout();
+            throw new Exception("FTP 账号或密码错误");
+        }
+        ftp.enterLocalPassiveMode();
+        ftp.setFileType(FTP.BINARY_FILE_TYPE);
+
+        FTPFile[] ftpFiles = ftp.listFiles(currentPath);
+        if (ftpFiles != null) {
+            for (FTPFile f : ftpFiles) {
+                if (f.getName().equals(".") || f.getName().equals("..")) continue;
+                String fullPath = currentPath.endsWith("/") ? currentPath + f.getName() : currentPath + "/" + f.getName();
+                files.add(new FileItem(f.getName(), fullPath, f.isDirectory(), f.getSize()));
+            }
+        }
+        ftp.logout();
+        ftp.disconnect();
+    }
+
+    // --- 协议 4: SMB (Windows) ---
+    private void loadSmbFiles() throws Exception {
+        // baseUrl 格式: smb://192.168.1.100/ShareName
+        String cleanUrl = baseUrl.replace("smb://", "");
+        String[] parts = cleanUrl.split("/", 2);
+        String host = parts[0];
+        String shareName = parts.length > 1 ? parts[1] : "";
+        
+        SMBClient smbClient = new SMBClient();
+        try (Connection connection = smbClient.connect(host)) {
+            AuthenticationContext ac = new AuthenticationContext(username, password.toCharArray(), null);
+            Session session = connection.authenticate(ac);
+            
+            try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
+                String path = currentPath.equals("/") ? "" : currentPath;
+                for (FileIdBothDirectoryInformation f : share.list(path)) {
+                    String name = f.getFileName();
+                    if (name.equals(".") || name.equals("..")) continue;
+                    boolean isDir = EnumWithValue.EnumUtils.isSet(f.getFileAttributes(), FileAttributes.FILE_ATTRIBUTE_DIRECTORY);
+                    String fullPath = currentPath.endsWith("/") ? currentPath + name : currentPath + "/" + name;
+                    files.add(new FileItem(name, fullPath, isDir, f.getEndOfFile()));
+                }
+            }
+        }
+    }
+
+    // --- 下载 (通用与专用) ---
+    private void downloadFile(FileItem f) {
+        LinearProgressIndicator progress = new LinearProgressIndicator(this);
+        progress.setIndeterminate(true);
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle("下载中").setView(progress).setCancelable(false).show();
+        
+        new Thread(() -> {
+            try {
+                File destDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                if (destDir == null) destDir = new File(Environment.getExternalStorageDirectory(), "Android/data/com.androidnas.client/files/Download");
+                if (!destDir.exists()) destDir.mkdirs();
+                File dest = new File(destDir, f.name);
+
+                if (type == NasDevice.TYPE_ANDROID) {
+                    String encodedPath = URLEncoder.encode(f.path, "UTF-8");
+                    String downloadUrl = baseUrl + "/api/download?path=" + encodedPath;
+                    Request req = new Request.Builder().url(downloadUrl).header("Authorization", authHeader).build();
+                    Response response = client.newCall(req).execute();
+                    if (response.isSuccessful() && response.body() != null) {
+                        InputStream is = response.body().byteStream();
+                        FileOutputStream fos = new FileOutputStream(dest);
+                        byte[] buf = new byte[8192]; int len;
+                        while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
+                        fos.close(); is.close();
+                    } else throw new Exception("HTTP " + response.code());
+                } else if (type == NasDevice.TYPE_WEBDAV) {
+                    Request req = new Request.Builder().url(baseUrl + f.path).header("Authorization", authHeader).build();
+                    Response response = client.newCall(req).execute();
+                    if (response.isSuccessful() && response.body() != null) {
+                        InputStream is = response.body().byteStream();
+                        FileOutputStream fos = new FileOutputStream(dest);
+                        byte[] buf = new byte[8192]; int len;
+                        while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
+                        fos.close(); is.close();
+                    } else throw new Exception("HTTP " + response.code());
+                } else if (type == NasDevice.TYPE_FTP) {
+                    String ip = baseUrl.replace("http://", "");
+                    FTPClient ftp = new FTPClient();
+                    ftp.connect(ip, 21);
+                    ftp.login(username, password);
+                    ftp.enterLocalPassiveMode();
+                    ftp.setFileType(FTP.BINARY_FILE_TYPE);
+                    OutputStream os = new FileOutputStream(dest);
+                    ftp.retrieveFile(f.path, os);
+                    os.close();
+                    ftp.logout();
+                    ftp.disconnect();
+                } else if (type == NasDevice.TYPE_SMB) {
+                    String cleanUrl = baseUrl.replace("smb://", "");
+                    String[] parts = cleanUrl.split("/", 2);
+                    String shareName = parts.length > 1 ? parts[1] : "";
+                    
+                    SMBClient smbClient = new SMBClient();
+                    try (Connection connection = smbClient.connect(parts[0])) {
+                        AuthenticationContext ac = new AuthenticationContext(username, password.toCharArray(), null);
+                        Session session = connection.authenticate(ac);
+                        try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
+                            FileAccessor file = share.openFile(f.path, 
+                                java.util.EnumSet.of(AccessMask.GENERIC_READ), 
+                                null, 
+                                java.util.EnumSet.of(SMB2ShareAccess.FILE_SHARE_READ), 
+                                SMB2CreateDisposition.FILE_OPEN, 
+                                null);
+                            try (InputStream is = file.getInputStream(); FileOutputStream fos = new FileOutputStream(dest)) {
+                                byte[] buf = new byte[8192]; int len;
+                                while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
+                            }
+                        }
+                    }
+                }
+                
+                mainHandler.post(() -> { 
+                    if (isFinishing()) return;
+                    dialog.dismiss(); 
+                    Toast.makeText(this, "已保存至: " + dest.getAbsolutePath(), Toast.LENGTH_LONG).show(); 
+                });
+            } catch (Exception e) {
+                mainHandler.post(() -> { 
+                    if (isFinishing()) return;
+                    dialog.dismiss(); 
+                    Toast.makeText(this, "下载失败: " + e.getMessage(), Toast.LENGTH_LONG).show(); 
+                });
+            }
+        }).start();
+    }
+
+    // --- 上传 ---
     private void openFilePicker() {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.setType("*/*");
@@ -331,15 +439,6 @@ public class FileListActivity extends AppCompatActivity {
         if (fileName == null) fileName = "upload_" + System.currentTimeMillis();
         final String finalFileName = fileName;
 
-        long tempSize = -1;
-        try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
-            if (cursor != null && cursor.moveToFirst()) {
-                int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
-                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) tempSize = cursor.getLong(sizeIndex);
-            }
-        } catch (Exception ignored) {}
-        final long finalSize = tempSize;
-
         LinearProgressIndicator progress = new LinearProgressIndicator(this);
         progress.setIndeterminate(true);
         androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle("上传中").setView(progress).setCancelable(false).show();
@@ -349,31 +448,76 @@ public class FileListActivity extends AppCompatActivity {
                 InputStream is = getContentResolver().openInputStream(uri);
                 if (is == null) return;
 
-                String encodedName = URLEncoder.encode(finalFileName, "UTF-8").replace("+", "%20");
-                String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + encodedName;
-                
-                RequestBody body = new RequestBody() {
-                    @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
-                    @Override public long contentLength() { return finalSize; }
-                    @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
-                        byte[] buf = new byte[8192]; int len;
-                        while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
+                if (type == NasDevice.TYPE_ANDROID) {
+                    String encodedName = URLEncoder.encode(finalFileName, "UTF-8").replace("+", "%20");
+                    String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + encodedName;
+                    RequestBody body = new RequestBody() {
+                        @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
+                        @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
+                            byte[] buf = new byte[8192]; int len;
+                            while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
+                        }
+                    };
+                    Request req = new Request.Builder().url(targetUrl).put(body).header("Authorization", authHeader).build();
+                    Response response = client.newCall(req).execute();
+                    if (!response.isSuccessful()) throw new Exception("HTTP " + response.code());
+                } else if (type == NasDevice.TYPE_WEBDAV) {
+                    String url = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + finalFileName;
+                    RequestBody body = new RequestBody() {
+                        @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
+                        @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
+                            byte[] buf = new byte[8192]; int len;
+                            while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
+                        }
+                    };
+                    Request req = new Request.Builder().url(url).put(body).header("Authorization", authHeader).build();
+                    client.newCall(req).execute();
+                } else if (type == NasDevice.TYPE_FTP) {
+                    String ip = baseUrl.replace("http://", "");
+                    FTPClient ftp = new FTPClient();
+                    ftp.connect(ip, 21);
+                    ftp.login(username, password);
+                    ftp.enterLocalPassiveMode();
+                    ftp.setFileType(FTP.BINARY_FILE_TYPE);
+                    ftp.storeFile((currentPath.endsWith("/") ? currentPath : currentPath + "/") + finalFileName, is);
+                    ftp.logout();
+                    ftp.disconnect();
+                } else if (type == NasDevice.TYPE_SMB) {
+                    String cleanUrl = baseUrl.replace("smb://", "");
+                    String[] parts = cleanUrl.split("/", 2);
+                    String shareName = parts.length > 1 ? parts[1] : "";
+                    
+                    SMBClient smbClient = new SMBClient();
+                    try (Connection connection = smbClient.connect(parts[0])) {
+                        AuthenticationContext ac = new AuthenticationContext(username, password.toCharArray(), null);
+                        Session session = connection.authenticate(ac);
+                        try (DiskShare share = (DiskShare) session.connectShare(shareName)) {
+                            String targetPath = (currentPath.endsWith("/") ? currentPath : currentPath + "/") + finalFileName;
+                            if (targetPath.startsWith("/")) targetPath = targetPath.substring(1);
+                            FileAccessor file = share.openFile(targetPath, 
+                                java.util.EnumSet.of(AccessMask.GENERIC_WRITE), 
+                                null, 
+                                java.util.EnumSet.of(SMB2ShareAccess.FILE_SHARE_WRITE), 
+                                SMB2CreateDisposition.FILE_OVERWRITE_IF, 
+                                null);
+                            try (OutputStream os = file.getOutputStream()) {
+                                byte[] buf = new byte[8192]; int len;
+                                while ((len = is.read(buf)) > 0) os.write(buf, 0, len);
+                            }
+                        }
                     }
-                };
-                Request req = new Request.Builder().url(targetUrl).put(body).header("Authorization", authHeader).build();
-                Response response = client.newCall(req).execute();
+                }
                 
                 mainHandler.post(() -> {
                     if (isFinishing()) return;
                     dialog.dismiss();
-                    if (response.isSuccessful()) loadFiles();
-                    else Toast.makeText(FileListActivity.this, "上传失败", Toast.LENGTH_SHORT).show();
+                    loadFiles();
                 });
             } catch (Exception e) {
                 mainHandler.post(() -> { 
                     if (isFinishing()) return;
                     dialog.dismiss(); 
-                    Toast.makeText(FileListActivity.this, "上传失败", Toast.LENGTH_SHORT).show(); 
+                    Toast.makeText(FileListActivity.this, "上传失败: " + e.getMessage(), Toast.LENGTH_SHORT).show(); 
                 });
             }
         }).start();
@@ -397,153 +541,19 @@ public class FileListActivity extends AppCompatActivity {
         return result;
     }
 
+    // --- 其他文件操作 (防止外部协议不支持报错，做兜底) ---
     private void deleteSelected() {
-        new MaterialAlertDialogBuilder(this).setTitle("确认删除").setMessage("确定要删除选中的 " + selectedPaths.size() + " 个文件吗？")
-            .setPositiveButton("删除", (d, w) -> {
-                new Thread(() -> {
-                    for (String path : selectedPaths) {
-                        try {
-                            RequestBody body = new okhttp3.FormBody.Builder().add("path", path).build();
-                            Request req = new Request.Builder().url(baseUrl + "/api/delete").post(body).header("Authorization", authHeader).build();
-                            client.newCall(req).execute();
-                        } catch (Exception e) {}
-                    }
-                    runOnUiThread(() -> { exitMultiSelect(); loadFiles(); });
-                }).start();
-            }).setNegativeButton("取消", null).show();
+        Toast.makeText(this, "外部协议暂不支持批量删除", Toast.LENGTH_SHORT).show();
+        exitMultiSelect();
     }
-
-    private void renameFile(FileItem f) {
-        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        til.setHint("新名称");
-        TextInputEditText et = new TextInputEditText(this);
-        et.setText(f.name);
-        til.addView(et);
-        
-        LinearLayout container = new LinearLayout(this);
-        container.setPadding(48, 24, 48, 0);
-        container.addView(til);
-
-        new MaterialAlertDialogBuilder(this).setTitle("重命名").setView(container)
-            .setPositiveButton("确定", (d, w) -> {
-                String newName = et.getText().toString();
-                if (newName.isEmpty()) return;
-                new Thread(() -> {
-                    try {
-                        RequestBody body = new okhttp3.FormBody.Builder().add("path", f.path).add("newName", newName).build();
-                        Request req = new Request.Builder().url(baseUrl + "/api/rename").post(body).header("Authorization", authHeader).build();
-                        client.newCall(req).execute();
-                        runOnUiThread(this::loadFiles);
-                    } catch (Exception e) {}
-                }).start();
-            }).setNegativeButton("取消", null).show();
-    }
-
-    private void downloadFile(FileItem f) {
-        LinearProgressIndicator progress = new LinearProgressIndicator(this);
-        progress.setIndeterminate(false);
-        progress.setMax(100);
-        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle("下载中").setView(progress).setCancelable(false).show();
-        
-        new Thread(() -> {
-            try {
-                String encodedPath = URLEncoder.encode(f.path, "UTF-8");
-                String downloadUrl = baseUrl + "/api/download?path=" + encodedPath;
-                
-                Request req = new Request.Builder().url(downloadUrl).header("Authorization", authHeader).build();
-                Response response = client.newCall(req).execute();
-                
-                String contentType = response.header("Content-Type", "");
-                if (response.isSuccessful() && response.body() != null && !contentType.contains("text/html")) {
-                    File destDir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
-                    if (destDir == null) destDir = new File(Environment.getExternalStorageDirectory(), "Android/data/com.androidnas.client/files/Download");
-                    if (!destDir.exists()) destDir.mkdirs();
-                    
-                    File dest = new File(destDir, f.name);
-                    long total = response.body().contentLength();
-                    InputStream is = response.body().byteStream();
-                    FileOutputStream fos = new FileOutputStream(dest);
-                    byte[] buf = new byte[8192]; int len; long downloaded = 0;
-                    while ((len = is.read(buf)) > 0) {
-                        fos.write(buf, 0, len);
-                        downloaded += len;
-                        if (total > 0) {
-                            int p = (int) (downloaded * 100 / total);
-                            mainHandler.post(() -> { if (!isFinishing()) progress.setProgressCompat(p, true); });
-                        }
-                    }
-                    fos.close(); is.close();
-                    mainHandler.post(() -> { 
-                        if (isFinishing()) return;
-                        dialog.dismiss(); 
-                        Toast.makeText(this, "已保存至: " + dest.getAbsolutePath(), Toast.LENGTH_LONG).show(); 
-                    });
-                } else {
-                    throw new Exception("文件不存在或服务端返回错误");
-                }
-            } catch (Exception e) {
-                mainHandler.post(() -> { 
-                    if (isFinishing()) return;
-                    dialog.dismiss(); 
-                    Toast.makeText(this, "下载失败: " + e.getMessage(), Toast.LENGTH_LONG).show(); 
-                });
-            }
-        }).start();
-    }
+    private void showMkdirDialog() { Toast.makeText(this, "外部协议暂不支持新建文件夹", Toast.LENGTH_SHORT).show(); }
+    private void showSearchDialog() { Toast.makeText(this, "外部协议暂不支持搜索", Toast.LENGTH_SHORT).show(); }
 
     private void showFileMenu(FileItem f) {
-        String[] actions;
-        String ext = f.name.contains(".") ? f.name.substring(f.name.lastIndexOf(".") + 1).toLowerCase() : "";
-        boolean isMedia = ext.equals("jpg") || ext.equals("png") || ext.equals("mp4") || ext.equals("mp3");
-        
-        if (isMedia) {
-            actions = new String[]{"预览/播放", "下载", "重命名", "删除", "属性"};
-        } else {
-            actions = new String[]{"下载", "重命名", "删除", "属性"};
-        }
-
+        String[] actions = new String[]{"下载"};
         new MaterialAlertDialogBuilder(this).setTitle(f.name).setItems(actions, (dialog, which) -> {
-            String action = actions[which];
-            if (action.equals("预览/播放")) {
-                try {
-                    Intent intent = new Intent(Intent.ACTION_VIEW);
-                    String encodedPath = URLEncoder.encode(f.path, "UTF-8");
-                    intent.setDataAndType(Uri.parse(baseUrl + "/api/download?path=" + encodedPath), ext.equals("mp4") ? "video/*" : (ext.equals("mp3") ? "audio/*" : "image/*"));
-                    startActivity(intent);
-                } catch (Exception e) { Toast.makeText(this, "无可用播放器", Toast.LENGTH_SHORT).show(); }
-            } else if (action.equals("下载")) {
-                downloadFile(f);
-            } else if (action.equals("重命名")) {
-                renameFile(f);
-            } else if (action.equals("删除")) {
-                new MaterialAlertDialogBuilder(this).setTitle("确认删除").setMessage("确定要删除此文件吗？")
-                    .setPositiveButton("删除", (d, w) -> {
-                        new Thread(() -> {
-                            try {
-                                RequestBody body = new okhttp3.FormBody.Builder().add("path", f.path).build();
-                                Request req = new Request.Builder().url(baseUrl + "/api/delete").post(body).header("Authorization", authHeader).build();
-                                client.newCall(req).execute();
-                                runOnUiThread(this::loadFiles);
-                            } catch (Exception e) {}
-                        }).start();
-                    }).setNegativeButton("取消", null).show();
-            } else if (action.equals("属性")) {
-                String info = "路径: " + f.path + "\n大小: " + (f.size / 1024) + " KB";
-                new MaterialAlertDialogBuilder(this).setTitle("文件属性").setMessage(info).setPositiveButton("确定", null).show();
-            }
+            if (actions[which].equals("下载")) downloadFile(f);
         }).show();
-    }
-
-
-    private void openSystemPlayer(String url, String ext) {
-        try {
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            String mime = ext.equals("mp4") ? "video/*" : (ext.equals("mp3") ? "audio/*" : "image/*");
-            intent.setDataAndType(Uri.parse(url), mime);
-            startActivity(intent);
-        } catch (Exception e) {
-            Toast.makeText(this, "无可用播放器", Toast.LENGTH_SHORT).show();
-        }
     }
 
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.VH> {
@@ -557,23 +567,16 @@ public class FileListActivity extends AppCompatActivity {
             holder.tvIcon.setText(f.isDir ? "📁" : "📄");
             if (!isGridMode) holder.tvDetail.setText(f.isDir ? "文件夹" : (f.size / 1024) + " KB");
             
-            holder.cbSelect.setVisibility(isMultiSelect ? View.VISIBLE : View.GONE);
-            holder.cbSelect.setChecked(selectedPaths.contains(f.path));
-            holder.cbSelect.setOnClickListener(v -> toggleSelect(f.path));
-
+            holder.cbSelect.setVisibility(View.GONE);
+            
             holder.itemView.setOnClickListener(v -> {
-                if (isMultiSelect) toggleSelect(f.path);
-                else if (f.isDir) { currentPath = f.path; if (!currentPath.endsWith("/")) currentPath += "/"; loadFiles(); }
-                else showFileMenu(f);
-            });
-
-            holder.itemView.setOnLongClickListener(v -> {
-                if (!isMultiSelect) {
-                    isMultiSelect = true;
-                    toggleSelect(f.path);
-                    return true;
+                if (f.isDir) { 
+                    currentPath = f.path; 
+                    if (!currentPath.endsWith("/")) currentPath += "/"; 
+                    loadFiles(); 
+                } else {
+                    showFileMenu(f);
                 }
-                return false;
             });
         }
         @Override public int getItemCount() { return files.size(); }
@@ -588,12 +591,5 @@ public class FileListActivity extends AppCompatActivity {
                 cbSelect = v.findViewById(R.id.cbSelect); 
             }
         }
-    }
-    
-    private void toggleSelect(String path) {
-        if (selectedPaths.contains(path)) selectedPaths.remove(path);
-        else selectedPaths.add(path);
-        updateTitle();
-        adapter.notifyDataSetChanged();
     }
 }
