@@ -165,6 +165,7 @@ public class FileListActivity extends AppCompatActivity {
         if (id == 3) { showMkdirDialog(); return true; }
         if (id == 4) { showSearchDialog(); return true; }
         if (id == 5) {
+            if (isMultiSelect) exitMultiSelect(); // 防抖
             isGridMode = !isGridMode;
             recyclerView.setLayoutManager(isGridMode ? new GridLayoutManager(this, 3) : new LinearLayoutManager(this));
             adapter = new FileAdapter();

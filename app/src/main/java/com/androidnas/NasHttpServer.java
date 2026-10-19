@@ -81,13 +81,18 @@ public class NasHttpServer extends NanoHTTPD {
                         while ((entry = zis.getNextEntry()) != null) {
                             File newFile = new File(destDir, entry.getName());
                             if (!newFile.getCanonicalPath().startsWith(destDir.getCanonicalPath())) continue;
-                            if (entry.isDirectory()) newFile.mkdirs();
-                            else {
+                            if (entry.isDirectory()) {
+                                newFile.mkdirs();
+                            } else {
                                 newFile.getParentFile().mkdirs();
-                                try (FileOutputStream fos = new FileOutputStream(newFile)) {
+                                FileOutputStream fos = null;
+                                try {
+                                    fos = new FileOutputStream(newFile);
                                     byte[] buffer = new byte[8192];
                                     int len;
                                     while ((len = zis.read(buffer)) > 0) fos.write(buffer, 0, len);
+                                } finally {
+                                    if (fos != null) try { fos.close(); } catch (Exception ignored) {}
                                 }
                             }
                         }

@@ -50,7 +50,7 @@ public class LocalSendDiscovery extends Thread {
             } catch (Exception e) {
                 e.printStackTrace();
                 if (socket != null) socket.close();
-                try { Thread.sleep(3000); } catch (Exception ignored) {} // 断网后等待3秒重连
+                try { Thread.sleep(3000); } catch (Exception ignored) {} // 断网后等 3 秒自动重连
             }
         }
         if (multicastLock != null && multicastLock.isHeld()) multicastLock.release();
