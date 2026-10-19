@@ -1,0 +1,31 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.androidnas.tv'
+    compileSdk 33
+
+    defaultConfig {
+        applicationId "com.androidnas.tv"
+        minSdk 19
+        targetSdk 33
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    // 为了保证极低兼容性，不引入任何第三方库，纯原生开发
+}

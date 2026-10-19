@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- TV 必须声明不支持触摸屏 -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.leanback" android:required="false" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@android:drawable/ic_dialog_info"
+        android:label="Android NAS TV"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+        android:usesCleartextTraffic="true">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <!-- TV 专属启动分类 -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+                <!-- 手机/平板启动分类，方便测试 -->
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".PlayerActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+
+    </application>
+</manifest>
