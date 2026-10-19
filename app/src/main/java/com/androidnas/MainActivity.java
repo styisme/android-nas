@@ -28,7 +28,7 @@ public class MainActivity extends Activity {
     private CheckBox cbAuth;
     private FileAdapter adapter;
     private final List<File> items = new ArrayList<File>();
-    private int selectedNode = 0; // 0 代表自动选择
+    private int selectedNode = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         AuthManager.init(this);
+        LocalSendAuth.init(this);
         currentDir = new File(ROOT);
         pathView = (TextView) findViewById(R.id.pathView);
         statusView = (TextView) findViewById(R.id.statusView);
@@ -84,11 +85,11 @@ public class MainActivity extends Activity {
         if (!HttpServerService.isRunning()) startService(new Intent(this, HttpServerService.class));
     }
 
-    // 核心：菜单项
     @Override public boolean onCreateOptionsMenu(Menu menu) { 
         menu.add(0, 1, 0, "新建文件夹"); 
-        menu.add(0, 2, 0, "修改密码");
-        menu.add(0, 3, 0, "内网穿透 (公网访问)"); // 移到菜单
+        menu.add(0, 2, 0, "修改管理员密码");
+        menu.add(0, 5, 0, "修改 LocalSend 接收 PIN");
+        menu.add(0, 3, 0, "内网穿透 (公网访问)");
         menu.add(0, 4, 0, "运行日志");
         return true; 
     }
@@ -99,8 +100,7 @@ public class MainActivity extends Activity {
             new AlertDialog.Builder(this).setTitle("新建文件夹").setView(input).setPositiveButton("创建", (dialog, which) -> {
                 String name = input.getText().toString().trim();
                 if (name.length() == 0) return;
-                File target = new File(currentDir, name);
-                if (target.mkdirs()) refresh();
+                if (new File(currentDir, name).mkdirs()) refresh();
             }).setNegativeButton("取消", null).show();
             return true;
         } else if (item.getItemId() == 2) {
@@ -110,6 +110,16 @@ public class MainActivity extends Activity {
                 if (p.isEmpty()) return;
                 AuthManager.setAuth(this, "admin", p);
                 updateServiceStatus();
+            }).setNegativeButton("取消", null).show();
+            return true;
+        } else if (item.getItemId() == 5) {
+            final EditText input = new EditText(this);
+            input.setText(LocalSendAuth.getPin());
+            new AlertDialog.Builder(this).setTitle("设置 LocalSend 接收 PIN").setView(input).setPositiveButton("保存", (dialog, which) -> {
+                String p = input.getText().toString().trim();
+                if (p.isEmpty()) return;
+                LocalSendAuth.setPin(this, p);
+                Toast.makeText(this, "LocalSend PIN 已更新为: " + p, Toast.LENGTH_SHORT).show();
             }).setNegativeButton("取消", null).show();
             return true;
         } else if (item.getItemId() == 3) {
@@ -122,55 +132,41 @@ public class MainActivity extends Activity {
         return super.onOptionsItemSelected(item);
     }
 
-    // 内网穿透中心弹窗
     private void showTunnelCenter() {
         boolean isRunning = FreeTunnelManager.isRunning();
         String title = isRunning ? "内网穿透 (已连接)" : "内网穿透 (未连接)";
-        
         java.util.List<String> options = new java.util.ArrayList<String>();
-        if (!isRunning) {
-            options.add("启动一键免注册穿透 (自动优选)");
-        } else {
+        if (!isRunning) options.add("启动一键免注册穿透 (自动优选)");
+        else {
             options.add("复制当前公网链接");
             options.add("停止当前穿透");
         }
         options.add("自定义 SSH 高级穿透");
 
-        new AlertDialog.Builder(this)
-            .setTitle(title)
+        new AlertDialog.Builder(this).setTitle(title)
             .setItems(options.toArray(new String[0]), (dialog, which) -> {
                 String choice = options.get(which);
-                if (choice.contains("启动")) {
-                    showFreeNodeSelection();
-                } else if (choice.contains("复制")) {
+                if (choice.contains("启动")) showFreeNodeSelection();
+                else if (choice.contains("复制")) {
                     android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                     cm.setPrimaryClip(android.content.ClipData.newPlainText("url", FreeTunnelManager.getPublicUrl()));
                     Toast.makeText(this, "链接已复制", Toast.LENGTH_SHORT).show();
                 } else if (choice.contains("停止")) {
-                    FreeTunnelManager.stop();
-                    SshTunnelManager.stop();
-                    updateServiceStatus();
+                    FreeTunnelManager.stop(); SshTunnelManager.stop(); updateServiceStatus();
                     Toast.makeText(this, "穿透已停止", Toast.LENGTH_SHORT).show();
-                } else if (choice.contains("自定义")) {
-                    showSshConfigDialog();
-                }
-            })
-            .setNegativeButton("关闭", null)
-            .show();
+                } else if (choice.contains("自定义")) showSshConfigDialog();
+            }).setNegativeButton("关闭", null).show();
     }
 
-        private void showFreeNodeSelection() {
+    private void showFreeNodeSelection() {
         String[] nodes = FreeTunnelManager.getNodeNames();
-        new AlertDialog.Builder(this)
-            .setTitle("选择穿透节点")
+        new AlertDialog.Builder(this).setTitle("选择穿透节点")
             .setSingleChoiceItems(nodes, selectedNode, (dialog, which) -> selectedNode = which)
             .setPositiveButton("开始连接", (dialog, which) -> {
                 FreeTunnelManager.start(HttpServerService.PORT, selectedNode);
                 Toast.makeText(this, selectedNode == 0 ? "正在自动寻找可用节点..." : "正在连接...", Toast.LENGTH_LONG).show();
                 waitAndShowFreeUrl();
-            })
-            .setNegativeButton("取消", null)
-            .show();
+            }).setNegativeButton("取消", null).show();
     }
 
     private void waitAndShowFreeUrl() {
@@ -182,8 +178,7 @@ public class MainActivity extends Activity {
                 if (url != null && !url.isEmpty()) {
                     updateServiceStatus();
                     runOnUiThread(() -> {
-                        new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("穿透成功！")
+                        new AlertDialog.Builder(MainActivity.this).setTitle("穿透成功！")
                             .setMessage("公网链接:\n\n" + url + "\n\n发给朋友即可访问。")
                             .setPositiveButton("复制链接", (d, w) -> {
                                 android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
@@ -229,10 +224,8 @@ public class MainActivity extends Activity {
         statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
         toggleBtn.setText(running ? "停止服务" : "启动服务");
         String ip = getIpAddress();
-        String text = "网页管理: http://" + ip + ":8080\n网络邻居: http://" + ip + ":8081";
-        if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) {
-            text += "\n\n公网链接:\n" + FreeTunnelManager.getPublicUrl();
-        }
+        String text = "网页管理: http://" + ip + ":8080\n网络邻居: http://" + ip + ":8081\nLocalSend PIN: " + LocalSendAuth.getPin();
+        if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) text += "\n\n公网链接:\n" + FreeTunnelManager.getPublicUrl();
         ipView.setText(text);
     }
 
