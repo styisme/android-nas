@@ -2,365 +2,159 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Android NAS</title>
+    <!-- 代码高亮库 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
     <style>
-        :root {
-            --md-sys-color-primary: #6750A4;
-            --md-sys-color-on-primary: #FFFFFF;
-            --md-sys-color-primary-container: #EADDFF;
-            --md-sys-color-on-primary-container: #21005D;
-            --md-sys-color-surface: #FEF7FF;
-            --md-sys-color-on-surface: #1D1B20;
-            --md-sys-color-surface-variant: #E7E0EC;
-            --md-sys-color-on-surface-variant: #49454F;
-            --md-sys-color-error: #B3261E;
-            --md-sys-color-outline: #79747E;
-        }
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --md-sys-color-primary: #D0BCFF;
-                --md-sys-color-on-primary: #381E72;
-                --md-sys-color-primary-container: #4F378B;
-                --md-sys-color-on-primary-container: #EADDFF;
-                --md-sys-color-surface: #141218;
-                --md-sys-color-on-surface: #E6E0E9;
-                --md-sys-color-surface-variant: #49454F;
-                --md-sys-color-on-surface-variant: #CAC4D0;
-                --md-sys-color-error: #F2B8B5;
-                --md-sys-color-outline: #938F99;
-            }
-        }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); padding-bottom: 80px; transition: background 0.3s; }
-        
-        header { background-color: var(--md-sys-color-surface); padding: 16px; position: sticky; top: 0; z-index: 10; display: flex; align-items: center; border-bottom: 1px solid var(--md-sys-color-surface-variant); }
-        header h1 { margin: 0; font-size: 22px; font-weight: 400; flex: 1; }
-        
-        .drop-zone { 
-            margin: 16px; padding: 32px; 
-            border: 2px dashed var(--md-sys-color-outline); 
-            border-radius: 24px; 
-            text-align: center; 
-            color: var(--md-sys-color-on-surface-variant);
-            transition: all 0.2s;
-        }
-        .drop-zone.dragover { 
-            background-color: var(--md-sys-color-primary-container); 
-            border-color: var(--md-sys-color-primary); 
-            color: var(--md-sys-color-on-primary-container); 
-        }
-
-        .card { background-color: var(--md-sys-color-surface); border-radius: 24px; padding: 16px; margin: 0 16px 16px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        #path { font-size: 14px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px; word-break: break-all; }
-        
-        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--md-sys-color-surface-variant); }
+        :root { --primary: #6750A4; --surface: #FEF7FF; --on-surface: #1D1B20; --outline: #79747E; }
+        @media (prefers-color-scheme: dark) { :root { --primary: #D0BCFF; --surface: #141218; --on-surface: #E6E0E9; --outline: #938F99; } }
+        body { font-family: sans-serif; margin: 0; background: var(--surface); color: var(--on-surface); padding-bottom: 80px; }
+        header { display: flex; align-items: center; padding: 16px; border-bottom: 1px solid var(--outline); position: sticky; top: 0; background: var(--surface); z-index: 10; }
+        header h1 { margin: 0; font-size: 20px; flex: 1; }
+        .search-box { margin: 16px; display: flex; gap: 8px; }
+        input[type="text"] { flex: 1; padding: 12px; border-radius: 24px; border: 1px solid var(--outline); background: transparent; color: inherit; font-size: 16px; }
+        .btn { background: transparent; color: var(--primary); border: none; padding: 8px 16px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        .btn:hover { background: rgba(103, 80, 164, 0.1); }
+        .card { margin: 16px; border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); background: var(--surface); }
+        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--outline); }
         .item:last-child { border-bottom: none; }
-        .item-info { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
-        .name { font-size: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .dir-name { color: var(--md-sys-color-primary); font-weight: 500; cursor: pointer; }
-        .size { font-size: 12px; color: var(--md-sys-color-on-surface-variant); margin-top: 4px; }
-        
-        .btn { background: transparent; color: var(--md-sys-color-primary); border: none; padding: 8px 12px; border-radius: 20px; cursor: pointer; font-size: 14px; font-weight: 500; transition: background 0.2s; }
-        .btn:hover { background: var(--md-sys-color-primary-container); }
-        .btn-red { color: var(--md-sys-color-error); }
-        .btn-red:hover { background: #F9DEDC; }
-        
-        .fab { position: fixed; bottom: 24px; right: 24px; width: 64px; height: 64px; border-radius: 20px; background-color: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); border: none; font-size: 28px; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 8px rgba(0,0,0,0.2); cursor: pointer; transition: transform 0.2s; z-index: 20; }
-        .fab:active { transform: scale(0.92); }
-
-        .toolbar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
-        
-        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); z-index: 30; align-items: center; justify-content: center; }
-        .modal-content { background: var(--md-sys-color-surface); padding: 24px; border-radius: 28px; width: 90%; max-width: 500px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
-        .modal-content h3 { margin-top: 0; font-weight: 400; }
-        
-        input[type="text"] { width: 100%; padding: 12px 16px; margin: 16px 0; border: 1px solid var(--md-sys-color-outline); border-radius: 4px; background: transparent; color: var(--md-sys-color-on-surface); font-size: 16px; box-sizing: border-box; }
-        input[type="text"]:focus { outline: 2px solid var(--md-sys-color-primary); border-color: transparent; }
-        textarea { width: 100%; height: 250px; padding: 12px; margin: 16px 0; border: 1px solid var(--md-sys-color-outline); border-radius: 8px; font-family: monospace; box-sizing: border-box; background: var(--md-sys-color-surface); color: var(--md-sys-color-on-surface); }
-        
-        #fileInput { display: none; }
-
-        /* 上传进度条 */
-        #uploadProgress {
-            display: none;
-            position: fixed; top: 70px; left: 16px; right: 16px;
-            background: var(--md-sys-color-primary-container);
-            color: var(--md-sys-color-on-primary-container);
-            padding: 16px; border-radius: 16px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 40;
-        }
-        .progress-bar-bg {
-            width: 100%; height: 8px; background: var(--md-sys-color-surface-variant);
-            border-radius: 4px; margin-top: 8px; overflow: hidden;
-        }
-        .progress-bar-fill {
-            height: 100%; background: var(--md-sys-color-primary); width: 0%;
-            transition: width 0.2s;
-        }
+        .fab { position: fixed; bottom: 24px; right: 24px; width: 64px; height: 64px; border-radius: 20px; background: var(--primary); color: white; font-size: 28px; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 30; align-items: center; justify-content: center; }
+        .modal-content { background: var(--surface); padding: 24px; border-radius: 24px; width: 90%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
+        pre { margin: 0; border-radius: 8px; }
     </style>
 </head>
 <body>
 <header>
     <h1>Android NAS</h1>
-    <button class="btn" onclick="showAbout()">关于</button>
 </header>
 
-<!-- 拖拽上传区域 -->
-<div class="drop-zone" id="dropZone">
-    <div style="font-size: 32px; margin-bottom: 8px;">📤</div>
-    <div>点击此处或拖拽文件到此处上传</div>
-    <div style="font-size: 12px; margin-top: 4px;">(自动保存到当前目录)</div>
+<div class="search-box">
+    <input type="text" id="searchInput" placeholder="全局搜索文件..." onkeydown="if(event.key==='Enter') doSearch()">
+    <button class="btn" onclick="doSearch()">搜索</button>
 </div>
 
-<div class="card">
-    <div id="path">/</div>
-    <div class="toolbar">
-        <button class="btn" onclick="goUp()">⬆ 上级目录</button>
-        <button class="btn" onclick="refresh()">🔄 刷新</button>
-        <button class="btn" onclick="showMkdir()">📁 新建文件夹</button>
-    </div>
-    <div id="list"></div>
+<div class="card" id="fileListCard">
+    <div id="path" style="font-weight:bold; margin-bottom:12px; color:var(--primary);">/</div>
+    <button class="btn" onclick="goUp()">⬆ 上级目录</button>
+    <div id="list" style="margin-top:12px;"></div>
 </div>
 
 <button class="fab" onclick="document.getElementById('fileInput').click()">+</button>
-<input type="file" id="fileInput" multiple>
+<input type="file" id="fileInput" multiple style="display:none">
 
-<!-- 上传进度面板 -->
-<div id="uploadProgress">
-    <div style="display: flex; justify-content: space-between;">
-        <span>正在上传...</span>
-        <span id="progressText">0%</span>
-    </div>
-    <div class="progress-bar-bg">
-        <div class="progress-bar-fill" id="progressFill"></div>
-    </div>
-</div>
-
-<!-- 新建文件夹弹窗 -->
-<div id="mkdirModal" class="modal">
+<!-- 预览与分享弹窗 -->
+<div id="previewModal" class="modal">
     <div class="modal-content">
-        <h3>新建文件夹</h3>
-        <input type="text" id="newDirName" placeholder="输入文件夹名称">
-        <div style="text-align: right; margin-top: 8px;">
-            <button class="btn" onclick="closeModal('mkdirModal')">取消</button>
-            <button class="btn" onclick="doMkdir()">创建</button>
-        </div>
-    </div>
-</div>
-
-<!-- 文本编辑弹窗 -->
-<div id="editModal" class="modal">
-    <div class="modal-content">
-        <h3>编辑: <span id="editFileName" style="font-weight: 500;"></span></h3>
-        <textarea id="editContent"></textarea>
-        <div style="text-align: right; margin-top: 8px;">
-            <button class="btn" onclick="closeModal('editModal')">取消</button>
-            <button class="btn" onclick="doSave()">保存</button>
-        </div>
-    </div>
-</div>
-
-<!-- 关于弹窗 -->
-<div id="aboutModal" class="modal">
-    <div class="modal-content">
-        <h3>关于 Android NAS</h3>
-        <p>版本: v1.2.0</p>
-        <p>一个极简的局域网 WebDAV 与网页文件管理服务器。</p>
-        <p>支持 Android 2.2 及以上系统。</p>
+        <h3 id="previewTitle">文件预览</h3>
+        <div id="previewContent"></div>
         <div style="text-align: right; margin-top: 16px;">
-            <button class="btn" onclick="closeModal('aboutModal')">确定</button>
+            <button class="btn" onclick="closeModal('previewModal')">关闭</button>
         </div>
     </div>
 </div>
 
 <script>
 var currentPath = '/';
-var editingFile = '';
-var dropZone = document.getElementById('dropZone');
-var fileInput = document.getElementById('fileInput');
+var shareTokens = {}; // 模拟存储
 
-// 刷新列表
 function refresh() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('path').textContent = currentPath;
     fetch('/api/list?path=' + encodeURIComponent(currentPath))
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-            document.getElementById('path').textContent = data.path;
-            var list = document.getElementById('list');
-            list.innerHTML = '';
-            if (data.files.length === 0) {
-                list.innerHTML = '<div style="text-align:center; padding: 32px; color: var(--md-sys-color-outline);">空文件夹</div>';
-                return;
-            }
-            data.files.forEach(function (f) {
-                var div = document.createElement('div');
-                div.className = 'item';
-                var full = (currentPath.endsWith('/') ? currentPath : currentPath + '/') + f.name;
-                
-                var infoDiv = document.createElement('div');
-                infoDiv.className = 'item-info';
-                var icon = f.dir ? '📁' : (f.isImg ? '🖼️' : '📄');
-                infoDiv.innerHTML = '<div class="name ' + (f.dir ? 'dir-name' : '') + '">' + icon + ' ' + escapeHtml(f.name) + '</div>' +
-                                    (f.dir ? '' : '<div class="size">' + formatSize(f.size) + '</div>');
-                if (f.dir) {
-                    infoDiv.onclick = function () { enterDir(full); };
-                }
-                div.appendChild(infoDiv);
-
-                var actionDiv = document.createElement('div');
-                if (!f.dir) {
-                    if (f.isTxt) {
-                        actionDiv.innerHTML += '<button class="btn" onclick="editFile(\'' + encodeURIComponent(full) + '\', \'' + escapeHtml(f.name) + '\')">编辑</button>';
-                    }
-                    actionDiv.innerHTML += '<a href="/api/download?path=' + encodeURIComponent(full) + '" class="btn" style="text-decoration:none;">下载</a>';
-                }
-                actionDiv.innerHTML += '<button class="btn btn-red" onclick="delFile(\'' + encodeURIComponent(full) + '\')">删除</button>';
-                div.appendChild(actionDiv);
-
-                list.appendChild(div);
-            });
-        })
-        .catch(function () { document.getElementById('path').textContent = '列表加载失败'; });
+        .then(r => r.json())
+        .then(data => renderList(data.files))
+        .catch(() => alert('加载失败'));
 }
 
-function enterDir(path) { currentPath = path; refresh(); }
+function doSearch() {
+    var q = document.getElementById('searchInput').value;
+    if (!q) { refresh(); return; }
+    document.getElementById('path').textContent = '搜索: ' + q;
+    fetch('/api/search?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(data => renderList(data))
+        .catch(() => alert('搜索失败'));
+}
+
+function renderList(files) {
+    var list = document.getElementById('list');
+    list.innerHTML = '';
+    if (files.length === 0) { list.innerHTML = '<p>空文件夹</p>'; return; }
+    
+    files.forEach(f => {
+        var div = document.createElement('div');
+        div.className = 'item';
+        var full = f.path || ((currentPath.endsWith('/') ? currentPath : currentPath + '/') + f.name);
+        
+        var info = document.createElement('div');
+        info.innerHTML = `<b style="color:${f.dir ? 'var(--primary)' : 'inherit'}; cursor:pointer;">${f.dir ? '📁' : '📄'} ${f.name}</b>`;
+        if (f.dir) info.onclick = () => { currentPath = full; refresh(); };
+        div.appendChild(info);
+
+        var actions = document.createElement('div');
+        if (!f.dir) {
+            if (f.isTxt) actions.innerHTML += `<button class="btn" onclick="previewFile('${encodeURIComponent(full)}', '${f.name}')">预览</button>`;
+            actions.innerHTML += `<a href="/api/download?path=${encodeURIComponent(full)}" class="btn" style="text-decoration:none;">下载</a>`;
+            actions.innerHTML += `<button class="btn" onclick="shareFile('${encodeURIComponent(full)}')">分享</button>`;
+        }
+        actions.innerHTML += `<button class="btn" style="color:red;" onclick="delFile('${encodeURIComponent(full)}')">删除</button>`;
+        div.appendChild(actions);
+        list.appendChild(div);
+    });
+}
+
+function previewFile(encodedPath, name) {
+    document.getElementById('previewTitle').textContent = name;
+    document.getElementById('previewContent').innerHTML = '加载中...';
+    document.getElementById('previewModal').style.display = 'flex';
+    fetch('/api/preview?path=' + encodedPath)
+        .then(r => r.text())
+        .then(txt => {
+            var ext = name.split('.').pop();
+            var code = document.createElement('code');
+            code.className = 'language-' + (ext === 'js' ? 'javascript' : ext);
+            code.textContent = txt;
+            var pre = document.createElement('pre');
+            pre.appendChild(code);
+            document.getElementById('previewContent').innerHTML = '';
+            document.getElementById('previewContent').appendChild(pre);
+            hljs.highlightElement(code);
+        });
+}
+
+function shareFile(encodedPath) {
+    fetch('/api/share', { method: 'POST', body: new URLSearchParams({ path: decodeURIComponent(encodedPath) }) })
+        .then(r => r.text())
+        .then(token => {
+            var url = location.origin + '/share/' + token;
+            prompt("分享链接已生成 (免密访问):", url);
+        });
+}
+
+function delFile(encodedPath) {
+    if (!confirm('确定删除吗？')) return;
+    fetch('/api/delete', { method: 'POST', body: new URLSearchParams({ path: decodeURIComponent(encodedPath) }) })
+        .then(() => refresh());
+}
+
 function goUp() {
-    if (currentPath === '/' || currentPath === '') return;
+    if (currentPath === '/') return;
     var parts = currentPath.replace(/\/$/, '').split('/');
     parts.pop();
     currentPath = parts.join('/') || '/';
     refresh();
 }
-
-function showMkdir() { document.getElementById('mkdirModal').style.display = 'flex'; }
-function showAbout() { document.getElementById('aboutModal').style.display = 'flex'; }
 function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-function doMkdir() {
-    var name = document.getElementById('newDirName').value;
-    if (!name) return;
+document.getElementById('fileInput').onchange = function () {
+    if (!this.files.length) return;
     var fd = new FormData();
+    for (var i = 0; i < this.files.length; i++) fd.append('file', this.files[i]);
     fd.append('path', currentPath);
-    fd.append('name', name);
-    fetch('/api/mkdir', { method: 'POST', body: fd }).then(function() {
-        closeModal('mkdirModal');
-        document.getElementById('newDirName').value = '';
-        refresh();
-    });
-}
-
-function delFile(encodedPath) {
-    if (!confirm('确定删除吗？此操作不可恢复。')) return;
-    var fd = new FormData();
-    fd.append('path', decodeURIComponent(encodedPath));
-    fetch('/api/delete', { method: 'POST', body: fd }).then(function() { refresh(); });
-}
-
-function editFile(encodedPath, name) {
-    editingFile = decodeURIComponent(encodedPath);
-    document.getElementById('editFileName').textContent = name;
-    document.getElementById('editContent').value = '加载中...';
-    document.getElementById('editModal').style.display = 'flex';
-    
-    fetch('/api/preview?path=' + encodedPath)
-        .then(function(r) { return r.text(); })
-        .then(function(txt) { document.getElementById('editContent').value = txt; });
-}
-
-function doSave() {
-    var content = document.getElementById('editContent').value;
-    var fd = new FormData();
-    fd.append('path', editingFile);
-    fd.append('content', content);
-    fetch('/api/save', { method: 'POST', body: fd }).then(function() {
-        closeModal('editModal');
-        refresh();
-    });
-}
-
-function formatSize(n) {
-    if (n < 1024) return n + ' B';
-    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-    return (n / 1024 / 1024).toFixed(1) + ' MB';
-}
-
-function escapeHtml(s) {
-    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-// 通用上传函数
-function uploadFiles(files) {
-    if (!files.length) return;
-    
-    var fd = new FormData();
-    for (var i = 0; i < files.length; i++) {
-        fd.append('file', files[i], files[i].name);
-    }
-    fd.append('path', currentPath);
-
-    var progressPanel = document.getElementById('uploadProgress');
-    var progressFill = document.getElementById('progressFill');
-    var progressText = document.getElementById('progressText');
-    
-    progressPanel.style.display = 'block';
-    progressFill.style.width = '0%';
-    progressText.textContent = '0%';
-
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/upload', true);
-
-    // 监听上传进度
-    xhr.upload.onprogress = function(e) {
-        if (e.lengthComputable) {
-            var percent = Math.round((e.loaded / e.total) * 100);
-            progressFill.style.width = percent + '%';
-            progressText.textContent = percent + '%';
-        }
-    };
-
-    xhr.onload = function() {
-        progressPanel.style.display = 'none';
-        fileInput.value = '';
-        if (xhr.status === 200) {
-            refresh();
-        } else {
-            alert('上传失败: ' + xhr.responseText);
-        }
-    };
-
-    xhr.onerror = function() {
-        progressPanel.style.display = 'none';
-        alert('网络错误，上传中断');
-    };
-
-    xhr.send(fd);
-}
-
-// 绑定 FAB 按钮事件
-fileInput.onchange = function () {
-    uploadFiles(this.files);
-};
-
-// 点击 DropZone 触发文件选择
-dropZone.onclick = function() {
-    fileInput.click();
-};
-
-// 绑定拖拽事件
-dropZone.ondragover = function(e) {
-    e.preventDefault();
-    this.classList.add('dragover');
-};
-dropZone.ondragleave = function() {
-    this.classList.remove('dragover');
-};
-dropZone.ondrop = function(e) {
-    e.preventDefault();
-    this.classList.remove('dragover');
-    if (e.dataTransfer.files.length) {
-        uploadFiles(e.dataTransfer.files);
-    }
+    fetch('/api/upload', { method: 'POST', body: fd }).then(() => refresh());
 };
 
 refresh();
