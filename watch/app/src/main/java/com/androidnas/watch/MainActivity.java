@@ -15,9 +15,10 @@ import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
 import android.widget.TextView;
 
 import org.json.JSONArray;
@@ -38,13 +39,10 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(com.androidnas.watch.R.layout.activity_main);
 
-        // 动态适配圆盘/方盘
         LinearLayout rootLayout = findViewById(com.androidnas.watch.R.id.rootLayout);
         if (getResources().getConfiguration().isScreenRound()) {
-            // 圆盘：增大内边距，防止文字被边缘裁切
             rootLayout.setPadding(40, 40, 40, 40);
         } else {
-            // 方盘：标准内边距
             rootLayout.setPadding(16, 16, 16, 16);
         }
 
@@ -86,7 +84,7 @@ public class MainActivity extends Activity {
         } else if (item.getItemId() == 2) {
             new AlertDialog.Builder(this)
                 .setTitle("关于手表端")
-                .setMessage("版本: v1.0.0\n\n支持多设备、局域网协同投屏。\n\n⚠️ 本项目由 AI 辅助生成。")
+                .setMessage("版本: v1.0.0\n\n支持多协议与局域网协同投屏。\n\n⚠️ 本项目由 AI 辅助生成。")
                 .setPositiveButton("确定", null)
                 .show();
             return true;
@@ -103,9 +101,11 @@ public class MainActivity extends Activity {
                 JSONArray arr = new JSONArray(json);
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject obj = arr.getJSONObject(i);
+                    int type = obj.optInt("type", WatchDevice.TYPE_ANDROID);
                     devices.add(new WatchDevice(
                         obj.getString("name"), obj.getString("ip"), 
-                        obj.getString("port"), obj.getString("user"), obj.getString("pass")
+                        obj.getString("port"), obj.getString("user"), 
+                        obj.getString("pass"), type
                     ));
                 }
             } catch (Exception ignored) {}
@@ -123,6 +123,7 @@ public class MainActivity extends Activity {
                 obj.put("port", d.port);
                 obj.put("user", d.user);
                 obj.put("pass", d.pass);
+                obj.put("type", d.type);
                 arr.put(obj);
             }
         } catch (Exception ignored) {}
@@ -135,17 +136,18 @@ public class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(32, 16, 32, 16);
 
-        EditText etName = new EditText(this);
-        etName.setHint("设备名称");
-        layout.addView(etName);
+        EditText etName = new EditText(this); etName.setHint("设备名称"); layout.addView(etName);
+        EditText etIp = new EditText(this); etIp.setHint("IP (如 192.168.1.100)"); layout.addView(etIp);
+        EditText etPort = new EditText(this); etPort.setHint("端口 (默认 8080)"); layout.addView(etPort);
+        EditText etUser = new EditText(this); etUser.setHint("账号 (默认 admin)"); layout.addView(etUser);
+        EditText etPass = new EditText(this); etPass.setHint("密码 (默认 admin)"); etPass.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD); layout.addView(etPass);
 
-        EditText etIp = new EditText(this);
-        etIp.setHint("IP (如 192.168.1.100)");
-        layout.addView(etIp);
-
-        EditText etPort = new EditText(this);
-        etPort.setHint("端口 (默认 8080)");
-        layout.addView(etPort);
+        RadioGroup rgType = new RadioGroup(this);
+        RadioButton rbAndroid = new RadioButton(this); rbAndroid.setText("自家 NAS"); rbAndroid.setChecked(true); rbAndroid.setId(View.generateViewId());
+        RadioButton rbWebDav = new RadioButton(this); rbWebDav.setText("WebDAV"); rbWebDav.setId(View.generateViewId());
+        RadioButton rbFtp = new RadioButton(this); rbFtp.setText("FTP"); rbFtp.setId(View.generateViewId());
+        rgType.addView(rbAndroid); rgType.addView(rbWebDav); rgType.addView(rbFtp);
+        layout.addView(rgType);
 
         new AlertDialog.Builder(this)
             .setTitle("添加设备")
@@ -154,10 +156,19 @@ public class MainActivity extends Activity {
                 String name = etName.getText().toString().trim();
                 String ip = etIp.getText().toString().trim();
                 String port = etPort.getText().toString().trim();
+                String user = etUser.getText().toString().trim();
+                String pass = etPass.getText().toString().trim();
+                
                 if (name.isEmpty() || ip.isEmpty()) return;
                 if (port.isEmpty()) port = "8080";
+                if (user.isEmpty()) user = "admin";
+                if (pass.isEmpty()) pass = "admin";
 
-                devices.add(new WatchDevice(name, ip, port, "admin", "admin"));
+                int type = WatchDevice.TYPE_ANDROID;
+                if (rgType.getCheckedRadioButtonId() == rbWebDav.getId()) type = WatchDevice.TYPE_WEBDAV;
+                else if (rgType.getCheckedRadioButtonId() == rbFtp.getId()) type = WatchDevice.TYPE_FTP;
+
+                devices.add(new WatchDevice(name, ip, port, user, pass, type));
                 saveDevices();
                 adapter.notifyDataSetChanged();
             })

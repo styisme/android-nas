@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId "com.androidnas.watch"
-        minSdk 21 // 已降至 Android 5.0
+        minSdk 21
         targetSdk 33
         versionCode 1
         versionName "1.0.0"
@@ -24,9 +24,14 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+    packagingOptions {
+        resources.excludes.add("META-INF/*")
+    }
 }
 
 dependencies {
     implementation 'com.google.android.support:wearable:2.9.0'
     compileOnly 'com.google.android.wearable:wearable:2.9.0'
+    // 加入 FTP 协议库
+    implementation 'commons-net:commons-net:3.9.0'
 }
