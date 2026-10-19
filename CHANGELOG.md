@@ -3,6 +3,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
+## [3.2.0]
+
+**全协议爆发版**
+
+---
+
 ## [3.0.0] - 2026-10-19
 
 **终极形态：全能媒体中心与全平台无缝互通**
