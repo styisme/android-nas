@@ -7,6 +7,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class FreeTunnelManager {
+    public static final int SERVICE_LOCALHOST_RUN = 1;
+    public static final int SERVICE_TUNNL_GG = 2;
+    public static final int SERVICE_SKYTUNNEL = 3;
+    public static final int SERVICE_PINGGY = 4;
+
     private static Session session;
     private static String publicUrl = "";
     private static boolean isConnected = false;
@@ -14,29 +19,54 @@ public class FreeTunnelManager {
     public static boolean isRunning() { return isConnected; }
     public static String getPublicUrl() { return publicUrl; }
 
-    public static synchronized void start(final int localPort) {
+    public static synchronized void start(final int localPort, final int serviceType) {
         if (isConnected) return;
         new Thread(() -> {
             try {
                 JSch jsch = new JSch();
-                // localhost.run 提供免注册的临时隧道
-                session = jsch.getSession("nokey", "localhost.run", 22);
+                String host = "";
+                int port = 22;
+                int remotePort = 80;
+                String regex = "";
+
+                switch (serviceType) {
+                    case SERVICE_TUNNL_GG:
+                        host = "proxy.tunnl.gg";
+                        remotePort = 80;
+                        regex = "https://[a-zA-Z0-9.-]+\\.tunnl\\.gg";
+                        break;
+                    case SERVICE_SKYTUNNEL:
+                        host = "skytunnel.pp.ua";
+                        remotePort = 443;
+                        regex = "https://[a-zA-Z0-9.-]+\\.skytunnel\\.pp\\.ua";
+                        break;
+                    case SERVICE_PINGGY:
+                        host = "a.pinggy.io";
+                        remotePort = 80;
+                        regex = "https://[a-zA-Z0-9.-]+\\.pinggy\\.link";
+                        break;
+                    case SERVICE_LOCALHOST_RUN:
+                    default:
+                        host = "localhost.run";
+                        remotePort = 80;
+                        regex = "https://[a-zA-Z0-9.-]+\\.life";
+                        break;
+                }
+
+                session = jsch.getSession("nokey", host, port);
                 session.setConfig("StrictHostKeyChecking", "no");
                 
-                // 捕获服务器的终端输出，用于提取分配的网址
                 final ByteArrayOutputStream out = new ByteArrayOutputStream();
                 session.setOutputStream(out);
-
                 session.setTimeout(15000);
                 session.connect();
                 
-                // 将 localhost.run 的 80 端口映射到手机本地的 8080 端口
-                session.setPortForwardingR(80, "127.0.0.1", localPort);
+                // 映射端口
+                session.setPortForwardingR(remotePort, "127.0.0.1", localPort);
                 isConnected = true;
-                LogManager.add("127.0.0.1", "免费穿透已启动");
+                LogManager.add("127.0.0.1", "免费穿透启动 (" + host + ")");
 
-                // 轮询读取输出，抓取类似 https://xxxx.lhr.life 的公网链接
-                Pattern pattern = Pattern.compile("https://[a-zA-Z0-9.-]+\\.life");
+                Pattern pattern = Pattern.compile(regex);
                 for (int i = 0; i < 30; i++) {
                     Thread.sleep(500);
                     String text = out.toString("UTF-8");

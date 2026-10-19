@@ -28,6 +28,7 @@ public class MainActivity extends Activity {
     private CheckBox cbAuth, cbTunnel, cbFreeTunnel;
     private FileAdapter adapter;
     private final List<File> items = new ArrayList<File>();
+    private int selectedService = FreeTunnelManager.SERVICE_LOCALHOST_RUN;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,16 +67,15 @@ public class MainActivity extends Activity {
             }
         });
 
-        // 极简：一键免费公网穿透
+        // 极简：一键免费公网穿透 (带选择列表)
         cbFreeTunnel.setChecked(FreeTunnelManager.isRunning());
-        cbFreeTunnel.setOnCheckedChangeListener((v, isChecked) -> {
-            if (isChecked) {
-                FreeTunnelManager.start(HttpServerService.PORT);
-                Toast.makeText(this, "正在生成公网链接，请稍候...", Toast.LENGTH_LONG).show();
-                waitAndShowFreeUrl();
+        cbFreeTunnel.setOnClickListener(v -> {
+            if (cbFreeTunnel.isChecked()) {
+                showFreeServiceSelection();
             } else {
                 FreeTunnelManager.stop();
                 Toast.makeText(this, "一键穿透已关闭", Toast.LENGTH_SHORT).show();
+                updateServiceStatus();
             }
         });
 
@@ -91,7 +91,6 @@ public class MainActivity extends Activity {
         listView.setOnItemClickListener((parent, view, position, id) -> {
             File f = items.get(position);
             if (f.isDirectory()) { currentDir = f; refresh(); }
-            else showFileMenu(f);
         });
         
         toggleBtn.setOnClickListener(v -> {
@@ -109,7 +108,22 @@ public class MainActivity extends Activity {
         if (!HttpServerService.isRunning()) startService(new Intent(this, HttpServerService.class));
     }
 
-    // 轮询检测公网 URL 是否生成完毕
+    private void showFreeServiceSelection() {
+        final String[] services = {"Default (localhost.run)", "Tunnl.gg (欧洲节点)", "Skytunnel (HTTPS)", "Pinggy (限时1小时)"};
+        new AlertDialog.Builder(this)
+            .setTitle("选择免费穿透服务商")
+            .setSingleChoiceItems(services, selectedService - 1, (dialog, which) -> {
+                selectedService = which + 1;
+            })
+            .setPositiveButton("开始连接", (dialog, which) -> {
+                FreeTunnelManager.start(HttpServerService.PORT, selectedService);
+                Toast.makeText(this, "正在生成公网链接，请稍候...", Toast.LENGTH_LONG).show();
+                waitAndShowFreeUrl();
+            })
+            .setNegativeButton("取消", (dialog, which) -> cbFreeTunnel.setChecked(false))
+            .show();
+    }
+
     private void waitAndShowFreeUrl() {
         new Handler().postDelayed(new Runnable() {
             int count = 0;
@@ -117,10 +131,11 @@ public class MainActivity extends Activity {
             public void run() {
                 String url = FreeTunnelManager.getPublicUrl();
                 if (url != null && !url.isEmpty()) {
+                    updateServiceStatus();
                     runOnUiThread(() -> {
                         new AlertDialog.Builder(MainActivity.this)
-                            .setTitle("公网穿透成功！")
-                            .setMessage("请复制以下链接发给你的同学：\n\n" + url)
+                            .setTitle("穿透成功！")
+                            .setMessage("公网链接:\n\n" + url)
                             .setPositiveButton("复制链接", (d, w) -> {
                                 android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                                 cm.setPrimaryClip(android.content.ClipData.newPlainText("url", url));
@@ -133,7 +148,7 @@ public class MainActivity extends Activity {
                 } else if (!FreeTunnelManager.isRunning()) {
                     runOnUiThread(() -> {
                         cbFreeTunnel.setChecked(false);
-                        Toast.makeText(MainActivity.this, "穿透失败，请检查网络", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "当前节点连接失败，请尝试选择其他服务商", Toast.LENGTH_LONG).show();
                     });
                 }
             }
@@ -144,13 +159,11 @@ public class MainActivity extends Activity {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(48, 24, 48, 24);
-
         EditText etHost = new EditText(this); etHost.setHint("公网服务器 IP"); layout.addView(etHost);
         EditText etPort = new EditText(this); etPort.setHint("SSH 端口 (默认 22)"); etPort.setInputType(InputType.TYPE_CLASS_NUMBER); layout.addView(etPort);
         EditText etUser = new EditText(this); etUser.setHint("SSH 用户名"); layout.addView(etUser);
         EditText etPass = new EditText(this); etPass.setHint("SSH 密码"); etPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); layout.addView(etPass);
         EditText etRemotePort = new EditText(this); etRemotePort.setHint("公网映射端口 (如 8080)"); etRemotePort.setInputType(InputType.TYPE_CLASS_NUMBER); layout.addView(etRemotePort);
-
         new AlertDialog.Builder(this).setTitle("自定义 SSH 穿透").setView(layout)
             .setPositiveButton("连接", (dialog, which) -> {
                 String host = etHost.getText().toString().trim();
@@ -205,8 +218,6 @@ public class MainActivity extends Activity {
         });
         adapter.notifyDataSetChanged();
     }
-
-    private void showFileMenu(final File f) { /* 占位 */ }
 
     @Override public boolean onCreateOptionsMenu(Menu menu) { 
         menu.add(0, 1, 0, "新建文件夹"); 
