@@ -173,9 +173,16 @@ public class FileListActivity extends AppCompatActivity {
     }
 
     private void showMkdirDialog() {
-        EditText et = new EditText(this);
-        et.setHint("文件夹名称");
-        new MaterialAlertDialogBuilder(this).setTitle("新建文件夹").setView(et)
+        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        til.setHint("文件夹名称");
+        TextInputEditText et = new TextInputEditText(this);
+        til.addView(et);
+        
+        LinearLayout container = new LinearLayout(this);
+        container.setPadding(48, 24, 48, 0);
+        container.addView(til);
+
+        new MaterialAlertDialogBuilder(this).setTitle("新建文件夹").setView(container)
             .setPositiveButton("创建", (d, w) -> {
                 String name = et.getText().toString();
                 if (name.isEmpty()) return;
@@ -381,9 +388,17 @@ public class FileListActivity extends AppCompatActivity {
     }
 
     private void renameFile(FileItem f) {
-        EditText et = new EditText(this);
+        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        til.setHint("新名称");
+        TextInputEditText et = new TextInputEditText(this);
         et.setText(f.name);
-        new MaterialAlertDialogBuilder(this).setTitle("重命名").setView(et)
+        til.addView(et);
+        
+        LinearLayout container = new LinearLayout(this);
+        container.setPadding(48, 24, 48, 0);
+        container.addView(til);
+
+        new MaterialAlertDialogBuilder(this).setTitle("重命名").setView(container)
             .setPositiveButton("确定", (d, w) -> {
                 String newName = et.getText().toString();
                 if (newName.isEmpty()) return;

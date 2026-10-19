@@ -300,11 +300,12 @@ public class MainActivity extends AppCompatActivity {
         @NonNull @Override public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             return new VH(getLayoutInflater().inflate(R.layout.item_device, parent, false));
         }
-        @Override public void onBindViewHolder(@NonNull VH holder, int position) {
-            NasDevice d = devices.get(position);
+        @Override public void onBindViewHolder(@NonNull VH holder, final int position) {
+            final NasDevice d = devices.get(position);
             holder.tvName.setText(d.name);
             holder.tvIp.setText(d.url);
             holder.tvIcon.setText("📱");
+            
             holder.itemView.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
@@ -324,6 +325,25 @@ public class MainActivity extends AppCompatActivity {
                         }).show();
                 }
             });
+
+            // 新增：长按编辑设备信息（解决扫码/扫描后无法修改密码的问题）
+            holder.itemView.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    new MaterialAlertDialogBuilder(MainActivity.this)
+                        .setTitle("设备管理")
+                        .setItems(new String[]{"修改连接信息", "删除设备"}, (dialog, which) -> {
+                            if (which == 0) {
+                                showEditDeviceDialog(position);
+                            } else {
+                                devices.remove(position);
+                                saveDevices();
+                                adapter.notifyDataSetChanged();
+                            }
+                        }).show();
+                    return true;
+                }
+            });
         }
         @Override public int getItemCount() { return devices.size(); }
         class VH extends RecyclerView.ViewHolder {
@@ -331,4 +351,60 @@ public class MainActivity extends AppCompatActivity {
             VH(View v) { super(v); tvName = v.findViewById(R.id.tvName); tvIcon = v.findViewById(R.id.tvIcon); tvIp = v.findViewById(R.id.tvIp); }
         }
     }
-}
+
+    // 新增：修改设备信息弹窗
+    private void showEditDeviceDialog(final int position) {
+        final NasDevice d = devices.get(position);
+        ScrollView scrollView = new ScrollView(this);
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(48, 32, 48, 16);
+        scrollView.addView(layout);
+
+        TextInputLayout tilName = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilName.setHint("设备名称");
+        final TextInputEditText etName = new TextInputEditText(this);
+        etName.setText(d.name);
+        tilName.addView(etName);
+        layout.addView(tilName);
+
+        TextInputLayout tilUrl = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilUrl.setHint("地址 (如 192.168.1.100:8080)");
+        final TextInputEditText etUrl = new TextInputEditText(this);
+        etUrl.setText(d.url);
+        tilUrl.addView(etUrl);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.topMargin = 24;
+        layout.addView(tilUrl, params);
+
+        TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilUser.setHint("服务端账号 (默认 admin)");
+        final TextInputEditText etUser = new TextInputEditText(this);
+        etUser.setText(d.username);
+        tilUser.addView(etUser);
+        layout.addView(tilUser, params);
+
+        TextInputLayout tilPass = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilPass.setHint("服务端密码 (默认 admin)");
+        final TextInputEditText etPass = new TextInputEditText(this);
+        etPass.setText(d.password);
+        tilPass.addView(etPass);
+        layout.addView(tilPass, params);
+
+        new MaterialAlertDialogBuilder(this)
+            .setTitle("修改连接信息")
+            .setView(scrollView)
+            .setPositiveButton("保存", (dialog, which) -> {
+                String name = etName.getText() != null ? etName.getText().toString() : "";
+                String url = etUrl.getText() != null ? etUrl.getText().toString().trim() : "";
+                String user = etUser.getText() != null ? etUser.getText().toString() : "admin";
+                String pass = etPass.getText() != null ? etPass.getText().toString() : "admin";
+                if (name.isEmpty() || url.isEmpty()) return;
+                if (!url.startsWith("http")) url = "http://" + url;
+
+                devices.set(position, new NasDevice(name, url, true, user, pass));
+                saveDevices();
+                adapter.notifyDataSetChanged();
+            }).setNegativeButton("取消", null).show();
+    }
+

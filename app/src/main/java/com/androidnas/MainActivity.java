@@ -243,22 +243,26 @@ public class MainActivity extends Activity {
     }
 
     private void showSshConfigDialog() {
+        ScrollView scrollView = new ScrollView(this);
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(48, 24, 48, 24);
+        scrollView.addView(layout);
+
         EditText etHost = new EditText(this); etHost.setHint("公网服务器 IP"); layout.addView(etHost);
         EditText etPort = new EditText(this); etPort.setHint("SSH 端口 (默认 22)"); etPort.setInputType(InputType.TYPE_CLASS_NUMBER); layout.addView(etPort);
         EditText etUser = new EditText(this); etUser.setHint("SSH 用户名"); layout.addView(etUser);
         EditText etPass = new EditText(this); etPass.setHint("SSH 密码"); etPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); layout.addView(etPass);
         EditText etRemotePort = new EditText(this); etRemotePort.setHint("公网映射端口"); etRemotePort.setInputType(InputType.TYPE_CLASS_NUMBER); layout.addView(etRemotePort);
-        new AlertDialog.Builder(this).setTitle("自定义 SSH 穿透").setView(layout)
+        
+        new AlertDialog.Builder(this).setTitle("自定义 SSH 穿透").setView(scrollView)
             .setPositiveButton("连接", (dialog, which) -> {
                 String host = etHost.getText().toString().trim();
                 int port = etPort.getText().toString().isEmpty() ? 22 : Integer.parseInt(etPort.getText().toString());
                 String user = etUser.getText().toString().trim();
                 String pass = etPass.getText().toString();
                 int remotePort = etRemotePort.getText().toString().isEmpty() ? 8080 : Integer.parseInt(etRemotePort.getText().toString());
-                SshTunnelManager.start(host, port, user, pass, remotePort, SettingsManager.getWebPort());
+                SshTunnelManager.start(host, port, user, pass, remotePort, HttpServerService.PORT);
                 Toast.makeText(this, "正在建立 SSH 隧道...", Toast.LENGTH_SHORT).show();
             }).setNegativeButton("取消", null).show();
     }
