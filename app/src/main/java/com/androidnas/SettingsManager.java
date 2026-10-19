@@ -2,7 +2,6 @@ package com.androidnas;
 
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.os.Environment;
 import java.util.UUID;
 
 public class SettingsManager {
@@ -12,26 +11,27 @@ public class SettingsManager {
         sp = context.getSharedPreferences("nas_settings", Context.MODE_PRIVATE);
     }
 
-    // 设备别名
     public static String getDeviceAlias() { return sp.getString("device_alias", "Android NAS"); }
     public static void setDeviceAlias(String alias) { sp.edit().putString("device_alias", alias).apply(); }
 
-    // 功能开关
+    // 低性能模式
+    public static boolean isLowPowerMode() { return sp.getBoolean("low_power_mode", false); }
+    public static void setLowPowerMode(boolean enabled) { sp.edit().putBoolean("low_power_mode", enabled).apply(); }
+
+    // WebDAV：低性能模式下依然允许开启
     public static boolean isWebDavEnabled() { return sp.getBoolean("webdav_enabled", true); }
     public static void setWebDavEnabled(boolean enabled) { sp.edit().putBoolean("webdav_enabled", enabled).apply(); }
 
-    public static boolean isLocalSendEnabled() { return sp.getBoolean("localsend_enabled", true); }
+    // LocalSend：低性能模式下强制关闭
+    public static boolean isLocalSendEnabled() { return sp.getBoolean("localsend_enabled", true) && !isLowPowerMode(); }
     public static void setLocalSendEnabled(boolean enabled) { sp.edit().putBoolean("localsend_enabled", enabled).apply(); }
 
-    // 端口配置
     public static int getWebPort() { return sp.getInt("web_port", 8080); }
     public static int getWebDavPort() { return sp.getInt("webdav_port", 8081); }
     
-    // LocalSend PIN (加入高强度默认值)
     public static String getLsPin() { return sp.getString("ls_pin", "1234"); }
     public static void setLsPin(String pin) { sp.edit().putString("ls_pin", pin).apply(); }
 
-    // 指纹
     public static String getFingerprint() {
         String fp = sp.getString("fingerprint", "");
         if (fp.isEmpty()) {

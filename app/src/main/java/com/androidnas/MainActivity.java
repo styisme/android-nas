@@ -5,11 +5,15 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.Handler;
+import android.os.PowerManager;
 import android.os.StatFs;
+import android.provider.Settings;
 import android.text.InputType;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -55,9 +59,7 @@ public class MainActivity extends Activity {
                     stopService(new Intent(MainActivity.this, HttpServerService.class));
                     new Handler().postDelayed(new Runnable() {
                         @Override
-                        public void run() {
-                            startService(new Intent(MainActivity.this, HttpServerService.class));
-                        }
+                        public void run() { startService(new Intent(MainActivity.this, HttpServerService.class)); }
                     }, 500);
                 }
                 updateServiceStatus();
@@ -102,7 +104,36 @@ public class MainActivity extends Activity {
             public void onClick(View v) { refresh(); }
         });
         
-        if (!HttpServerService.isRunning()) startService(new Intent(this, HttpServerService.class));
+        if (!HttpServerService.isRunning()) {
+            startService(new Intent(this, HttpServerService.class));
+            checkBatteryOptimization();
+        }
+    }
+
+    private void checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                new AlertDialog.Builder(this)
+                    .setTitle("后台保活提示")
+                    .setMessage("为保证 NAS 服务在息屏后不断网，请允许忽略电池优化。\n\n如果系统有“锁屏清理”或“省电策略”，请将本应用设为“无限制”或“允许后台运行”。")
+                    .setPositiveButton("去设置", new android.content.DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(android.content.DialogInterface dialog, int which) {
+                            try {
+                                Intent intent = new Intent();
+                                intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                                intent.setData(Uri.parse("package:" + getPackageName()));
+                                startActivity(intent);
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                            }
+                        }
+                    })
+                    .setNegativeButton("暂不", null)
+                    .show();
+            }
+        }
     }
 
     @Override
@@ -131,6 +162,9 @@ public class MainActivity extends Activity {
             showControlCenter();
             return true;
         } else if (item.getItemId() == 3) {
+            if (SettingsManager.isLowPowerMode()) {
+                Toast.makeText(this, "低性能模式下建议关闭内网穿透以节省电量", Toast.LENGTH_LONG).show();
+            }
             showTunnelCenter();
             return true;
         } else if (item.getItemId() == 4) {
@@ -148,15 +182,40 @@ public class MainActivity extends Activity {
         scrollView.addView(layout);
 
         EditText etAlias = new EditText(this); etAlias.setHint("设备名称"); etAlias.setText(SettingsManager.getDeviceAlias()); layout.addView(etAlias);
+        
+        CheckBox cbLowPower = new CheckBox(this); cbLowPower.setText("低性能模式 (关闭 LocalSend)"); cbLowPower.setChecked(SettingsManager.isLowPowerMode()); layout.addView(cbLowPower);
+        
+        // 提示文字
+        TextView tvHint = new TextView(this);
+        tvHint.setText("提示：低性能模式会暂停 LocalSend 接收，但 Web 与 WebDAV 仍保持工作。");
+        tvHint.setTextSize(12);
+        tvHint.setTextColor(0xFF888888);
+        layout.addView(tvHint);
+
         CheckBox cbWebDav = new CheckBox(this); cbWebDav.setText("开启 WebDAV"); cbWebDav.setChecked(SettingsManager.isWebDavEnabled()); layout.addView(cbWebDav);
         CheckBox cbLs = new CheckBox(this); cbLs.setText("开启 LocalSend"); cbLs.setChecked(SettingsManager.isLocalSendEnabled()); layout.addView(cbLs);
+        
         EditText etPin = new EditText(this); etPin.setHint("LocalSend PIN"); etPin.setText(SettingsManager.getLsPin()); layout.addView(etPin);
 
+        cbLowPower.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                cbLs.setEnabled(!isChecked);
+                if (isChecked) {
+                    cbLs.setChecked(false);
+                }
+            }
+        });
+        if (SettingsManager.isLowPowerMode()) {
+            cbLs.setEnabled(false);
+        }
+
         new AlertDialog.Builder(this).setTitle("控制中心").setView(scrollView)
-            .setPositiveButton("保存", new android.content.DialogInterface.OnClickListener() {
+            .setPositiveButton("保存并重启服务", new android.content.DialogInterface.OnClickListener() {
                 @Override
                 public void onClick(android.content.DialogInterface dialog, int which) {
                     SettingsManager.setDeviceAlias(etAlias.getText().toString().trim());
+                    SettingsManager.setLowPowerMode(cbLowPower.isChecked());
                     SettingsManager.setWebDavEnabled(cbWebDav.isChecked());
                     SettingsManager.setLocalSendEnabled(cbLs.isChecked());
                     SettingsManager.setLsPin(etPin.getText().toString().trim());
@@ -235,8 +294,17 @@ public class MainActivity extends Activity {
         toggleBtn.setText(running ? "停止服务" : "启动服务");
         String ip = getIpAddress();
         String text = "网页管理: http://" + ip + ":" + SettingsManager.getWebPort();
-        if (SettingsManager.isWebDavEnabled()) text += "\n网络邻居: http://" + ip + ":" + SettingsManager.getWebDavPort();
-        if (SettingsManager.isLocalSendEnabled()) text += "\nLocalSend PIN: " + SettingsManager.getLsPin();
+        if (SettingsManager.isLowPowerMode()) text += "\n(低性能模式)";
+        
+        // 低性能模式下依然显示 WebDAV 链接
+        if (SettingsManager.isWebDavEnabled()) {
+            text += "\n网络邻居: http://" + ip + ":" + SettingsManager.getWebDavPort();
+        }
+        
+        if (SettingsManager.isLocalSendEnabled()) {
+            text += "\nLocalSend PIN: " + SettingsManager.getLsPin();
+        }
+        
         if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) text += "\n\n公网: " + FreeTunnelManager.getPublicUrl();
         ipView.setText(text);
     }

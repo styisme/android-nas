@@ -49,15 +49,16 @@ public class HttpServerService extends Service {
         } catch (Exception e) { e.printStackTrace(); }
 
         String rootDir = Environment.getExternalStorageDirectory().getAbsolutePath();
+        boolean isLowPower = SettingsManager.isLowPowerMode();
 
-        // 1. 启动 Web 服务 (核心)
+        // 1. Web 服务 (核心)
         try {
             serverHttp = new NasHttpServer(SettingsManager.getWebPort());
             serverHttp.start();
             startedServices.add("Web");
-        } catch (Exception e) { lastError += "Web启动失败(端口占用): " + SettingsManager.getWebPort() + "\n"; }
+        } catch (Exception e) { lastError += "Web启动失败: " + e.getMessage() + "\n"; }
         
-        // 2. 启动 WebDAV (根据开关)
+        // 2. WebDAV (低性能模式下依然保留)
         if (SettingsManager.isWebDavEnabled()) {
             try {
                 webDavHttp = new WebDavServer(rootDir);
@@ -66,8 +67,8 @@ public class HttpServerService extends Service {
             } catch (Exception e) { lastError += "WebDAV启动失败: " + e.getMessage() + "\n"; }
         }
 
-        // 3. 启动 LocalSend (根据开关)
-        if (SettingsManager.isLocalSendEnabled()) {
+        // 3. LocalSend (低性能模式下强制关闭)
+        if (!isLowPower && SettingsManager.isLocalSendEnabled()) {
             try {
                 lsServer = new LocalSendServer(53317);
                 lsServer.start();
@@ -77,7 +78,7 @@ public class HttpServerService extends Service {
             } catch (Exception e) { lastError += "LocalSend启动失败: " + e.getMessage() + "\n"; }
         }
         
-        running = true; // 只要 Web 服务跑起来就算成功，其他挂了不影响主体
+        running = true;
     }
 
     private void goForeground() {
@@ -88,14 +89,14 @@ public class HttpServerService extends Service {
                 android.app.NotificationChannel channel = new android.app.NotificationChannel("nas_service_channel", "NAS 后台服务", android.app.NotificationManager.IMPORTANCE_LOW);
                 android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
                 if (nm != null) nm.createNotificationChannel(channel);
-                n = new Notification.Builder(this, "nas_service_channel").setContentTitle("Android NAS").setContentText("所有服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(pi).setOngoing(true).build();
+                n = new Notification.Builder(this, "nas_service_channel").setContentTitle("Android NAS").setContentText("文件服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(pi).setOngoing(true).build();
             } else if (Build.VERSION.SDK_INT >= 16) {
-                n = new Notification.Builder(this).setContentTitle("Android NAS").setContentText("所有服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(pi).setOngoing(true).build();
+                n = new Notification.Builder(this).setContentTitle("Android NAS").setContentText("文件服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(pi).setOngoing(true).build();
             } else {
                 n = new Notification(android.R.drawable.stat_sys_download_done, "Android NAS 运行中", System.currentTimeMillis());
                 try {
                     java.lang.reflect.Method method = n.getClass().getMethod("setLatestEventInfo", android.content.Context.class, CharSequence.class, CharSequence.class, PendingIntent.class);
-                    method.invoke(n, this, "Android NAS", "所有服务运行中", pi);
+                    method.invoke(n, this, "Android NAS", "文件服务运行中", pi);
                 } catch (Exception e) { e.printStackTrace(); }
                 n.flags |= Notification.FLAG_ONGOING_EVENT;
             }
