@@ -13,10 +13,10 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: nas-client-linux
-            asset_name: nas-client
+            asset_name: nas-client-linux-v2.1.0
           - os: windows-latest
             artifact_name: nas-client-windows
-            asset_name: nas-client.exe
+            asset_name: nas-client-windows-v2.1.0.exe
 
     steps:
       - name: Checkout

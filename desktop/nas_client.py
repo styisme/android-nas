@@ -14,7 +14,7 @@ CONFIG_FILE = os.path.expanduser("~/.android-nas-config.json")
 class DesktopNasClient:
     def __init__(self, root):
         self.root = root
-        self.root.title("Android NAS 桌面客户端")
+        self.root.title("Android NAS 桌面客户端 v2.1.0")
         self.root.geometry("750x550")
         
         self.base_url = ""
