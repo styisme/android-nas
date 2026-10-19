@@ -2,22 +2,41 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
     <title>Android NAS</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
     <style>
-        :root { --primary: #6750A4; --surface: #FEF7FF; --on-surface: #1D1B20; --outline: #79747E; }
-        @media (prefers-color-scheme: dark) { :root { --primary: #D0BCFF; --surface: #141218; --on-surface: #E6E0E9; --outline: #938F99; } }
+        :root { --primary: #6750A4; --on-primary: #FFFFFF; --primary-container: #EADDFF; --surface: #FEF7FF; --on-surface: #1D1B20; --outline: #79747E; }
+        @media (prefers-color-scheme: dark) { :root { --primary: #D0BCFF; --on-primary: #381E72; --primary-container: #4F378B; --surface: #141218; --on-surface: #E6E0E9; --outline: #938F99; } }
+        * { box-sizing: border-box; }
         body { font-family: sans-serif; margin: 0; background: var(--surface); color: var(--on-surface); padding-bottom: 80px; }
-        header { padding: 16px; display: flex; align-items: center; border-bottom: 1px solid var(--outline); }
+        header { padding: 16px; display: flex; align-items: center; border-bottom: 1px solid var(--outline); position: sticky; top: 0; background: var(--surface); z-index: 10; }
         header h1 { margin: 0; font-size: 20px; flex: 1; }
-        .btn { background: transparent; color: var(--primary); border: none; padding: 8px 12px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        
+        .search-box { margin: 16px; display: flex; gap: 8px; }
+        input[type="text"] { flex: 1; padding: 12px; border-radius: 24px; border: 1px solid var(--outline); background: transparent; color: inherit; font-size: 16px; outline: none; }
+        .drop-zone { margin: 16px; padding: 24px; border: 2px dashed var(--outline); border-radius: 24px; text-align: center; color: var(--outline); transition: 0.2s; }
+        .drop-zone.dragover { background: var(--primary-container); border-color: var(--primary); color: var(--primary); }
         .card { margin: 16px; border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px solid var(--outline); }
-        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 30; align-items: center; justify-content: center; }
-        .modal-content { background: var(--surface); padding: 24px; border-radius: 24px; width: 90%; max-width: 800px; }
-        textarea { width: 100%; height: 150px; margin-top: 10px; border-radius: 8px; padding: 10px; }
+        #path { font-size: 14px; color: var(--primary); font-weight: bold; margin-bottom: 12px; word-break: break-all; }
+        
+        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--outline); }
+        .name { font-size: 16px; word-break: break-all; }
+        .dir-name { color: var(--primary); font-weight: 500; cursor: pointer; }
+        
+        .btn { background: transparent; color: var(--primary); border: none; padding: 8px 12px; border-radius: 20px; cursor: pointer; font-weight: bold; }
+        .btn:hover { background: rgba(103,80,164,0.1); }
+        .btn-red { color: red; }
+        .fab { position: fixed; bottom: 24px; right: 24px; width: 64px; height: 64px; border-radius: 20px; background: var(--primary); color: var(--on-primary); font-size: 28px; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        
+        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 30; align-items: center; justify-content: center; }
+        .modal-content { background: var(--surface); padding: 24px; border-radius: 28px; width: 90%; max-width: 600px; max-height: 85vh; overflow-y: auto; }
+        textarea { width: 100%; height: 250px; padding: 12px; margin: 16px 0; border-radius: 8px; border: 1px solid var(--outline); background: transparent; color: inherit; font-family: monospace; }
+
+        #uploadProgress { display: none; position: fixed; top: 70px; left: 16px; right: 16px; background: var(--primary-container); color: var(--primary); padding: 16px; border-radius: 16px; z-index: 40; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .progress-bg { width: 100%; height: 8px; background: rgba(0,0,0,0.1); border-radius: 4px; margin-top: 8px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: 0.2s; }
     </style>
 </head>
 <body>
@@ -26,60 +45,109 @@
     <button class="btn" onclick="showClipboard()">📋 剪贴板</button>
 </header>
 
+<div class="search-box">
+    <input type="text" id="searchInput" placeholder="全局搜索文件..." onkeydown="if(event.key==='Enter') doSearch()">
+    <button class="btn" onclick="doSearch()">搜索</button>
+    <button class="btn" onclick="refresh()">重置</button>
+</div>
+
+<div class="drop-zone" id="dropZone">
+    <div style="font-size:24px;">📤</div>
+    <div>点击或拖拽文件到这里上传</div>
+</div>
+
 <div class="card">
-    <div id="path" style="font-weight:bold; color:var(--primary); margin-bottom:12px;">/</div>
+    <div id="path">/</div>
+    <div style="margin-bottom:12px;">
+        <button class="btn" onclick="goUp()">⬆ 上级</button>
+        <button class="btn" onclick="refresh()">🔄 刷新</button>
+        <button class="btn" onclick="showMkdir()">📁 新建文件夹</button>
+    </div>
     <div id="list"></div>
 </div>
 
-<!-- 视频/代码预览弹窗 -->
-<div id="previewModal" class="modal">
-    <div class="modal-content">
-        <h3 id="previewTitle">预览</h3>
-        <div id="previewBody"></div>
-        <div style="text-align:right; margin-top:16px;"><button class="btn" onclick="document.getElementById('previewModal').style.display='none'">关闭</button></div>
+<button class="fab" onclick="document.getElementById('fileInput').click()">+</button>
+<input type="file" id="fileInput" multiple style="display:none">
+
+<div id="uploadProgress">
+    <div style="display:flex; justify-content:space-between;">
+        <span>正在上传...</span><span id="progressText">0%</span>
     </div>
+    <div class="progress-bg"><div class="progress-fill" id="progressFill"></div></div>
 </div>
 
-<!-- 剪贴板弹窗 -->
-<div id="clipModal" class="modal">
-    <div class="modal-content">
-        <h3>局域网剪贴板</h3>
-        <textarea id="clipContent" placeholder="在此输入内容，将自动同步到服务端..."></textarea>
-        <div style="text-align:right; margin-top:16px;">
-            <button class="btn" onclick="saveClipboard()">保存同步</button>
-            <button class="btn" onclick="document.getElementById('clipModal').style.display='none'">关闭</button>
-        </div>
+<!-- 弹窗组 -->
+<div id="editModal" class="modal"><div class="modal-content">
+    <h3>编辑: <span id="editFileName"></span></h3>
+    <textarea id="editContent"></textarea>
+    <div style="text-align:right;"><button class="btn" onclick="closeModal('editModal')">取消</button><button class="btn" onclick="doSave()">保存</button></div>
+</div></div>
+
+<div id="mkdirModal" class="modal"><div class="modal-content">
+    <h3>新建文件夹</h3>
+    <input type="text" id="newDirName" placeholder="文件夹名称" style="width:100%; padding:8px; margin-top:10px;">
+    <div style="text-align:right; margin-top:16px;"><button class="btn" onclick="closeModal('mkdirModal')">取消</button><button class="btn" onclick="doMkdir()">创建</button></div>
+</div></div>
+
+<div id="previewModal" class="modal"><div class="modal-content">
+    <h3 id="previewTitle">预览</h3>
+    <div id="previewBody"></div>
+    <div style="text-align:right; margin-top:16px;"><button class="btn" onclick="closeModal('previewModal')">关闭</button></div>
+</div></div>
+
+<div id="clipModal" class="modal"><div class="modal-content">
+    <h3>局域网剪贴板</h3>
+    <textarea id="clipContent" placeholder="在此输入内容，将自动同步到服务端..."></textarea>
+    <div style="text-align:right; margin-top:16px;">
+        <button class="btn" onclick="saveClipboard()">保存同步</button>
+        <button class="btn" onclick="closeModal('clipModal')">关闭</button>
     </div>
-</div>
+</div></div>
 
 <script>
 var currentPath = '/';
+var editingFile = '';
+var dropZone = document.getElementById('dropZone');
+var fileInput = document.getElementById('fileInput');
 
 function refresh() {
+    document.getElementById('searchInput').value = '';
     document.getElementById('path').textContent = currentPath;
     fetch('/api/list?path=' + encodeURIComponent(currentPath))
-        .then(r => r.json()).then(data => renderList(data.files));
+        .then(r => r.json()).then(data => renderList(data.files)).catch(()=>alert('加载失败'));
+}
+
+function doSearch() {
+    var q = document.getElementById('searchInput').value;
+    if (!q) { refresh(); return; }
+    document.getElementById('path').textContent = '搜索: ' + q;
+    fetch('/api/search?q=' + encodeURIComponent(q))
+        .then(r => r.json()).then(data => renderList(data)).catch(()=>alert('搜索失败'));
 }
 
 function renderList(files) {
     var list = document.getElementById('list');
     list.innerHTML = '';
+    if (files.length === 0) { list.innerHTML = '<p>空文件夹</p>'; return; }
     files.forEach(f => {
         var div = document.createElement('div');
         div.className = 'item';
         var full = f.path || ((currentPath.endsWith('/') ? currentPath : currentPath + '/') + f.name);
         
         var info = document.createElement('div');
-        info.innerHTML = `<span style="cursor:pointer;" onclick="enterDir('${full}', ${f.dir})">${f.dir ? '📁' : '📄'} ${f.name}</span>`;
+        info.innerHTML = `<span class="${f.dir ? 'dir-name' : 'name'}">${f.dir ? '📁' : '📄'} ${f.name}</span>`;
+        if (f.dir) info.onclick = () => { currentPath = full; refresh(); };
         div.appendChild(info);
 
         var actions = document.createElement('div');
         if (!f.dir) {
             if (f.isMedia) actions.innerHTML += `<button class="btn" onclick="playMedia('${encodeURIComponent(full)}', '${f.name}')">播放</button>`;
-            if (f.isTxt) actions.innerHTML += `<button class="btn" onclick="previewText('${encodeURIComponent(full)}', '${f.name}')">预览</button>`;
+            if (f.isTxt) actions.innerHTML += `<button class="btn" onclick="editFile('${encodeURIComponent(full)}', '${f.name}')">编辑</button>`;
             if (f.isZip) actions.innerHTML += `<button class="btn" onclick="unzipFile('${encodeURIComponent(full)}')">解压</button>`;
             actions.innerHTML += `<a href="/api/download?path=${encodeURIComponent(full)}" class="btn" style="text-decoration:none;">下载</a>`;
+            actions.innerHTML += `<button class="btn" onclick="shareFile('${encodeURIComponent(full)}')">分享</button>`;
         }
+        actions.innerHTML += `<button class="btn btn-red" onclick="delFile('${encodeURIComponent(full)}')">删除</button>`;
         div.appendChild(actions);
         list.appendChild(div);
     });
@@ -91,25 +159,53 @@ function playMedia(encodedPath, name) {
     document.getElementById('previewModal').style.display = 'flex';
 }
 
-function previewText(encodedPath, name) {
-    document.getElementById('previewTitle').textContent = name;
-    document.getElementById('previewBody').innerHTML = '加载中...';
-    document.getElementById('previewModal').style.display = 'flex';
-    fetch('/api/download?path=' + encodedPath).then(r => r.text()).then(txt => {
-        document.getElementById('previewBody').innerHTML = `<pre><code id="codeBlock"></code></pre>`;
-        var code = document.getElementById('codeBlock');
-        code.textContent = txt;
-        hljs.highlightElement(code);
-    });
-}
-
 function unzipFile(encodedPath) {
     fetch('/api/unzip', { method: 'POST', body: new URLSearchParams({ path: decodeURIComponent(encodedPath) }) })
         .then(r => { if(r.ok) refresh(); else alert('解压失败'); });
 }
 
-function enterDir(path, isDir) {
-    if (isDir) { currentPath = path; refresh(); }
+function editFile(encodedPath, name) {
+    editingFile = decodeURIComponent(encodedPath);
+    document.getElementById('editFileName').textContent = name;
+    document.getElementById('editContent').value = '加载中...';
+    document.getElementById('editModal').style.display = 'flex';
+    fetch('/api/preview?path=' + encodedPath).then(r => r.text()).then(txt => {
+        document.getElementById('editContent').value = txt;
+    });
+}
+function doSave() {
+    var fd = new FormData();
+    fd.append('path', editingFile);
+    fd.append('content', document.getElementById('editContent').value);
+    fetch('/api/save', { method: 'POST', body: fd }).then(() => { closeModal('editModal'); refresh(); });
+}
+
+function shareFile(encodedPath) {
+    fetch('/api/share', { method: 'POST', body: new URLSearchParams({ path: decodeURIComponent(encodedPath) }) })
+        .then(r => r.text()).then(token => {
+            prompt("分享链接已生成 (免密访问):", location.origin + '/share/' + token);
+        });
+}
+
+function showMkdir() { document.getElementById('mkdirModal').style.display = 'flex'; }
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function doMkdir() {
+    var fd = new FormData();
+    fd.append('path', currentPath);
+    fd.append('name', document.getElementById('newDirName').value);
+    fetch('/api/mkdir', { method: 'POST', body: fd }).then(() => { closeModal('mkdirModal'); refresh(); });
+}
+function delFile(encodedPath) {
+    if (!confirm('确定删除吗？')) return;
+    fetch('/api/delete', { method: 'POST', body: new URLSearchParams({ path: decodeURIComponent(encodedPath) }) })
+        .then(() => refresh());
+}
+function goUp() {
+    if (currentPath === '/') return;
+    var parts = currentPath.replace(/\/$/, '').split('/');
+    parts.pop();
+    currentPath = parts.join('/') || '/';
+    refresh();
 }
 
 function showClipboard() {
@@ -121,8 +217,40 @@ function showClipboard() {
 function saveClipboard() {
     var txt = document.getElementById('clipContent').value;
     fetch('/api/clipboard', { method: 'POST', body: new URLSearchParams({ content: txt }) })
-        .then(() => { alert('同步成功！'); document.getElementById('clipModal').style.display='none'; });
+        .then(() => { alert('同步成功！'); closeModal('clipModal'); });
 }
+
+function uploadFiles(files) {
+    if (!files.length) return;
+    var fd = new FormData();
+    for (var i = 0; i < files.length; i++) fd.append('file', files[i], files[i].name);
+    fd.append('path', currentPath);
+
+    var panel = document.getElementById('uploadProgress');
+    var fill = document.getElementById('progressFill');
+    var text = document.getElementById('progressText');
+    panel.style.display = 'block';
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', '/api/upload', true);
+    xhr.upload.onprogress = function(e) {
+        if (e.lengthComputable) {
+            var percent = Math.round((e.loaded / e.total) * 100);
+            fill.style.width = percent + '%';
+            text.textContent = percent + '%';
+        }
+    };
+    xhr.onload = function() {
+        panel.style.display = 'none'; fileInput.value = '';
+        if (xhr.status === 200) refresh(); else alert('上传失败');
+    };
+    xhr.send(fd);
+}
+fileInput.onchange = function () { uploadFiles(this.files); };
+dropZone.onclick = function() { fileInput.click(); };
+dropZone.ondragover = function(e) { e.preventDefault(); this.classList.add('dragover'); };
+dropZone.ondragleave = function() { this.classList.remove('dragover'); };
+dropZone.ondrop = function(e) { e.preventDefault(); this.classList.remove('dragover'); uploadFiles(e.dataTransfer.files); };
 
 refresh();
 </script>

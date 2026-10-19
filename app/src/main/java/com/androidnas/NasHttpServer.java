@@ -26,6 +26,7 @@ public class NasHttpServer extends NanoHTTPD {
         String method = session.getMethod().name();
         
         try {
+            // 分享拦截
             if (uri.startsWith("/share/")) {
                 String token = uri.substring(7);
                 String sharedPath = sharedLinks.get(token);
@@ -41,6 +42,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.NOT_FOUND, "分享已失效");
             }
 
+            // 身份校验
             int role = 1;
             if (!Method.OPTIONS.equals(session.getMethod())) {
                 role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
@@ -51,6 +53,7 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
+            // 剪贴板
             if ("/api/clipboard".equals(uri)) {
                 if (Method.POST.equals(session.getMethod())) {
                     Map<String, String> files = new HashMap<>();
@@ -62,6 +65,7 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
+            // 解压
             if ("/api/unzip".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -97,6 +101,24 @@ public class NasHttpServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", buildJson(dir, path));
             }
 
+            // 搜索
+            if ("/api/search".equals(uri)) {
+                String q = session.getParms().get("q");
+                List<File> results = new ArrayList<>();
+                searchRecursive(new File(ROOT), q, results);
+                StringBuilder sb = new StringBuilder("[");
+                for (int i = 0; i < results.size(); i++) {
+                    if (i > 0) sb.append(",");
+                    File f = results.get(i);
+                    String ext = f.getName().contains(".") ? f.getName().substring(f.getName().lastIndexOf(".") + 1).toLowerCase() : "";
+                    boolean isTxt = ext.equals("txt") || ext.equals("md") || ext.equals("json") || ext.equals("java") || ext.equals("html");
+                    sb.append("{\"name\":\"").append(f.getName()).append("\",\"path\":\"").append(f.getAbsolutePath().replace(ROOT, "")).append("\",\"dir\":").append(f.isDirectory()).append(",\"isTxt\":").append(isTxt).append("}");
+                }
+                sb.append("]");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
+            }
+
+            // 下载 (支持 Range 视频流)
             if ("/api/download".equals(uri)) {
                 String path = session.getParms().get("path");
                 File file = safeFile(path);
@@ -115,17 +137,12 @@ public class NasHttpServer extends NanoHTTPD {
                     raf.seek(start);
                     final FileInputStream fis = new FileInputStream(raf.getFD());
                     InputStream is = new InputStream() {
-                        @Override 
-                        public int read() throws IOException {
-                            return fis.read();
-                        }
-                        @Override 
-                        public int read(byte[] b, int off, int len) throws IOException {
+                        @Override public int read() throws IOException { return fis.read(); }
+                        @Override public int read(byte[] b, int off, int len) throws IOException {
                             if (len > contentLen) len = (int) contentLen;
                             return fis.read(b, off, len);
                         }
                     };
-                    
                     Response resp = newFixedLengthResponse(Response.Status.PARTIAL_CONTENT, getMimeType(file.getName()), is, contentLen);
                     resp.addHeader("Accept-Ranges", "bytes");
                     resp.addHeader("Content-Range", "bytes " + start + "-" + end + "/" + fileLen);
@@ -138,6 +155,89 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
+            // 预览
+            if ("/api/preview".equals(uri)) {
+                File file = safeFile(session.getParms().get("path"));
+                if (file == null || !file.exists()) return text(Response.Status.NOT_FOUND, "Not found");
+                BufferedReader reader = new BufferedReader(new FileReader(file));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = reader.readLine()) != null) sb.append(line).append("\n");
+                reader.close();
+                return text(Response.Status.OK, sb.toString());
+            }
+
+            // 上传
+            if ("/api/upload".equals(uri) && Method.POST.equals(session.getMethod())) {
+                Map<String, String> files = new HashMap<>();
+                session.parseBody(files);
+                String targetPath = files.get("path");
+                File targetDir = safeFile(targetPath != null ? targetPath : "/");
+                if (targetDir == null || !targetDir.isDirectory()) targetDir = new File(ROOT);
+                String tmpFilePath = null; String originalName = null;
+                for (Map.Entry<String, String> e : files.entrySet()) {
+                    String val = e.getValue();
+                    if (val != null && new File(val).exists()) { tmpFilePath = val; originalName = e.getKey(); break; }
+                }
+                if (tmpFilePath == null) return text(Response.Status.BAD_REQUEST, "No file");
+                if (originalName == null) originalName = new File(tmpFilePath).getName();
+                File dest = new File(targetDir, new File(originalName).getName());
+                copy(new File(tmpFilePath), dest);
+                new File(tmpFilePath).delete();
+                return text(Response.Status.OK, "OK");
+            }
+
+            // 重命名
+            if ("/api/rename".equals(uri) && Method.POST.equals(session.getMethod())) {
+                Map<String, String> files = new HashMap<>();
+                session.parseBody(files);
+                File oldFile = safeFile(files.get("path"));
+                String newName = files.get("newName");
+                if (oldFile != null && newName != null && role == 1) {
+                    File newFile = new File(oldFile.getParent(), newName);
+                    if (oldFile.renameTo(newFile)) return text(Response.Status.OK, "OK");
+                }
+                return text(Response.Status.INTERNAL_ERROR, "Fail");
+            }
+
+            // 新建、删除、保存
+            if ("/api/mkdir".equals(uri) || "/api/delete".equals(uri) || "/api/save".equals(uri)) {
+                Map<String, String> files = new HashMap<>();
+                session.parseBody(files);
+                if ("/api/mkdir".equals(uri)) {
+                    File dir = safeFile(files.get("path"));
+                    String name = files.get("name");
+                    if (dir != null && name != null && role == 1) {
+                        if (new File(dir, name).mkdirs()) return text(Response.Status.OK, "OK");
+                    }
+                } else if ("/api/delete".equals(uri)) {
+                    File f = safeFile(files.get("path"));
+                    if (f != null && !f.getAbsolutePath().equals(ROOT) && role == 1) {
+                        if (deleteRecursive(f)) return text(Response.Status.OK, "OK");
+                    }
+                } else if ("/api/save".equals(uri)) {
+                    File file = safeFile(files.get("path"));
+                    String content = files.get("content");
+                    if (file != null && content != null && file.exists() && role == 1) {
+                        FileWriter writer = new FileWriter(file); writer.write(content); writer.close();
+                        return text(Response.Status.OK, "OK");
+                    }
+                }
+                return text(Response.Status.INTERNAL_ERROR, "Fail");
+            }
+
+            // 分享
+            if ("/api/share".equals(uri) && Method.POST.equals(session.getMethod())) {
+                Map<String, String> files = new HashMap<>();
+                session.parseBody(files);
+                String path = files.get("path");
+                if (path != null && role == 1) {
+                    String token = UUID.randomUUID().toString().substring(0, 8);
+                    sharedLinks.put(token, path);
+                    return text(Response.Status.OK, token);
+                }
+                return text(Response.Status.FORBIDDEN, "Fail");
+            }
+
             if ("/".equals(uri) || "/index.html".equals(uri)) {
                 InputStream is = getClass().getClassLoader().getResourceAsStream("assets/index.html");
                 return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", is, -1);
@@ -147,6 +247,16 @@ public class NasHttpServer extends NanoHTTPD {
             return text(Response.Status.INTERNAL_ERROR, "Error: " + e.getMessage());
         }
         return text(Response.Status.NOT_FOUND, "Not found");
+    }
+
+    private void searchRecursive(File dir, String q, List<File> results) {
+        if (dir == null || !dir.exists() || results.size() >= 100) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            if (f.getName().toLowerCase().contains(q.toLowerCase())) results.add(f);
+            if (f.isDirectory()) searchRecursive(f, q, results);
+        }
     }
 
     private String getMimeType(String name) {
@@ -165,8 +275,7 @@ public class NasHttpServer extends NanoHTTPD {
         File[] files = dir.listFiles();
         if (files == null) files = new File[0];
         Arrays.sort(files, new Comparator<File>() {
-            @Override
-            public int compare(File a, File b) {
+            @Override public int compare(File a, File b) {
                 if (a.isDirectory() && !b.isDirectory()) return -1;
                 if (!a.isDirectory() && b.isDirectory()) return 1;
                 return a.getName().compareToIgnoreCase(b.getName());
@@ -177,7 +286,7 @@ public class NasHttpServer extends NanoHTTPD {
             File f = files[i];
             if (i > 0) sb.append(",");
             String ext = f.getName().contains(".") ? f.getName().substring(f.getName().lastIndexOf(".") + 1).toLowerCase() : "";
-            boolean isTxt = ext.equals("txt") || ext.equals("md") || ext.equals("json") || ext.equals("java");
+            boolean isTxt = ext.equals("txt") || ext.equals("md") || ext.equals("json") || ext.equals("java") || ext.equals("html");
             boolean isImg = ext.equals("jpg") || ext.equals("png");
             boolean isMedia = isImg || ext.equals("mp4") || ext.equals("mp3");
             boolean isZip = ext.equals("zip");
@@ -187,5 +296,15 @@ public class NasHttpServer extends NanoHTTPD {
         }
         sb.append("]}");
         return sb.toString();
+    }
+
+    private boolean deleteRecursive(File f) {
+        if (f.isDirectory()) { File[] c = f.listFiles(); if (c != null) for (File x : c) if (!deleteRecursive(x)) return false; }
+        return f.delete();
+    }
+    private void copy(File src, File dst) throws IOException {
+        try (InputStream in = new FileInputStream(src); OutputStream out = new FileOutputStream(dst)) {
+            byte[] buf = new byte[8192]; int len; while ((len = in.read(buf)) > 0) out.write(buf, 0, len);
+        }
     }
 }
