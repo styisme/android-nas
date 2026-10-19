@@ -43,6 +43,8 @@ import com.journeyapps.barcodescanner.ScanOptions;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import okhttp3.Credentials;
 import okhttp3.MediaType;
@@ -85,23 +87,43 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View v) { showAddDeviceDialog(); }
         });
         
+        // 动态申请权限（兼容 Android 13+）
+        requestPermissions();
+    }
+
+    private void requestPermissions() {
+        List<String> permissions = new ArrayList<>();
         if (android.os.Build.VERSION.SDK_INT >= 33) {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_IMAGES) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.READ_MEDIA_IMAGES}, 100);
+                permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
+            }
+            if (ActivityCompat.checkSelfPermission(this, "android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED) {
+                permissions.add("android.permission.POST_NOTIFICATIONS");
             }
         } else {
             if (ActivityCompat.checkSelfPermission(this, Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
-                java.util.List<String> permissions = new java.util.ArrayList<>();
                 permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE);
-                if (android.os.Build.VERSION.SDK_INT >= 33) {
-                    permissions.add(Manifest.permission.READ_MEDIA_IMAGES);
-                    permissions.add("android.permission.POST_NOTIFICATIONS");
-                }
-                ActivityCompat.requestPermissions(this, permissions.toArray(new String[0]), 100);
             }
+        }
+        
+        if (!permissions.isEmpty()) {
+            ActivityCompat.requestPermissions(this, permissions.toArray(new String[0]), 100);
         }
     }
 
+    private void loadDevices() {
+        SharedPreferences sp = getSharedPreferences("nas", Context.MODE_PRIVATE);
+        String json = sp.getString("devices", "");
+        if (!json.isEmpty()) {
+            devices = gson.fromJson(json, new TypeToken<List<NasDevice>>(){}.getType());
+        }
+        adapter.notifyDataSetChanged();
+    }
+
+    private void saveDevices() {
+        SharedPreferences sp = getSharedPreferences("nas", Context.MODE_PRIVATE);
+        sp.edit().putString("devices", gson.toJson(devices)).apply();
+    }
 
     private void autoScan() {
         Toast.makeText(this, "正在扫描局域网设备...", Toast.LENGTH_SHORT).show();
@@ -113,7 +135,7 @@ public class MainActivity extends AppCompatActivity {
             new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    java.util.concurrent.ExecutorService executor = java.util.concurrent.Executors.newFixedThreadPool(20);
+                    ExecutorService executor = Executors.newFixedThreadPool(20);
                     for (int i = 1; i < 255; i++) {
                         final String targetIp = subnet + i;
                         executor.execute(new Runnable() {
@@ -140,25 +162,10 @@ public class MainActivity extends AppCompatActivity {
                             }
                         });
                     }
-                }
-                                executor.shutdown();
+                    executor.shutdown(); // 释放线程池
                 }
             }).start();
         } catch (Exception e) {}
-    }
-
-    private void loadDevices() {
-        SharedPreferences sp = getSharedPreferences("nas", Context.MODE_PRIVATE);
-        String json = sp.getString("devices", "");
-        if (!json.isEmpty()) {
-            devices = gson.fromJson(json, new TypeToken<List<NasDevice>>(){}.getType());
-        }
-        adapter.notifyDataSetChanged();
-    }
-
-    private void saveDevices() {
-        SharedPreferences sp = getSharedPreferences("nas", Context.MODE_PRIVATE);
-        sp.edit().putString("devices", gson.toJson(devices)).apply();
     }
 
     private void showAddDeviceDialog() {
@@ -197,7 +204,6 @@ public class MainActivity extends AppCompatActivity {
         params.topMargin = 24;
         layout.addView(tilUrl, params);
 
-        // 加回协议选择
         RadioGroup rgType = new RadioGroup(this);
         RadioButton rbAndroid = new RadioButton(this);
         rbAndroid.setText("Android NAS (原生接口)");
@@ -256,7 +262,6 @@ public class MainActivity extends AppCompatActivity {
                     Cursor cursor = getContentResolver().query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null, sortOrder);
                     
                     if (cursor == null) return;
-                    int count = 0;
                     OkHttpClient client = new OkHttpClient();
                     final String authHeader = Credentials.basic(device.username, device.password);
 
@@ -296,6 +301,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
+        menu.add(0, 0, 0, "扫描局域网");
         menu.add(0, 1, 0, "局域网剪贴板");
         menu.add(0, 2, 0, "设置");
         menu.add(0, 3, 0, "关于");
@@ -304,7 +310,10 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == 1) {
+        if (item.getItemId() == 0) {
+            autoScan();
+            return true;
+        } else if (item.getItemId() == 1) {
             showClipboardDialog();
             return true;
         } else if (item.getItemId() == 3) {
