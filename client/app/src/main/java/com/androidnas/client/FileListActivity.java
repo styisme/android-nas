@@ -428,7 +428,8 @@ public class FileListActivity extends AppCompatActivity {
         
         new Thread(() -> {
             try {
-                String downloadUrl = baseUrl + f.path;
+                String encodedPath = URLEncoder.encode(f.path, "UTF-8");
+                String downloadUrl = baseUrl + "/api/download?path=" + encodedPath;
                 Request req = new Request.Builder().url(downloadUrl).header("Authorization", authHeader).build();
                 Response response = client.newCall(req).execute();
                 if (response.isSuccessful() && response.body() != null) {
