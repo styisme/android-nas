@@ -3,9 +3,6 @@ name: Build Desktop Client
 on:
   push:
     branches: [ main, master ]
-    paths:
-      - 'desktop/**'
-      - '.github/workflows/build-desktop.yml'
   workflow_dispatch:
 
 jobs:

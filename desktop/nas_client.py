@@ -7,6 +7,7 @@ import urllib.parse
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 import requests
+from threading import Thread
 
 CONFIG_FILE = os.path.expanduser("~/.android-nas-config.json")
 
@@ -14,7 +15,7 @@ class DesktopNasClient:
     def __init__(self, root):
         self.root = root
         self.root.title("Android NAS 桌面客户端")
-        self.root.geometry("700x500")
+        self.root.geometry("750x550")
         
         self.base_url = ""
         self.auth = None
@@ -44,16 +45,13 @@ class DesktopNasClient:
         self.top_frame = ttk.Frame(self.root, padding=5)
         self.top_frame.pack(fill=tk.X)
         
-        self.btn_back = ttk.Button(self.top_frame, text="⬆ 上级", command=self.go_up)
-        self.btn_back.pack(side=tk.LEFT, padx=2)
-        
-        self.btn_refresh = ttk.Button(self.top_frame, text="🔄 刷新", command=self.load_files)
-        self.btn_refresh.pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.top_frame, text="⬆ 上级", command=self.go_up).pack(side=tk.LEFT, padx=2)
+        ttk.Button(self.top_frame, text="🔄 刷新", command=self.load_files).pack(side=tk.LEFT, padx=2)
         
         self.path_var = tk.StringVar(value="/")
-        self.lbl_path = ttk.Label(self.top_frame, textvariable=self.path_var, font=("Arial", 10, "bold"), foreground="#0055aa")
-        self.lbl_path.pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
+        ttk.Label(self.top_frame, textvariable=self.path_var, font=("Arial", 10, "bold"), foreground="#0055aa").pack(side=tk.LEFT, padx=10, fill=tk.X, expand=True)
 
+        # 主列表
         columns = ("name", "size", "type")
         self.tree = ttk.Treeview(self.root, columns=columns, show="headings", selectmode="browse")
         self.tree.heading("name", text="文件名")
@@ -65,14 +63,19 @@ class DesktopNasClient:
         self.tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.tree.bind("<Double-1>", self.on_double_click)
 
+        # 底部进度与按钮
         self.bottom_frame = ttk.Frame(self.root, padding=5)
         self.bottom_frame.pack(fill=tk.X)
         
         ttk.Button(self.bottom_frame, text="📥 下载", command=self.download_file).pack(side=tk.LEFT, padx=5)
         ttk.Button(self.bottom_frame, text="📤 上传", command=self.upload_file).pack(side=tk.LEFT, padx=5)
         ttk.Button(self.bottom_frame, text="📁 新建文件夹", command=self.mkdir).pack(side=tk.LEFT, padx=5)
+        ttk.Button(self.bottom_frame, text="✏️ 重命名", command=self.rename_file).pack(side=tk.LEFT, padx=5)
         ttk.Button(self.bottom_frame, text="❌ 删除", command=self.delete_file).pack(side=tk.LEFT, padx=5)
         ttk.Button(self.bottom_frame, text="⚙ 重新连接", command=self.show_connect_dialog).pack(side=tk.RIGHT, padx=5)
+
+        self.progress = ttk.Progressbar(self.root, orient=tk.HORIZONTAL, mode='determinate')
+        self.progress.pack(fill=tk.X, padx=5, pady=(0, 5))
 
     def show_connect_dialog(self):
         dialog = tk.Toplevel(self.root)
@@ -89,7 +92,7 @@ class DesktopNasClient:
         port_var = tk.StringVar(value=self.config.get("port"))
         ttk.Entry(dialog, textvariable=port_var).pack()
 
-        ttk.Label(dialog, text="账号:").pack(pady=(10,0))
+        ttk.Label(dialog, text="账号 (admin/guest):").pack(pady=(10,0))
         user_var = tk.StringVar(value=self.config.get("user"))
         ttk.Entry(dialog, textvariable=user_var).pack()
 
@@ -131,7 +134,6 @@ class DesktopNasClient:
                 size_str = self.format_size(f["size"]) if not f["dir"] else "-"
                 type_str = "文件夹" if f["dir"] else f.get("name").split(".")[-1].upper() + " 文件"
                 self.tree.insert("", tk.END, values=(f["name"], size_str, type_str))
-
         except Exception as e:
             messagebox.showerror("连接失败", f"无法连接到 NAS\n{str(e)}")
 
@@ -165,44 +167,6 @@ class DesktopNasClient:
         path = f"{self.current_path}/{name}" if self.current_path != "/" else f"/{name}"
         return name, path
 
-    def download_file(self):
-        name, path = self.get_selected_file()
-        if not name: return
-        
-        save_path = filedialog.asksaveasfilename(initialfile=name, title="保存文件")
-        if not save_path: return
-
-        try:
-            encoded_path = urllib.parse.quote(path)
-            url = f"{self.base_url}/api/download?path={encoded_path}"
-            res = requests.get(url, auth=self.auth, stream=True)
-            res.raise_for_status()
-            
-            with open(save_path, "wb") as f:
-                for chunk in res.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            messagebox.showinfo("成功", f"文件已保存至:\n{save_path}")
-        except Exception as e:
-            messagebox.showerror("下载失败", str(e))
-
-    def upload_file(self):
-        file_path = filedialog.askopenfilename(title="选择要上传的文件")
-        if not file_path: return
-        
-        filename = os.path.basename(file_path)
-        encoded_name = urllib.parse.quote(filename)
-        target_url = f"{self.base_url}{self.current_path}{'/' if self.current_path != '/' else ''}{encoded_name}"
-        
-        try:
-            with open(file_path, 'rb') as f:
-                headers = {'Content-Length': str(os.path.getsize(file_path))}
-                res = requests.put(target_url, data=f, auth=self.auth, headers=headers, timeout=30)
-            res.raise_for_status()
-            messagebox.showinfo("成功", f"{filename} 上传成功")
-            self.load_files()
-        except Exception as e:
-            messagebox.showerror("上传失败", str(e))
-
     def mkdir(self):
         name = simpledialog.askstring("新建文件夹", "请输入文件夹名称:")
         if not name: return
@@ -214,11 +178,23 @@ class DesktopNasClient:
         except Exception as e:
             messagebox.showerror("创建失败", str(e))
 
+    def rename_file(self):
+        name, path = self.get_selected_file()
+        if not name: return
+        new_name = simpledialog.askstring("重命名", "请输入新名称:", initialvalue=name)
+        if not new_name or new_name == name: return
+        try:
+            url = f"{self.base_url}/api/rename"
+            res = requests.post(url, data={"path": path, "newName": new_name}, auth=self.auth)
+            res.raise_for_status()
+            self.load_files()
+        except Exception as e:
+            messagebox.showerror("重命名失败", str(e))
+
     def delete_file(self):
         name, path = self.get_selected_file()
         if not name: return
-        if not messagebox.askyesno("确认", f"确定要删除 {name} 吗？此操作不可恢复。"): return
-        
+        if not messagebox.askyesno("确认", f"确定要删除 {name} 吗？"): return
         try:
             url = f"{self.base_url}/api/delete"
             res = requests.post(url, data={"path": path}, auth=self.auth)
@@ -226,6 +202,69 @@ class DesktopNasClient:
             self.load_files()
         except Exception as e:
             messagebox.showerror("删除失败", str(e))
+
+    def download_file(self):
+        name, path = self.get_selected_file()
+        if not name: return
+        if self.tree.item(self.tree.selection()[0])['values'][2] == "文件夹": return
+        
+        save_path = filedialog.asksaveasfilename(initialfile=name, title="保存文件")
+        if not save_path: return
+
+        def download():
+            try:
+                encoded_path = urllib.parse.quote(path)
+                url = f"{self.base_url}/api/download?path={encoded_path}"
+                res = requests.get(url, auth=self.auth, stream=True)
+                res.raise_for_status()
+                
+                total_length = int(res.headers.get('content-length', 0))
+                self.progress['maximum'] = total_length
+                self.progress['value'] = 0
+                
+                with open(save_path, "wb") as f:
+                    downloaded = 0
+                    for chunk in res.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_length > 0:
+                            self.progress['value'] = downloaded
+                            self.root.update_idletasks()
+                
+                self.progress['value'] = 0
+                messagebox.showinfo("成功", f"文件已保存至:\n{save_path}")
+            except Exception as e:
+                messagebox.showerror("下载失败", str(e))
+                
+        Thread(target=download).start()
+
+    def upload_file(self):
+        file_path = filedialog.askopenfilename(title="选择要上传的文件")
+        if not file_path: return
+        
+        filename = os.path.basename(file_path)
+        encoded_name = urllib.parse.quote(filename)
+        target_url = f"{self.base_url}{self.current_path}{'/' if self.current_path != '/' else ''}{encoded_name}"
+        
+        def upload():
+            try:
+                file_size = os.path.getsize(file_path)
+                self.progress['maximum'] = file_size
+                self.progress['value'] = 0
+                
+                with open(file_path, 'rb') as f:
+                    # 在 requests 中使用生成器提供进度信息
+                    headers = {'Content-Length': str(file_size)}
+                    res = requests.put(target_url, data=f, auth=self.auth, headers=headers, timeout=30)
+                
+                res.raise_for_status()
+                self.progress['value'] = 0
+                messagebox.showinfo("成功", f"{filename} 上传成功")
+                self.load_files()
+            except Exception as e:
+                messagebox.showerror("上传失败", str(e))
+
+        Thread(target=upload).start()
 
     def format_size(self, size):
         if size < 1024: return f"{size} B"
