@@ -26,7 +26,7 @@ public class NasHttpServer extends NanoHTTPD {
         String method = session.getMethod().name();
         
         try {
-            // 分享拦截
+            // 1. 分享拦截
             if (uri.startsWith("/share/")) {
                 String token = uri.substring(7);
                 String sharedPath = sharedLinks.get(token);
@@ -42,7 +42,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.NOT_FOUND, "分享已失效");
             }
 
-            // 身份校验
+            // 2. 身份校验
             int role = 1;
             if (!Method.OPTIONS.equals(session.getMethod())) {
                 role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
@@ -53,7 +53,7 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
-            // 剪贴板
+            // 3. 剪贴板同步
             if ("/api/clipboard".equals(uri)) {
                 if (Method.POST.equals(session.getMethod())) {
                     Map<String, String> files = new HashMap<>();
@@ -65,7 +65,7 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
-            // 解压
+            // 4. 在线解压
             if ("/api/unzip".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -94,6 +94,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.FORBIDDEN, "Fail");
             }
 
+            // 5. 目录列表
             if ("/api/list".equals(uri)) {
                 String path = session.getParms().get("path");
                 File dir = safeFile(path);
@@ -101,7 +102,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", buildJson(dir, path));
             }
 
-            // 搜索
+            // 6. 全局搜索
             if ("/api/search".equals(uri)) {
                 String q = session.getParms().get("q");
                 List<File> results = new ArrayList<>();
@@ -112,7 +113,6 @@ public class NasHttpServer extends NanoHTTPD {
                     File f = results.get(i);
                     String ext = f.getName().contains(".") ? f.getName().substring(f.getName().lastIndexOf(".") + 1).toLowerCase() : "";
                     boolean isTxt = ext.equals("txt") || ext.equals("md") || ext.equals("json") || ext.equals("java") || ext.equals("html");
-                                        boolean isTxt = ext.equals("txt") || ext.equals("md") || ext.equals("json") || ext.equals("java") || ext.equals("html");
                     boolean isImg = ext.equals("jpg") || ext.equals("png");
                     boolean isMedia = isImg || ext.equals("mp4") || ext.equals("mp3");
                     boolean isZip = ext.equals("zip");
@@ -124,7 +124,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
             }
 
-            // 下载 (支持 Range 视频流)
+            // 7. 下载与视频流 (Range 支持)
             if ("/api/download".equals(uri)) {
                 String path = session.getParms().get("path");
                 File file = safeFile(path);
@@ -161,7 +161,7 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
-            // 预览
+            // 8. 文本预览
             if ("/api/preview".equals(uri)) {
                 File file = safeFile(session.getParms().get("path"));
                 if (file == null || !file.exists()) return text(Response.Status.NOT_FOUND, "Not found");
@@ -172,7 +172,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.OK, sb.toString());
             }
 
-            // 上传
+            // 9. 上传
             if ("/api/upload".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -192,7 +192,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.OK, "OK");
             }
 
-            // 重命名
+            // 10. 重命名
             if ("/api/rename".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -205,7 +205,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.INTERNAL_ERROR, "Fail");
             }
 
-            // 新建、删除、保存
+            // 11. 新建文件夹 / 删除 / 保存
             if ("/api/mkdir".equals(uri) || "/api/delete".equals(uri) || "/api/save".equals(uri)) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -231,7 +231,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.INTERNAL_ERROR, "Fail");
             }
 
-            // 分享
+            // 12. 免密分享生成
             if ("/api/share".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
@@ -244,6 +244,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.FORBIDDEN, "Fail");
             }
 
+            // 13. Web 首页
             if ("/".equals(uri) || "/index.html".equals(uri)) {
                 InputStream is = getClass().getClassLoader().getResourceAsStream("assets/index.html");
                 return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", is, -1);
@@ -287,7 +288,7 @@ public class NasHttpServer extends NanoHTTPD {
                 return a.getName().compareToIgnoreCase(b.getName());
             }
         });
-        StringBuilder sb = new StringBuilder("{\"path\":\"" + currentPath + "\",\"files\":[");
+        StringBuilder sb = new StringBuilder("{\"path\":\"" + escape(currentPath) + "\",\"files\":[");
         for (int i = 0; i < files.length; i++) {
             File f = files[i];
             if (i > 0) sb.append(",");
