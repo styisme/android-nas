@@ -23,41 +23,40 @@ public class NasHttpServer extends NanoHTTPD {
         String uri = session.getUri();
         String method = session.getMethod().name();
         
-        if (uri.startsWith("/share/")) {
-            String token = uri.substring(7);
-            String sharedPath = sharedLinks.get(token);
-            if (sharedPath != null) {
-                File file = safeFile(sharedPath);
-                if (file != null && file.exists() && !file.isDirectory()) {
-                    try {
+        try {
+            // 分享拦截，免密
+            if (uri.startsWith("/share/")) {
+                String token = uri.substring(7);
+                String sharedPath = sharedLinks.get(token);
+                if (sharedPath != null) {
+                    File file = safeFile(sharedPath);
+                    if (file != null && file.exists() && !file.isDirectory()) {
                         FileInputStream fis = new FileInputStream(file);
                         Response resp = newChunkedResponse(Response.Status.OK, "application/octet-stream", fis);
                         resp.addHeader("Content-Disposition", "attachment; filename=\"" + file.getName() + "\"");
                         return resp;
-                    } catch (Exception e) {}
+                    }
+                }
+                return text(Response.Status.NOT_FOUND, "分享已失效");
+            }
+
+            String clientIp = session.getHeaders().get("remote-addr");
+            if (clientIp == null) clientIp = "unknown";
+            
+            int role = 1;
+            if (!Method.OPTIONS.equals(session.getMethod())) {
+                role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
+                if (role == 0) {
+                    Response res = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "401 Unauthorized");
+                    res.addHeader("WWW-Authenticate", "Basic realm=\"Android NAS\"");
+                    return res;
                 }
             }
-            return text(Response.Status.NOT_FOUND, "分享已失效");
-        }
 
-        String clientIp = session.getHeaders().get("remote-addr");
-        if (clientIp == null) clientIp = "unknown";
-        
-        int role = 1;
-        if (!Method.OPTIONS.equals(session.getMethod())) {
-            role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
-            if (role == 0) {
-                Response res = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "401 Unauthorized");
-                res.addHeader("WWW-Authenticate", "Basic realm=\"Android NAS\"");
-                return res;
+            if (role == 2 && !uri.startsWith("/Public")) {
+                return text(Response.Status.FORBIDDEN, "访客仅能访问 /Public 目录");
             }
-        }
 
-        if (role == 2 && !uri.startsWith("/Public")) {
-            return text(Response.Status.FORBIDDEN, "访客仅能访问 /Public 目录");
-        }
-
-        try {
             if (Method.PUT.equals(session.getMethod())) {
                 File targetFile = safeFile(uri);
                 if (targetFile != null && role == 1) {
@@ -150,7 +149,6 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.OK, "OK");
             }
 
-            // 新增：重命名接口
             if ("/api/rename".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<String, String>();
                 session.parseBody(files);
