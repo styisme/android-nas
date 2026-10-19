@@ -7,8 +7,15 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.net.Uri;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.os.PowerManager;
+import android.os.StatFs;
+import android.provider.Settings;
+import android.text.InputType;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -20,22 +27,33 @@ import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import java.io.File;
+import java.text.SimpleDateFormat;
 import java.util.*;
 
 public class MainActivity extends Activity {
-    private TextView ipView;
+    private static final String ROOT = Environment.getExternalStorageDirectory().getAbsolutePath();
+    private File currentDir;
+    private ListView listView;
+    private TextView pathView, statusView, ipView, storageView;
+    private Button toggleBtn;
     private CheckBox cbAuth;
-    private String currentIp = "127.0.0.1";
+    private FileAdapter adapter;
+    private final List<File> items = new ArrayList<File>();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        
+
         AuthManager.init(this);
+        currentDir = new File(ROOT);
+        pathView = (TextView) findViewById(R.id.pathView);
+        statusView = (TextView) findViewById(R.id.statusView);
         ipView = (TextView) findViewById(R.id.ipView);
+        toggleBtn = (Button) findViewById(R.id.toggleBtn);
+        listView = (ListView) findViewById(R.id.listView);
         cbAuth = (CheckBox) findViewById(R.id.cbAuth);
-        
+
         SharedPreferences sp = getSharedPreferences("nas_auth", Context.MODE_PRIVATE);
         cbAuth.setChecked(sp.getBoolean("auth_enabled", true));
         cbAuth.setOnCheckedChangeListener((v, isChecked) -> {
@@ -44,16 +62,83 @@ public class MainActivity extends Activity {
                 stopService(new Intent(this, HttpServerService.class));
                 new android.os.Handler().postDelayed(() -> startService(new Intent(MainActivity.this, HttpServerService.class)), 500);
             }
+            updateServiceStatus();
         });
+        
+        storageView = new TextView(this);
+        storageView.setTextSize(14);
+        storageView.setTextColor(0xFF666666);
+        LinearLayout rootLayout = (LinearLayout) findViewById(R.id.main_layout);
+        if (rootLayout != null) rootLayout.addView(storageView, 4);
 
-        currentIp = getIpAddress();
-        updateServiceStatus();
-        if (!HttpServerService.isRunning()) startService(new Intent(this, HttpServerService.class));
+        adapter = new FileAdapter();
+        listView.setAdapter(adapter);
+
+        listView.setOnItemClickListener((parent, view, position, id) -> {
+            File f = items.get(position);
+            if (f.isDirectory()) { currentDir = f; refresh(); }
+            else showFileMenu(f);
+        });
+        listView.setOnItemLongClickListener((parent, view, position, id) -> {
+            showFileMenu(items.get(position));
+            return true;
+        });
+        
+        toggleBtn.setOnClickListener(v -> {
+            if (HttpServerService.isRunning()) stopService(new Intent(MainActivity.this, HttpServerService.class));
+            else {
+                startService(new Intent(MainActivity.this, HttpServerService.class));
+                checkBatteryOptimization();
+            }
+            updateServiceStatus();
+        });
+        
+        findViewById(R.id.upBtn).setOnClickListener(v -> {
+            File parent = currentDir.getParentFile();
+            if (parent != null && parent.getAbsolutePath().startsWith(ROOT)) { currentDir = parent; refresh(); }
+        });
+        findViewById(R.id.refreshBtn).setOnClickListener(v -> refresh());
+        
+        if (!HttpServerService.isRunning()) {
+            startService(new Intent(this, HttpServerService.class));
+            checkBatteryOptimization();
+        }
+    }
+    
+    private void checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                new AlertDialog.Builder(this)
+                    .setTitle("后台保活提示")
+                    .setMessage("为保证 NAS 服务在息屏后不断网，请允许忽略电池优化。")
+                    .setPositiveButton("去设置", (dialog, which) -> {
+                        try {
+                            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                            intent.setData(Uri.parse("package:" + getPackageName()));
+                            startActivity(intent);
+                        } catch (Exception e) { e.printStackTrace(); }
+                    })
+                    .setNegativeButton("暂不", null)
+                    .show();
+            }
+        }
     }
 
+    @Override protected void onResume() { super.onResume(); updateServiceStatus(); refresh(); }
+
     private void updateServiceStatus() {
-        String text = "网页管理: http://" + currentIp + ":8080\n网络邻居: http://" + currentIp + ":8081";
-        if (cbAuth.isChecked()) text += "\n管理员: " + AuthManager.getAuthInfo() + "\n访客: guest / guest (仅限Public目录)";
+        boolean running = HttpServerService.isRunning();
+        statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
+        toggleBtn.setText(running ? "停止服务" : "启动服务");
+        String ip = getIpAddress();
+        
+        String text = "网页管理: http://" + ip + ":8080\n网络邻居: http://" + ip + ":8081";
+        if (cbAuth.isChecked()) {
+            text += "\n管理员: " + AuthManager.getAuthInfo() + "\n访客: guest / guest (仅限Public目录)";
+        } else {
+            text += "\n(当前无密码保护)";
+        }
         ipView.setText(text);
     }
 
@@ -66,17 +151,114 @@ public class MainActivity extends Activity {
         } catch (Throwable t) { return "127.0.0.1"; }
     }
 
+    private void refresh() {
+        if (!currentDir.exists() || !currentDir.isDirectory()) currentDir = new File(ROOT);
+        pathView.setText(currentDir.getAbsolutePath().replace(ROOT, "/"));
+        
+        try {
+            StatFs stat = new StatFs(Environment.getExternalStorageDirectory().getPath());
+            long bytesAvailable = (long)stat.getBlockSize() * (long)stat.getAvailableBlocks();
+            long bytesTotal = (long)stat.getBlockSize() * (long)stat.getBlockCount();
+            storageView.setText("存储空间: 可用 " + formatSize(bytesAvailable) + " / 总计 " + formatSize(bytesTotal));
+        } catch (Throwable t) { storageView.setText(""); }
+
+        items.clear();
+        File[] files = currentDir.listFiles();
+        if (files != null) Collections.addAll(items, files);
+        Collections.sort(items, (a, b) -> {
+            if (a.isDirectory() && !b.isDirectory()) return -1;
+            if (!a.isDirectory() && b.isDirectory()) return 1;
+            return a.getName().compareToIgnoreCase(b.getName());
+        });
+        adapter.notifyDataSetChanged();
+    }
+
+    private void showFileMenu(final File f) {
+        final String[] actions = f.isDirectory() ? new String[]{"重命名", "删除", "属性"} : new String[]{"打开", "分享", "重命名", "删除", "属性"};
+        new AlertDialog.Builder(this).setTitle(f.getName()).setItems(actions, (dialog, which) -> {
+            String action = actions[which];
+            if (action.equals("打开")) openFile(f);
+            else if (action.equals("分享")) shareFile(f);
+            else if (action.equals("重命名")) renameFile(f);
+            else if (action.equals("删除")) deleteFile(f);
+            else if (action.equals("属性")) showInfo(f);
+        }).show();
+    }
+
+    private void openFile(File f) {
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            i.setDataAndType(Uri.fromFile(f), getMimeType(f.getName()));
+            startActivity(i);
+        } catch (Exception e) { Toast.makeText(this, "无法打开", Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void shareFile(File f) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType(getMimeType(f.getName()));
+            intent.putExtra(Intent.EXTRA_STREAM, Uri.fromFile(f));
+            startActivity(Intent.createChooser(intent, "分享文件"));
+        } catch (Exception e) { Toast.makeText(this, "分享失败", Toast.LENGTH_SHORT).show(); }
+    }
+
+    private void renameFile(final File f) {
+        final EditText input = new EditText(this);
+        input.setText(f.getName());
+        new AlertDialog.Builder(this).setTitle("重命名").setView(input).setPositiveButton("确定", (dialog, which) -> {
+            String name = input.getText().toString().trim();
+            if (name.length() == 0) return;
+            File target = new File(f.getParentFile(), name);
+            if (target.exists()) { Toast.makeText(MainActivity.this, "目标已存在", Toast.LENGTH_SHORT).show(); return; }
+            if (f.renameTo(target)) refresh(); else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
+        }).setNegativeButton("取消", null).show();
+    }
+
+    private void deleteFile(final File f) {
+        new AlertDialog.Builder(this).setTitle("删除").setMessage("确定删除 " + f.getName() + "？").setPositiveButton("删除", (dialog, which) -> {
+            if (deleteRecursive(f)) refresh(); else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
+        }).setNegativeButton("取消", null).show();
+    }
+
+    private boolean deleteRecursive(File f) {
+        if (f.isDirectory()) {
+            File[] children = f.listFiles();
+            if (children != null) for (File c : children) if (!deleteRecursive(c)) return false;
+        }
+        return f.delete();
+    }
+
+    private void showInfo(File f) {
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US);
+        String info = "路径：" + f.getAbsolutePath() + "\n大小：" + formatSize(f.length()) + "\n修改时间：" + sdf.format(f.lastModified());
+        new AlertDialog.Builder(this).setTitle("属性").setMessage(info).setPositiveButton("确定", null).show();
+    }
+
     @Override public boolean onCreateOptionsMenu(Menu menu) { 
-        menu.add(0, 1, 0, "连接二维码"); 
-        menu.add(0, 2, 0, "运行日志");
+        menu.add(0, 1, 0, "新建文件夹"); 
+        menu.add(0, 2, 0, "修改密码");
+        menu.add(0, 3, 0, "连接二维码"); 
+        menu.add(0, 4, 0, "运行日志");
         return true; 
     }
     
     @Override public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == 1) {
-            showQrCodeDialog();
+            final EditText input = new EditText(this);
+            new AlertDialog.Builder(this).setTitle("新建文件夹").setView(input).setPositiveButton("创建", (dialog, which) -> {
+                String name = input.getText().toString().trim();
+                if (name.length() == 0) return;
+                File target = new File(currentDir, name);
+                if (target.mkdirs()) refresh(); else Toast.makeText(MainActivity.this, "失败", Toast.LENGTH_SHORT).show();
+            }).setNegativeButton("取消", null).show();
             return true;
         } else if (item.getItemId() == 2) {
+            showChangePasswordDialog();
+            return true;
+        } else if (item.getItemId() == 3) {
+            showQrCodeDialog();
+            return true;
+        } else if (item.getItemId() == 4) {
             new AlertDialog.Builder(this)
                 .setTitle("最近访问日志")
                 .setMessage(LogManager.getAllLogs())
@@ -87,20 +269,46 @@ public class MainActivity extends Activity {
         return super.onOptionsItemSelected(item);
     }
 
+    private void showChangePasswordDialog() {
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(48, 24, 48, 24);
+
+        EditText etUser = new EditText(this);
+        etUser.setHint("新账号");
+        layout.addView(etUser);
+
+        EditText etPass = new EditText(this);
+        etPass.setHint("新密码");
+        etPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        layout.addView(etPass);
+
+        new AlertDialog.Builder(this)
+            .setTitle("修改密码")
+            .setView(layout)
+            .setPositiveButton("保存", (dialog, which) -> {
+                String u = etUser.getText().toString().trim();
+                String p = etPass.getText().toString().trim();
+                if (u.isEmpty() || p.isEmpty()) return;
+                AuthManager.setAuth(this, u, p);
+                Toast.makeText(this, "密码已更新", Toast.LENGTH_SHORT).show();
+                updateServiceStatus();
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+
     private void showQrCodeDialog() {
-        String url = "http://" + currentIp + ":8080";
+        String url = "http://" + getIpAddress() + ":8080";
         try {
             QRCodeWriter writer = new QRCodeWriter();
             Map<EncodeHintType, Object> hints = new HashMap<EncodeHintType, Object>();
             hints.put(EncodeHintType.MARGIN, 1);
             BitMatrix matrix = writer.encode(url, BarcodeFormat.QR_CODE, 400, 400, hints);
-            int width = matrix.getWidth();
-            int height = matrix.getHeight();
+            int width = matrix.getWidth(); int height = matrix.getHeight();
             int[] pixels = new int[width * height];
             for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    pixels[y * width + x] = matrix.get(x, y) ? Color.BLACK : Color.WHITE;
-                }
+                for (int x = 0; x < width; x++) pixels[y * width + x] = matrix.get(x, y) ? Color.BLACK : Color.WHITE;
             }
             Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
             bitmap.setPixels(pixels, 0, width, 0, 0, width, height);
@@ -109,13 +317,50 @@ public class MainActivity extends Activity {
             iv.setImageBitmap(bitmap);
             iv.setPadding(32, 32, 32, 32);
 
-            new AlertDialog.Builder(this)
-                .setTitle("扫码连接")
-                .setView(iv)
-                .setPositiveButton("关闭", null)
-                .show();
-        } catch (WriterException e) {
-            Toast.makeText(this, "生成失败", Toast.LENGTH_SHORT).show();
+            new AlertDialog.Builder(this).setTitle("扫码连接").setView(iv).setPositiveButton("关闭", null).show();
+        } catch (Exception e) { Toast.makeText(this, "生成失败", Toast.LENGTH_SHORT).show(); }
+    }
+
+    private String formatSize(long n) {
+        if (n < 1024) return n + " B";
+        if (n < 1024 * 1024) return String.format(Locale.US, "%.1f KB", n / 1024.0);
+        if (n < 1024 * 1024 * 1024) return String.format(Locale.US, "%.1f MB", n / 1024.0 / 1024.0);
+        return String.format(Locale.US, "%.1f GB", n / 1024.0 / 1024.0 / 1024.0);
+    }
+
+    private String getMimeType(String name) {
+        name = name.toLowerCase(Locale.US);
+        if (name.endsWith(".jpg") || name.endsWith(".jpeg")) return "image/jpeg";
+        if (name.endsWith(".png")) return "image/png";
+        if (name.endsWith(".gif")) return "image/gif";
+        if (name.endsWith(".mp4")) return "video/mp4";
+        if (name.endsWith(".mp3")) return "audio/mpeg";
+        if (name.endsWith(".txt")) return "text/plain";
+        if (name.endsWith(".pdf")) return "application/pdf";
+        return "*/*";
+    }
+
+    private class FileAdapter extends BaseAdapter {
+        @Override public int getCount() { return items.size(); }
+        @Override public Object getItem(int position) { return items.get(position); }
+        @Override public long getItemId(int position) { return position; }
+        @Override public View getView(int position, View convertView, ViewGroup parent) {
+            ViewHolder holder;
+            if (convertView == null) {
+                LinearLayout layout = new LinearLayout(MainActivity.this);
+                layout.setOrientation(LinearLayout.VERTICAL);
+                layout.setPadding(16, 12, 16, 12);
+                holder = new ViewHolder();
+                holder.name = new TextView(MainActivity.this); holder.name.setTextSize(16);
+                holder.detail = new TextView(MainActivity.this); holder.detail.setTextSize(12); holder.detail.setTextColor(0xFF888888);
+                layout.addView(holder.name); layout.addView(holder.detail); layout.setTag(holder);
+                convertView = layout;
+            } else holder = (ViewHolder) convertView.getTag();
+            File f = items.get(position);
+            if (f.isDirectory()) { holder.name.setText("📁 " + f.getName()); holder.detail.setText("目录"); }
+            else { holder.name.setText("📄 " + f.getName()); holder.detail.setText(formatSize(f.length())); }
+            return convertView;
         }
     }
+    private static class ViewHolder { TextView name, detail; }
 }
