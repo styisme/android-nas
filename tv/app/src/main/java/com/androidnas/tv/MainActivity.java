@@ -310,7 +310,8 @@ public class MainActivity extends Activity {
                 HttpURLConnection conn = (HttpURLConnection) url.openConnection();
                 conn.setRequestProperty("Authorization", authHeader);
                 
-                if (conn.getResponseCode() == 200) {
+                int responseCode = conn.getResponseCode();
+                if (responseCode == 200) {
                     InputStream is = conn.getInputStream();
                     BufferedReader reader = new BufferedReader(new InputStreamReader(is, "UTF-8"));
                     StringBuilder sb = new StringBuilder();
@@ -331,7 +332,8 @@ public class MainActivity extends Activity {
                         adapter.notifyDataSetChanged();
                     });
                 } else {
-                    mainHandler.post(() -> Toast.makeText(MainActivity.this, "连接失败: " + conn.getResponseCode(), Toast.LENGTH_SHORT).show());
+                    final int finalResponseCode = responseCode;
+                    mainHandler.post(() -> Toast.makeText(MainActivity.this, "连接失败: " + finalResponseCode, Toast.LENGTH_SHORT).show());
                 }
             } catch (Exception e) {
                 mainHandler.post(() -> Toast.makeText(MainActivity.this, "加载出错: " + e.getMessage(), Toast.LENGTH_SHORT).show());
