@@ -40,7 +40,7 @@ public class FileListActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        WatchDevice device = (WatchDevice) getIntent().getSerializableExtra("device"); // 这里为了简单，用了强转，实际应该实现 Serializable
+        WatchDevice device = (WatchDevice) getIntent().getSerializableExtra("device");
         if (device == null) {
             finish();
             return;
@@ -49,7 +49,7 @@ public class FileListActivity extends Activity {
         baseUrl = "http://" + device.ip + ":" + device.port;
         authHeader = "Basic " + android.util.Base64.encodeToString((device.user + ":" + device.pass).getBytes(), android.util.Base64.NO_WRAP);
 
-        setContentView(com.androidnas.watch.R.layout.activity_main); // 临时复用布局
+        setContentView(com.androidnas.watch.R.layout.activity_main);
 
         listView = findViewById(com.androidnas.watch.R.id.deviceListView);
         tvTitle = findViewById(com.androidnas.watch.R.id.tvTitle);
@@ -95,7 +95,8 @@ public class FileListActivity extends Activity {
                 conn.setConnectTimeout(5000);
                 conn.setRequestProperty("Authorization", authHeader);
 
-                if (conn.getResponseCode() == 200) {
+                int responseCode = conn.getResponseCode(); // 提取出来，解决 lambda 异常
+                if (responseCode == 200) {
                     BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
                     StringBuilder sb = new StringBuilder();
                     String line;
@@ -110,7 +111,8 @@ public class FileListActivity extends Activity {
                     }
                     mainHandler.post(() -> adapter.notifyDataSetChanged());
                 } else {
-                    mainHandler.post(() -> Toast.makeText(FileListActivity.this, "加载失败: " + conn.getResponseCode(), Toast.LENGTH_SHORT).show());
+                    final int finalResponseCode = responseCode;
+                    mainHandler.post(() -> Toast.makeText(FileListActivity.this, "加载失败: " + finalResponseCode, Toast.LENGTH_SHORT).show());
                 }
             } catch (Exception e) {
                 mainHandler.post(() -> Toast.makeText(FileListActivity.this, "请检查网络", Toast.LENGTH_SHORT).show());
