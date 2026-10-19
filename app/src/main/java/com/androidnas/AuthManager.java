@@ -39,11 +39,17 @@ public class AuthManager {
         if (!authEnabled) return 1;
         if (authHeader == null || !authHeader.startsWith("Basic ")) return 0;
         try {
-            String base64 = authHeader.substring(6);
-            String decoded = new String(Base64.decode(base64, Base64.NO_WRAP));
+            String base64 = authHeader.substring(6).trim();
+            // 严格校验 Base64 格式，防止畸形数据耗尽 CPU
+            if (!base64.matches("^[A-Za-z0-9+/=]+$")) return 0;
+            byte[] decodedBytes = Base64.decode(base64, Base64.NO_WRAP);
+            if (decodedBytes == null) return 0;
+            String decoded = new String(decodedBytes, "UTF-8");
             if (decoded.equals(adminUser + ":" + adminPass)) return 1;
             if (decoded.equals("guest:guest")) return 2;
-        } catch (Exception e) {}
+        } catch (Throwable e) {
+            return 0;
+        }
         return 0;
     }
     
