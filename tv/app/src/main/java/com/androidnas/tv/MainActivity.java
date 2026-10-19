@@ -5,6 +5,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -29,7 +30,7 @@ import java.util.List;
 public class MainActivity extends Activity {
 
     private ListView listView;
-    private TextView tvPath, tvSearchInput;
+    private TextView tvPath, tvSearchInput, tvSyncHint;
     private Button btnUp, btnConnect, btnSearch, btnBackFromSearch;
     private LinearLayout searchOverlay, keyboardContainer;
     private ListView searchResults;
@@ -46,6 +47,7 @@ public class MainActivity extends Activity {
     
     private StringBuilder searchQuery = new StringBuilder();
     private Handler mainHandler = new Handler(Looper.getMainLooper());
+    private TvSyncServer syncServer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,6 +66,17 @@ public class MainActivity extends Activity {
         searchResults = findViewById(com.androidnas.tv.R.id.searchResults);
         btnBackFromSearch = findViewById(com.androidnas.tv.R.id.btnBackFromSearch);
 
+        // 在屏幕底部加一个提示协同的TextView
+        tvSyncHint = new TextView(this);
+        tvSyncHint.setTextColor(0xFF888888);
+        tvSyncHint.setTextSize(14);
+        RelativeLayout root = findViewById(com.androidnas.tv.R.id.mainRoot);
+        RelativeLayout.LayoutParams p = new RelativeLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        p.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM);
+        p.addRule(RelativeLayout.CENTER_HORIZONTAL);
+        p.bottomMargin = 16;
+        root.addView(tvSyncHint, p);
+
         adapter = new FileAdapter(files, false);
         listView.setAdapter(adapter);
         
@@ -73,6 +86,13 @@ public class MainActivity extends Activity {
         setupKeyboard();
         setupListeners();
         
+        // 启动协同服务
+        syncServer = new TvSyncServer(this);
+        syncServer.start();
+        
+        String ip = getLocalIpAddress();
+        tvSyncHint.setText("📱 手机协同服务已开启，端口: 8090 | 本机IP: " + ip + " (请确保连接同一WiFi)");
+
         SharedPreferences sp = getSharedPreferences("tv_nas", Context.MODE_PRIVATE);
         baseUrl = sp.getString("url", "");
         String user = sp.getString("user", "admin");
@@ -84,6 +104,36 @@ public class MainActivity extends Activity {
         } else {
             showConnectDialog();
         }
+    }
+
+    public void updateNasConfig(String ip, String user, String pass) {
+        runOnUiThread(() -> {
+            baseUrl = ip;
+            authHeader = "Basic " + android.util.Base64.encodeToString((user + ":" + pass).getBytes(), android.util.Base64.NO_WRAP);
+            SharedPreferences sp = getSharedPreferences("tv_nas", Context.MODE_PRIVATE);
+            sp.edit().putString("url", baseUrl).putString("user", user).putString("pass", pass).apply();
+            currentPath = "/";
+            loadFiles();
+            Toast.makeText(this, "手机已下发配置，自动连接成功！", Toast.LENGTH_LONG).show();
+        });
+    }
+
+    public void playVideoDirectly(String fullVideoUrl) {
+        runOnUiThread(() -> {
+            Intent intent = new Intent(MainActivity.this, PlayerActivity.class);
+            intent.putExtra("url", fullVideoUrl);
+            intent.putExtra("auth", authHeader);
+            intent.putExtra("title", "手机投屏播放");
+            startActivity(intent);
+        });
+    }
+
+    private String getLocalIpAddress() {
+        try {
+            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+            int ip = wm.getConnectionInfo().getIpAddress();
+            return String.format("%d.%d.%d.%d", (ip & 0xff), (ip >> 8 & 0xff), (ip >> 16 & 0xff), (ip >> 24 & 0xff));
+        } catch (Exception e) { return "127.0.0.1"; }
     }
 
     private void setupListeners() {
@@ -108,7 +158,6 @@ public class MainActivity extends Activity {
         });
 
         btnConnect.setOnClickListener(v -> showConnectDialog());
-        
         btnSearch.setOnClickListener(v -> openSearch());
         
         btnBackFromSearch.setOnClickListener(v -> {
@@ -116,16 +165,13 @@ public class MainActivity extends Activity {
             btnSearch.requestFocus();
         });
 
-        // 搜索结果点击
         searchResults.setOnItemClickListener((parent, view, position, id) -> {
             FileItem f = searchFiles.get(position);
             if (f.isDir) {
-                // 如果是文件夹，关闭搜索，跳转到对应目录
                 searchOverlay.setVisibility(View.GONE);
                 currentPath = f.path;
                 loadFiles();
             } else {
-                // 播放视频，计算所在目录
                 String parentDir = f.path.substring(0, f.path.lastIndexOf("/"));
                 playVideo(f, parentDir);
             }
@@ -138,7 +184,6 @@ public class MainActivity extends Activity {
         searchFiles.clear();
         searchAdapter.notifyDataSetChanged();
         searchOverlay.setVisibility(View.VISIBLE);
-        // 焦点给键盘第一个按键
         if (keyboardContainer.getChildCount() > 0) {
             LinearLayout row = (LinearLayout) keyboardContainer.getChildAt(0);
             if (row.getChildCount() > 0) row.getChildAt(0).requestFocus();
@@ -146,7 +191,6 @@ public class MainActivity extends Activity {
     }
 
     private void setupKeyboard() {
-        // 生成 B站同款全键盘
         String[] keys = {
             "1","2","3","4","5","6","7","8","9","0",
             "Q","W","E","R","T","Y","U","I","O","P",
@@ -194,12 +238,10 @@ public class MainActivity extends Activity {
         } else if (key.equals("空格")) {
             searchQuery.append(" ");
             updateSearchInput();
-        } else if (key.equals("搜索")) {
-            performSearch();
         } else {
             searchQuery.append(key.toLowerCase());
             updateSearchInput();
-            performSearch(); // 边打边搜
+            performSearch();
         }
     }
 
@@ -331,13 +373,8 @@ public class MainActivity extends Activity {
                         files.addAll(newFiles);
                         adapter.notifyDataSetChanged();
                     });
-                } else {
-                    final int finalResponseCode = responseCode;
-                    mainHandler.post(() -> Toast.makeText(MainActivity.this, "连接失败: " + finalResponseCode, Toast.LENGTH_SHORT).show());
                 }
-            } catch (Exception e) {
-                mainHandler.post(() -> Toast.makeText(MainActivity.this, "加载出错: " + e.getMessage(), Toast.LENGTH_SHORT).show());
-            }
+            } catch (Exception ignored) {}
         }).start();
     }
 
@@ -348,6 +385,12 @@ public class MainActivity extends Activity {
         intent.putExtra("auth", authHeader);
         intent.putExtra("title", f.name);
         startActivity(intent);
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        if (syncServer != null) syncServer.stopServer();
     }
 
     private static class FileItem {
