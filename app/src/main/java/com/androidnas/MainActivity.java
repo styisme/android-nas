@@ -262,7 +262,7 @@ public class MainActivity extends Activity {
                 String user = etUser.getText().toString().trim();
                 String pass = etPass.getText().toString();
                 int remotePort = etRemotePort.getText().toString().isEmpty() ? 8080 : Integer.parseInt(etRemotePort.getText().toString());
-                SshTunnelManager.start(host, port, user, pass, remotePort, HttpServerService.PORT);
+                SshTunnelManager.start(host, port, user, pass, remotePort, SettingsManager.getWebPort());
                 Toast.makeText(this, "正在建立 SSH 隧道...", Toast.LENGTH_SHORT).show();
             }).setNegativeButton("取消", null).show();
     }
