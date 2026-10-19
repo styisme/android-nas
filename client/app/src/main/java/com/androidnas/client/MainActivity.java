@@ -119,33 +119,61 @@ public class MainActivity extends AppCompatActivity {
         ScrollView scrollView = new ScrollView(this);
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
+        // 设置适当的边距
         layout.setPadding(48, 32, 48, 16);
-        scrollView.addView(layout);
+        scrollView.addView(layout, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // 设备名称
         TextInputLayout tilName = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilName.setHint("设备名称");
+        tilName.setHint("设备名称 (如: 我的NAS)");
         TextInputEditText etName = new TextInputEditText(this);
         tilName.addView(etName);
         layout.addView(tilName);
 
+        // 地址
         TextInputLayout tilUrl = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
         tilUrl.setHint("地址 (如 192.168.1.100:8080)");
         TextInputEditText etUrl = new TextInputEditText(this);
         tilUrl.addView(etUrl);
-        layout.addView(tilUrl);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.topMargin = 24;
+        layout.addView(tilUrl, params);
+
+        // 账号
+        TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilUser.setHint("服务端账号 (默认 admin)");
+        TextInputEditText etUser = new TextInputEditText(this);
+        tilUser.addView(etUser);
+        layout.addView(tilUser, params);
+
+        // 密码
+        TextInputLayout tilPass = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilPass.setHint("服务端密码 (默认 admin)");
+        TextInputEditText etPass = new TextInputEditText(this);
+        tilPass.addView(etPass);
+        layout.addView(tilPass, params);
 
         new MaterialAlertDialogBuilder(this)
-            .setTitle("手动添加")
+            .setTitle("手动添加设备")
             .setView(scrollView)
             .setPositiveButton("添加", (dialog, which) -> {
-                String name = etName.getText().toString();
-                String url = etUrl.getText().toString().trim();
-                if (name.isEmpty() || url.isEmpty()) return;
+                String name = etName.getText() != null ? etName.getText().toString() : "";
+                String url = etUrl.getText() != null ? etUrl.getText().toString().trim() : "";
+                String user = etUser.getText() != null ? etUser.getText().toString() : "admin";
+                String pass = etPass.getText() != null ? etPass.getText().toString() : "admin";
+                
+                if (name.isEmpty() || url.isEmpty()) {
+                    Toast.makeText(MainActivity.this, "名称和地址不能为空", Toast.LENGTH_SHORT).show();
+                    return;
+                }
                 if (!url.startsWith("http")) url = "http://" + url;
-                devices.add(new NasDevice(name, url, true, "admin", "admin"));
+                
+                devices.add(new NasDevice(name, url, true, user, pass));
                 saveDevices();
                 adapter.notifyDataSetChanged();
-            }).show();
+            }).setNegativeButton("取消", null).show();
     }
 
     private void startPhotoBackup(final NasDevice device) {
