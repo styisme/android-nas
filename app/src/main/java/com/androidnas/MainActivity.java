@@ -25,10 +25,10 @@ public class MainActivity extends Activity {
     private ListView listView;
     private TextView pathView, statusView, ipView, storageView;
     private Button toggleBtn;
-    private CheckBox cbAuth, cbTunnel, cbFreeTunnel;
+    private CheckBox cbAuth;
     private FileAdapter adapter;
     private final List<File> items = new ArrayList<File>();
-    private int selectedService = FreeTunnelManager.SERVICE_LOCALHOST_RUN;
+    private int selectedNode = 0; // 0 代表自动选择
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,8 +43,6 @@ public class MainActivity extends Activity {
         toggleBtn = (Button) findViewById(R.id.toggleBtn);
         listView = (ListView) findViewById(R.id.listView);
         cbAuth = (CheckBox) findViewById(R.id.cbAuth);
-        cbTunnel = (CheckBox) findViewById(R.id.cbTunnel);
-        cbFreeTunnel = (CheckBox) findViewById(R.id.cbFreeTunnel);
 
         SharedPreferences sp = getSharedPreferences("nas_auth", Context.MODE_PRIVATE);
         cbAuth.setChecked(sp.getBoolean("auth_enabled", true));
@@ -57,33 +55,11 @@ public class MainActivity extends Activity {
             updateServiceStatus();
         });
 
-        // 高级：SSH 内网穿透
-        cbTunnel.setChecked(SshTunnelManager.isRunning());
-        cbTunnel.setOnCheckedChangeListener((v, isChecked) -> {
-            if (isChecked) showSshConfigDialog();
-            else {
-                SshTunnelManager.stop();
-                Toast.makeText(this, "SSH内网穿透已关闭", Toast.LENGTH_SHORT).show();
-            }
-        });
-
-        // 极简：一键免费公网穿透 (带选择列表)
-        cbFreeTunnel.setChecked(FreeTunnelManager.isRunning());
-        cbFreeTunnel.setOnClickListener(v -> {
-            if (cbFreeTunnel.isChecked()) {
-                showFreeServiceSelection();
-            } else {
-                FreeTunnelManager.stop();
-                Toast.makeText(this, "一键穿透已关闭", Toast.LENGTH_SHORT).show();
-                updateServiceStatus();
-            }
-        });
-
         storageView = new TextView(this);
         storageView.setTextSize(14);
         storageView.setTextColor(0xFF666666);
         LinearLayout rootLayout = (LinearLayout) findViewById(R.id.main_layout);
-        if (rootLayout != null) rootLayout.addView(storageView, 4);
+        if (rootLayout != null) rootLayout.addView(storageView, 3);
 
         adapter = new FileAdapter();
         listView.setAdapter(adapter);
@@ -108,19 +84,79 @@ public class MainActivity extends Activity {
         if (!HttpServerService.isRunning()) startService(new Intent(this, HttpServerService.class));
     }
 
-    private void showFreeServiceSelection() {
-        final String[] services = {"Default (localhost.run)", "Tunnl.gg (欧洲节点)", "Skytunnel (HTTPS)", "Pinggy (限时1小时)"};
+    // 核心：菜单项
+    @Override public boolean onCreateOptionsMenu(Menu menu) { 
+        menu.add(0, 1, 0, "新建文件夹"); 
+        menu.add(0, 2, 0, "修改密码");
+        menu.add(0, 3, 0, "内网穿透 (公网访问)"); // 移到菜单
+        menu.add(0, 4, 0, "运行日志");
+        return true; 
+    }
+    
+    @Override public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == 1) {
+            final EditText input = new EditText(this);
+            new AlertDialog.Builder(this).setTitle("新建文件夹").setView(input).setPositiveButton("创建", (dialog, which) -> {
+                String name = input.getText().toString().trim();
+                if (name.length() == 0) return;
+                File target = new File(currentDir, name);
+                if (target.mkdirs()) refresh();
+            }).setNegativeButton("取消", null).show();
+            return true;
+        } else if (item.getItemId() == 2) {
+            final EditText input = new EditText(this);
+            new AlertDialog.Builder(this).setTitle("修改管理员密码").setView(input).setPositiveButton("保存", (dialog, which) -> {
+                String p = input.getText().toString().trim();
+                if (p.isEmpty()) return;
+                AuthManager.setAuth(this, "admin", p);
+                updateServiceStatus();
+            }).setNegativeButton("取消", null).show();
+            return true;
+        } else if (item.getItemId() == 3) {
+            showTunnelCenter();
+            return true;
+        } else if (item.getItemId() == 4) {
+            new AlertDialog.Builder(this).setTitle("最近日志").setMessage(LogManager.getAllLogs()).setPositiveButton("关闭", null).show();
+            return true;
+        }
+        return super.onOptionsItemSelected(item);
+    }
+
+    // 内网穿透中心弹窗
+    private void showTunnelCenter() {
+        String status = FreeTunnelManager.isRunning() ? "状态: 已连接\n链接: " + FreeTunnelManager.getPublicUrl() : "状态: 未连接";
+        String[] options = {"启动 [一键免注册穿透]", "停止当前穿透", "自定义 SSH 高级穿透"};
+
         new AlertDialog.Builder(this)
-            .setTitle("选择免费穿透服务商")
-            .setSingleChoiceItems(services, selectedService - 1, (dialog, which) -> {
-                selectedService = which + 1;
+            .setTitle("内网穿透中心")
+            .setMessage(status)
+            .setItems(options, (dialog, which) -> {
+                if (which == 0) {
+                    showFreeNodeSelection();
+                } else if (which == 1) {
+                    FreeTunnelManager.stop();
+                    SshTunnelManager.stop();
+                    updateServiceStatus();
+                    Toast.makeText(this, "穿透已停止", Toast.LENGTH_SHORT).show();
+                } else if (which == 2) {
+                    showSshConfigDialog();
+                }
             })
+            .setNegativeButton("关闭", null)
+            .show();
+    }
+
+    private void showFreeNodeSelection() {
+        String[] nodes = FreeTunnelManager.getNodeNames();
+        new AlertDialog.Builder(this)
+            .setTitle("选择穿透节点")
+            .setSingleChoiceItems(nodes, selectedNode, (dialog, which) -> selectedNode = which)
             .setPositiveButton("开始连接", (dialog, which) -> {
-                FreeTunnelManager.start(HttpServerService.PORT, selectedService);
-                Toast.makeText(this, "正在生成公网链接，请稍候...", Toast.LENGTH_LONG).show();
+                FreeTunnelManager.start(HttpServerService.PORT, selectedNode);
+                Toast.makeText(this, selectedNode == 0 ? "正在自动寻找可用节点..." : "正在连接...", Toast.LENGTH_LONG).show();
                 waitAndShowFreeUrl();
             })
-            .setNegativeButton("取消", (dialog, which) -> cbFreeTunnel.setChecked(false))
+            .setNegativeButton("取消", null)
             .show();
     }
 
@@ -135,21 +171,18 @@ public class MainActivity extends Activity {
                     runOnUiThread(() -> {
                         new AlertDialog.Builder(MainActivity.this)
                             .setTitle("穿透成功！")
-                            .setMessage("公网链接:\n\n" + url)
+                            .setMessage("公网链接:\n\n" + url + "\n\n发给朋友即可访问。")
                             .setPositiveButton("复制链接", (d, w) -> {
                                 android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
                                 cm.setPrimaryClip(android.content.ClipData.newPlainText("url", url));
                                 Toast.makeText(MainActivity.this, "已复制", Toast.LENGTH_SHORT).show();
                             }).setNegativeButton("关闭", null).show();
                     });
-                } else if (count < 20 && FreeTunnelManager.isRunning()) {
+                } else if (count < 30 && (selectedNode == 0 || FreeTunnelManager.isRunning())) {
                     count++;
                     new Handler().postDelayed(this, 1000);
                 } else if (!FreeTunnelManager.isRunning()) {
-                    runOnUiThread(() -> {
-                        cbFreeTunnel.setChecked(false);
-                        Toast.makeText(MainActivity.this, "当前节点连接失败，请尝试选择其他服务商", Toast.LENGTH_LONG).show();
-                    });
+                    runOnUiThread(() -> Toast.makeText(MainActivity.this, "连接失败，请尝试选择其他节点", Toast.LENGTH_LONG).show());
                 }
             }
         }, 1000);
@@ -163,7 +196,7 @@ public class MainActivity extends Activity {
         EditText etPort = new EditText(this); etPort.setHint("SSH 端口 (默认 22)"); etPort.setInputType(InputType.TYPE_CLASS_NUMBER); layout.addView(etPort);
         EditText etUser = new EditText(this); etUser.setHint("SSH 用户名"); layout.addView(etUser);
         EditText etPass = new EditText(this); etPass.setHint("SSH 密码"); etPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); layout.addView(etPass);
-        EditText etRemotePort = new EditText(this); etRemotePort.setHint("公网映射端口 (如 8080)"); etRemotePort.setInputType(InputType.TYPE_CLASS_NUMBER); layout.addView(etRemotePort);
+        EditText etRemotePort = new EditText(this); etRemotePort.setHint("公网映射端口"); etRemotePort.setInputType(InputType.TYPE_CLASS_NUMBER); layout.addView(etRemotePort);
         new AlertDialog.Builder(this).setTitle("自定义 SSH 穿透").setView(layout)
             .setPositiveButton("连接", (dialog, which) -> {
                 String host = etHost.getText().toString().trim();
@@ -172,8 +205,8 @@ public class MainActivity extends Activity {
                 String pass = etPass.getText().toString();
                 int remotePort = etRemotePort.getText().toString().isEmpty() ? 8080 : Integer.parseInt(etRemotePort.getText().toString());
                 SshTunnelManager.start(host, port, user, pass, remotePort, HttpServerService.PORT);
-                cbTunnel.setChecked(true);
-            }).setNegativeButton("取消", (dialog, which) -> cbTunnel.setChecked(false)).show();
+                Toast.makeText(this, "正在建立 SSH 隧道...", Toast.LENGTH_SHORT).show();
+            }).setNegativeButton("取消", null).show();
     }
 
     @Override protected void onResume() { super.onResume(); updateServiceStatus(); refresh(); }
@@ -217,31 +250,6 @@ public class MainActivity extends Activity {
             return a.getName().compareToIgnoreCase(b.getName());
         });
         adapter.notifyDataSetChanged();
-    }
-
-    @Override public boolean onCreateOptionsMenu(Menu menu) { 
-        menu.add(0, 1, 0, "新建文件夹"); 
-        menu.add(0, 2, 0, "修改密码");
-        menu.add(0, 4, 0, "运行日志");
-        return true; 
-    }
-    
-    @Override public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == 2) {
-            final EditText input = new EditText(this);
-            new AlertDialog.Builder(this).setTitle("修改密码").setView(input).setPositiveButton("保存", (dialog, which) -> {
-                String p = input.getText().toString().trim();
-                if (p.isEmpty()) return;
-                AuthManager.setAuth(this, "admin", p);
-                Toast.makeText(this, "密码已更新", Toast.LENGTH_SHORT).show();
-                updateServiceStatus();
-            }).setNegativeButton("取消", null).show();
-            return true;
-        } else if (item.getItemId() == 4) {
-            new AlertDialog.Builder(this).setTitle("最近日志").setMessage(LogManager.getAllLogs()).setPositiveButton("关闭", null).show();
-            return true;
-        }
-        return super.onOptionsItemSelected(item);
     }
 
     private class FileAdapter extends BaseAdapter {
