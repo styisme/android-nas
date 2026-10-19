@@ -124,21 +124,34 @@ public class MainActivity extends Activity {
 
     // 内网穿透中心弹窗
     private void showTunnelCenter() {
-        String status = FreeTunnelManager.isRunning() ? "状态: 已连接\n链接: " + FreeTunnelManager.getPublicUrl() : "状态: 未连接";
-        String[] options = {"启动 [一键免注册穿透]", "停止当前穿透", "自定义 SSH 高级穿透"};
+        boolean isRunning = FreeTunnelManager.isRunning();
+        String title = isRunning ? "内网穿透 (已连接)" : "内网穿透 (未连接)";
+        
+        java.util.List<String> options = new java.util.ArrayList<String>();
+        if (!isRunning) {
+            options.add("启动一键免注册穿透 (自动优选)");
+        } else {
+            options.add("复制当前公网链接");
+            options.add("停止当前穿透");
+        }
+        options.add("自定义 SSH 高级穿透");
 
         new AlertDialog.Builder(this)
-            .setTitle("内网穿透中心")
-            .setMessage(status)
-            .setItems(options, (dialog, which) -> {
-                if (which == 0) {
+            .setTitle(title)
+            .setItems(options.toArray(new String[0]), (dialog, which) -> {
+                String choice = options.get(which);
+                if (choice.contains("启动")) {
                     showFreeNodeSelection();
-                } else if (which == 1) {
+                } else if (choice.contains("复制")) {
+                    android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("url", FreeTunnelManager.getPublicUrl()));
+                    Toast.makeText(this, "链接已复制", Toast.LENGTH_SHORT).show();
+                } else if (choice.contains("停止")) {
                     FreeTunnelManager.stop();
                     SshTunnelManager.stop();
                     updateServiceStatus();
                     Toast.makeText(this, "穿透已停止", Toast.LENGTH_SHORT).show();
-                } else if (which == 2) {
+                } else if (choice.contains("自定义")) {
                     showSshConfigDialog();
                 }
             })
@@ -146,7 +159,7 @@ public class MainActivity extends Activity {
             .show();
     }
 
-    private void showFreeNodeSelection() {
+        private void showFreeNodeSelection() {
         String[] nodes = FreeTunnelManager.getNodeNames();
         new AlertDialog.Builder(this)
             .setTitle("选择穿透节点")
