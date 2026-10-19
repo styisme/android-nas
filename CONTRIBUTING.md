@@ -4,7 +4,10 @@
 
 ## ⚠️ 关于 AI 生成代码
 
-本项目绝大多数代码由 AI 辅助生成。提交 PR 时请说明改动是否由 AI 生成，并确保在真机验证通过。
+本项目的绝大多数代码由 AI 辅助生成。提交 PR 时请：
+1. 说明改动是否由 AI 生成。
+2. 人工验证过功能（至少在真机上跑过一次）。
+3. 如果你是用 AI 改的，请在 PR 描述里附上你使用的提示词。
 
 ## 📂 项目结构
 
@@ -13,7 +16,7 @@ android-nas/
 ├── app/                         # 服务端源码 (Android 2.2+)
 │   └── src/main/
 │       ├── java/com/androidnas/
-│       │   ├── MainActivity.java        # 服务端本地 UI
+│       │   ├── MainActivity.java        # 服务端本地 UI (驾驶舱)
 │       │   ├── HttpServerService.java   # 核心服务容器 (托管三大端口)
 │       │   ├── NasHttpServer.java       # NanoHTTPD (JSON API & Web)
 │       │   ├── WebDavServer.java        # 原生 Socket WebDAV 栈
@@ -21,12 +24,12 @@ android-nas/
 │       │   ├── LocalSendDiscovery.java  # LocalSend UDP 组播发现
 │       │   ├── SettingsManager.java     # 统一配置管理
 │       │   └── FreeTunnelManager.java   # 免费穿透自动优选引擎
-│       └── assets/index.html            # MD3 网页端 (含拖拽/高亮/分享)
+│       └── assets/index.html            # MD3 网页端 (拖拽/高亮/分享/剪贴板)
 ├── client/                      # 客户端源码 (Android 5.0+)
 │   └── src/main/
 │       ├── java/com/androidnas/client/
-│       │   ├── MainActivity.java        # 首页 (局域网扫描/多设备)
-│       │   ├── FileListActivity.java    # 文件管理 (JSON/WebDAV 双协议)
+│       │   ├── MainActivity.java        # 首页 (局域网扫描/多设备/相册备份)
+│       │   ├── FileListActivity.java    # 文件管理 (原生+WebDAV双协议)
 │       │   └── SettingsActivity.java    # 设置中心
 │       └── res/                         # MD3 布局与主题
 ├── desktop/                     # 桌面端源码 (Win/Linux)
@@ -42,9 +45,9 @@ android-nas/
 本项目采用**自动化版本同步机制**。你**千万不需要**手动去修改任何 `build.gradle` 里的版本号。
 
 如果你要发布新版本：
-1. 修改 `CHANGELOG.md`，在最顶部增加类似 `## [2.7.0]` 的标题。
+1. 修改 `CHANGELOG.md`，在最顶部增加类似 `## [3.1.0]` 的标题。
 2. 提交代码并 Push 到 `main` 分支。
-3. GitHub Actions 将自动读取该版本号，自动修改代码，并打包出带有新版本号的 `.apk` 与 `.exe` 文件。
+3. GitHub Actions 将自动读取该版本号，自动修改三端工程文件，并打包出带有新版本号的 `.apk` 与 `.exe` 文件。
 4. 去 GitHub Releases 页面下载 Actions 产物并发布。
 
 ## 🛠 本地编译环境隔离
@@ -84,7 +87,7 @@ android-nas/
 - `docs`: 文档变更
 - `style`: 代码格式（不影响逻辑）
 - `refactor`: 重构
-- `chore`: 构建/依赖/版本更新
+- `chore`: 构建/依赖更新
 
 **Scope 常用值**：
 - `server`: 服务端代码 (Java)
