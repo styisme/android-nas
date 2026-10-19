@@ -3,9 +3,6 @@ name: Build Client APK
 on:
   push:
     branches: [ main, master ]
-    paths:
-      - 'client/**'
-      - '.github/workflows/build-client.yml'
   workflow_dispatch:
 
 jobs:
@@ -24,10 +21,15 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
 
-      - name: Setup Gradle
-        uses: gradle/gradle-build-action@v2
+      # --- 新增：自动同步版本号 ---
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          build-root-directory: ./client
+          python-version: '3.x'
+
+      - name: Auto Sync Version
+        working-directory: .
+        run: python sync_version.py
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -35,8 +37,14 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon
 
+      # --- 新增：动态重命名 APK 产物 ---
+      - name: Rename APK with Version
+        run: |
+          VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' ../CHANGELOG.md | head -1)
+          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-client-v${VERSION}.apk || true
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: nas-client-debug
-          path: client/app/build/outputs/apk/debug/app-debug.apk
+          name: nas-client-android
+          path: client/app/build/outputs/apk/debug/*.apk

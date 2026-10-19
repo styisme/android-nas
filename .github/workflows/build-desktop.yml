@@ -13,10 +13,8 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: nas-client-linux
-            asset_name: nas-client-linux-v2.1.0
           - os: windows-latest
             artifact_name: nas-client-windows
-            asset_name: nas-client-windows-v2.1.0.exe
 
     steps:
       - name: Checkout
@@ -27,17 +25,34 @@ jobs:
         with:
           python-version: '3.10'
 
+      # --- 新增：自动同步版本号 ---
+      - name: Auto Sync Version
+        run: python sync_version.py
+
+      - name: Get Version
+        id: get_version
+        shell: bash
+        run: |
+          VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests pyinstaller
 
-      - name: Build with PyInstaller
+      - name: Build with PyInstaller (Windows)
+        if: matrix.os == 'windows-latest'
         working-directory: ./desktop
-        run: pyinstaller -F -w nas_client.py -n ${{ matrix.asset_name }}
+        run: pyinstaller -F -w nas_client.py -n nas-client-windows-v${{ env.VERSION }}.exe
+
+      - name: Build with PyInstaller (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: ./desktop
+        run: pyinstaller -F -w nas_client.py -n nas-client-linux-v${{ env.VERSION }}
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: desktop/dist/${{ matrix.asset_name }}
+          path: desktop/dist/*
