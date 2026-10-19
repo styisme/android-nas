@@ -15,6 +15,12 @@
         android:padding="16dp"
         android:gravity="center_vertical">
 
+        <CheckBox
+            android:id="@+id/cbSelect"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/tvIcon"
             android:layout_width="wrap_content"

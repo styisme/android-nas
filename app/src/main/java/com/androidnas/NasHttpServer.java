@@ -23,7 +23,6 @@ public class NasHttpServer extends NanoHTTPD {
         String uri = session.getUri();
         String method = session.getMethod().name();
         
-        // 分享拦截
         if (uri.startsWith("/share/")) {
             String token = uri.substring(7);
             String sharedPath = sharedLinks.get(token);
@@ -44,7 +43,6 @@ public class NasHttpServer extends NanoHTTPD {
         String clientIp = session.getHeaders().get("remote-addr");
         if (clientIp == null) clientIp = "unknown";
         
-        // 身份校验
         int role = 1;
         if (!Method.OPTIONS.equals(session.getMethod())) {
             role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
@@ -152,6 +150,19 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.OK, "OK");
             }
 
+            // 新增：重命名接口
+            if ("/api/rename".equals(uri) && Method.POST.equals(session.getMethod())) {
+                Map<String, String> files = new HashMap<String, String>();
+                session.parseBody(files);
+                File oldFile = safeFile(files.get("path"));
+                String newName = files.get("newName");
+                if (oldFile != null && newName != null && role == 1) {
+                    File newFile = new File(oldFile.getParent(), newName);
+                    if (oldFile.renameTo(newFile)) return text(Response.Status.OK, "OK");
+                }
+                return text(Response.Status.INTERNAL_ERROR, "Fail");
+            }
+
             if ("/api/mkdir".equals(uri) || "/api/delete".equals(uri) || "/api/save".equals(uri)) {
                 Map<String, String> files = new HashMap<String, String>();
                 session.parseBody(files);
@@ -211,8 +222,9 @@ public class NasHttpServer extends NanoHTTPD {
             if (i > 0) sb.append(",");
             String ext = f.getName().contains(".") ? f.getName().substring(f.getName().lastIndexOf(".") + 1).toLowerCase() : "";
             boolean isTxt = ext.equals("txt") || ext.equals("md") || ext.equals("json") || ext.equals("xml") || ext.equals("java") || ext.equals("html");
+            boolean isImg = ext.equals("jpg") || ext.equals("jpeg") || ext.equals("png") || ext.equals("gif");
             sb.append("{\"name\":\"").append(escape(f.getName())).append("\",\"dir\":").append(f.isDirectory())
-              .append(",\"size\":").append(f.length()).append(",\"isTxt\":").append(isTxt).append("}");
+              .append(",\"size\":").append(f.length()).append(",\"isTxt\":").append(isTxt).append(",\"isImg\":").append(isImg).append("}");
         }
         sb.append("]}");
         return sb.toString();
