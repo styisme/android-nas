@@ -534,6 +534,18 @@ public class FileListActivity extends AppCompatActivity {
         }).show();
     }
 
+
+    private void openSystemPlayer(String url, String ext) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            String mime = ext.equals("mp4") ? "video/*" : (ext.equals("mp3") ? "audio/*" : "image/*");
+            intent.setDataAndType(Uri.parse(url), mime);
+            startActivity(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "无可用播放器", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.VH> {
         @NonNull @Override public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
             View v = getLayoutInflater().inflate(isGridMode ? R.layout.item_grid : R.layout.item_file, parent, false);

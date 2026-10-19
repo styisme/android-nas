@@ -48,6 +48,17 @@ public class SettingsActivity extends AppCompatActivity {
         });
 
         // 扫描超时
+        com.google.android.material.textfield.TextInputEditText etPort = findViewById(R.id.etScanPort);
+        etPort.setText(String.valueOf(sp.getInt("scan_port", 8080)));
+        etPort.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus) {
+                try {
+                    int port = Integer.parseInt(etPort.getText().toString());
+                    sp.edit().putInt("scan_port", port).apply();
+                } catch (Exception ignored) {}
+            }
+        });
+        
         TextInputEditText etTimeout = findViewById(R.id.etScanTimeout);
         etTimeout.setText(String.valueOf(sp.getInt("scan_timeout", 500)));
         etTimeout.setOnFocusChangeListener((v, hasFocus) -> {

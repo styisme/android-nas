@@ -25,6 +25,7 @@ public class HttpServerService extends Service {
     private NasHttpServer serverHttp;
     private WebDavServer webDavHttp;
     private FtpServer ftpServer;
+    private DlnaServer dlnaServer;
     private LocalSendServer lsServer;
     private LocalSendDiscovery lsDiscovery;
     
@@ -48,11 +49,8 @@ public class HttpServerService extends Service {
             wakeLock.acquire();
             
             WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            if (isLowPower) {
-                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "AndroidNAS::WifiLockLowPower");
-            } else {
-                wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "AndroidNAS::WifiLockHighPerf");
-            }
+            if (isLowPower) wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "AndroidNAS::WifiLockLowPower");
+            else wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "AndroidNAS::WifiLockHighPerf");
             wifiLock.acquire();
             
             if (isLowPower) Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
@@ -81,6 +79,14 @@ public class HttpServerService extends Service {
                 ftpServer.start();
                 startedServices.add("FTP");
             } catch (Exception e) { lastError += "FTP启动失败: " + e.getMessage() + "\n"; }
+        }
+
+        if (SettingsManager.isDlnaEnabled()) {
+            try {
+                dlnaServer = new DlnaServer(this);
+                dlnaServer.start();
+                startedServices.add("DLNA");
+            } catch (Exception e) { lastError += "DLNA启动失败: " + e.getMessage() + "\n"; }
         }
 
         if (isLowPower) {
@@ -130,6 +136,7 @@ public class HttpServerService extends Service {
         if (serverHttp != null) serverHttp.stop();
         if (webDavHttp != null) webDavHttp.stopServer();
         if (ftpServer != null) ftpServer.stopServer();
+        if (dlnaServer != null) dlnaServer.stopServer();
         if (lsServer != null) lsServer.stop();
         if (lsDiscovery != null) lsDiscovery.stopDiscovery();
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();

@@ -141,7 +141,8 @@ public class MainActivity extends AppCompatActivity {
                             @Override
                             public void run() {
                                 try {
-                                    java.net.URL url = new java.net.URL("http://" + targetIp + ":8080/api/list?path=/");
+                                    int scanPort = getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("scan_port", 8080);
+                                    java.net.URL url = new java.net.URL("http://" + targetIp + ":" + scanPort + "/api/list?path=/");
                                     java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
                                     int timeout = getSharedPreferences("settings", Context.MODE_PRIVATE).getInt("scan_timeout", 500);
                                     conn.setConnectTimeout(timeout);
@@ -151,7 +152,7 @@ public class MainActivity extends AppCompatActivity {
                                             @Override
                                             public void run() {
                                                 for (NasDevice d : devices) if (d.url.contains(targetIp)) return;
-                                                devices.add(new NasDevice("Android NAS (" + targetIp + ")", "http://" + targetIp + ":8080", true, "admin", "admin"));
+                                                devices.add(new NasDevice("Android NAS (" + targetIp + ")", "http://" + targetIp + ":" + scanPort, true, "admin", "admin"));
                                                 saveDevices();
                                                 adapter.notifyDataSetChanged();
                                             }

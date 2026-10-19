@@ -25,6 +25,9 @@ public class SettingsManager {
     public static boolean isFtpEnabled() { return sp.getBoolean("ftp_enabled", true) && !isLowPowerMode(); }
     public static void setFtpEnabled(boolean enabled) { sp.edit().putBoolean("ftp_enabled", enabled).apply(); }
 
+    public static boolean isDlnaEnabled() { return sp.getBoolean("dlna_enabled", true) && !isLowPowerMode(); }
+    public static void setDlnaEnabled(boolean enabled) { sp.edit().putBoolean("dlna_enabled", enabled).apply(); }
+
     public static boolean isLocalSendEnabled() { return sp.getBoolean("localsend_enabled", true) && !isLowPowerMode(); }
     public static void setLocalSendEnabled(boolean enabled) { sp.edit().putBoolean("localsend_enabled", enabled).apply(); }
 
@@ -50,7 +53,7 @@ public class SettingsManager {
     public static String getFingerprint() {
         String fp = sp.getString("fingerprint", "");
         if (fp.isEmpty()) {
-            fp = "android_nas_" + UUID.randomUUID().toString();
+            fp = UUID.randomUUID().toString();
             sp.edit().putString("fingerprint", fp).apply();
         }
         return fp;

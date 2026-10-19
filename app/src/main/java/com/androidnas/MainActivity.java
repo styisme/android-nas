@@ -184,7 +184,7 @@ public class MainActivity extends Activity {
         } else if (item.getItemId() == 7) {
             new AlertDialog.Builder(this)
                 .setTitle("关于 Android NAS")
-                .setMessage("版本: v3.0.0 旗舰版\n\n支持流媒体、剪贴板、内网穿透、FTP。\n\n⚠️ 本项目大量代码由 AI 辅助生成。")
+                .setMessage("版本: v3.0.0 旗舰版\n\n支持流媒体、剪贴板、内网穿透、FTP、DLNA。\n\n⚠️ 本项目大量代码由 AI 辅助生成。")
                 .setPositiveButton("确定", null)
                 .show();
             return true;
@@ -204,7 +204,7 @@ public class MainActivity extends Activity {
         CheckBox cbLowPower = new CheckBox(this); cbLowPower.setText("极寒省电模式"); cbLowPower.setChecked(SettingsManager.isLowPowerMode()); layout.addView(cbLowPower);
         
         TextView tvHint = new TextView(this);
-        tvHint.setText("警告：开启后将强制降级 Wi-Fi 锁频率、关闭内网穿透、FTP 与 LocalSend。仅保留 Web 与 WebDAV。");
+        tvHint.setText("警告：开启后将强制降级 Wi-Fi 锁频率、关闭内网穿透、FTP、DLNA 与 LocalSend。");
         tvHint.setTextSize(12); tvHint.setTextColor(0xFFD32F2F); layout.addView(tvHint);
 
         EditText etWebPort = new EditText(this); etWebPort.setHint("Web 端口"); etWebPort.setInputType(InputType.TYPE_CLASS_NUMBER); etWebPort.setText(String.valueOf(SettingsManager.getWebPort())); layout.addView(etWebPort);
@@ -213,6 +213,7 @@ public class MainActivity extends Activity {
 
         CheckBox cbWebDav = new CheckBox(this); cbWebDav.setText("开启 WebDAV"); cbWebDav.setChecked(SettingsManager.isWebDavEnabled()); layout.addView(cbWebDav);
         CheckBox cbFtp = new CheckBox(this); cbFtp.setText("开启 FTP 服务"); cbFtp.setChecked(SettingsManager.isFtpEnabled()); layout.addView(cbFtp);
+        CheckBox cbDlna = new CheckBox(this); cbDlna.setText("开启 DLNA 投屏 (电视可直接播放)"); cbDlna.setChecked(SettingsManager.isDlnaEnabled()); layout.addView(cbDlna);
         CheckBox cbLs = new CheckBox(this); cbLs.setText("开启 LocalSend"); cbLs.setChecked(SettingsManager.isLocalSendEnabled()); layout.addView(cbLs);
         EditText etPin = new EditText(this); etPin.setHint("LocalSend PIN"); etPin.setText(SettingsManager.getLsPin()); layout.addView(etPin);
         
@@ -222,11 +223,11 @@ public class MainActivity extends Activity {
         cbLowPower.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override
             public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                cbLs.setEnabled(!isChecked); cbStream.setEnabled(!isChecked); cbClipboard.setEnabled(!isChecked); cbFtp.setEnabled(!isChecked);
-                if (isChecked) { cbLs.setChecked(false); cbStream.setChecked(false); cbClipboard.setChecked(false); cbFtp.setChecked(false); }
+                cbLs.setEnabled(!isChecked); cbStream.setEnabled(!isChecked); cbClipboard.setEnabled(!isChecked); cbFtp.setEnabled(!isChecked); cbDlna.setEnabled(!isChecked);
+                if (isChecked) { cbLs.setChecked(false); cbStream.setChecked(false); cbClipboard.setChecked(false); cbFtp.setChecked(false); cbDlna.setChecked(false); }
             }
         });
-        if (SettingsManager.isLowPowerMode()) { cbLs.setEnabled(false); cbStream.setEnabled(false); cbClipboard.setEnabled(false); cbFtp.setEnabled(false); }
+        if (SettingsManager.isLowPowerMode()) { cbLs.setEnabled(false); cbStream.setEnabled(false); cbClipboard.setEnabled(false); cbFtp.setEnabled(false); cbDlna.setEnabled(false); }
 
         new AlertDialog.Builder(this).setTitle("NAS 驾驶舱").setView(scrollView)
             .setPositiveButton("保存并重启", new android.content.DialogInterface.OnClickListener() {
@@ -236,6 +237,7 @@ public class MainActivity extends Activity {
                     SettingsManager.setLowPowerMode(cbLowPower.isChecked());
                     SettingsManager.setWebDavEnabled(cbWebDav.isChecked());
                     SettingsManager.setFtpEnabled(cbFtp.isChecked());
+                    SettingsManager.setDlnaEnabled(cbDlna.isChecked());
                     SettingsManager.setLocalSendEnabled(cbLs.isChecked());
                     SettingsManager.setStreamEnabled(cbStream.isChecked());
                     SettingsManager.setClipboardEnabled(cbClipboard.isChecked());
@@ -353,6 +355,7 @@ public class MainActivity extends Activity {
         
         if (SettingsManager.isWebDavEnabled()) text += "\n网络邻居: http://" + ip + ":" + SettingsManager.getWebDavPort();
         if (SettingsManager.isFtpEnabled()) text += "\nFTP 服务: ftp://" + ip + ":" + SettingsManager.getFtpPort();
+        if (SettingsManager.isDlnaEnabled()) text += "\nDLNA 投屏: 已开启";
         if (SettingsManager.isLocalSendEnabled()) text += "\nLocalSend PIN: " + SettingsManager.getLsPin();
         
         if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) text += "\n\n公网: " + FreeTunnelManager.getPublicUrl();
