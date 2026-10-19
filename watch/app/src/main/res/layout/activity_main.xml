@@ -1,49 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.wear.widget.BoxInsetLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#141218"> <!-- MD3 深色表面色 -->
+    android:background="#141218">
 
-    <FrameLayout
+    <LinearLayout
+        android:id="@+id/rootLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        app:boxedEdges="all">
+        android:orientation="vertical"
+        android:padding="8dp">
 
-        <LinearLayout
+        <TextView
+            android:id="@+id/tvTitle"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:orientation="vertical"
-            android:padding="8dp">
+            android:layout_height="wrap_content"
+            android:text="我的设备"
+            android:textColor="#E6E0E9"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:paddingBottom="8dp"/>
 
-            <TextView
-                android:id="@+id/tvTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="我的设备"
-                android:textColor="#E6E0E9"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:gravity="center"
-                android:paddingBottom="8dp"/>
+        <ListView
+            android:id="@+id/deviceListView"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:divider="@null"
+            android:dividerHeight="8dp"
+            android:focusable="true" />
 
-            <ListView
-                android:id="@+id/deviceListView"
-                android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_weight="1"
-                android:divider="@null"
-                android:dividerHeight="8dp"
-                android:focusable="true" />
-
-            <Button
-                android:id="@+id/btnAddDevice"
-                android:layout_width="match_parent"
-                android:layout_height="48dp"
-                android:text="添加设备"
-                android:textColor="#381E72"
-                android:background="#D0BCFF" /> <!-- MD3 主色调 -->
-        </LinearLayout>
-    </FrameLayout>
-</androidx.wear.widget.BoxInsetLayout>
+        <Button
+            android:id="@+id/btnAddDevice"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:text="添加设备"
+            android:textColor="#381E72"
+            android:background="#D0BCFF" />
+    </LinearLayout>
+</FrameLayout>

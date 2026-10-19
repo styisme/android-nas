@@ -1,6 +1,8 @@
 package com.androidnas.watch;
 
-public class WatchDevice {
+import java.io.Serializable;
+
+public class WatchDevice implements Serializable {
     public String name;
     public String ip;
     public String port;

@@ -8,7 +8,6 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -16,10 +15,10 @@ import android.view.ViewGroup;
 import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -39,6 +38,16 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(com.androidnas.watch.R.layout.activity_main);
 
+        // 动态适配圆盘/方盘
+        LinearLayout rootLayout = findViewById(com.androidnas.watch.R.id.rootLayout);
+        if (getResources().getConfiguration().isScreenRound()) {
+            // 圆盘：增大内边距，防止文字被边缘裁切
+            rootLayout.setPadding(40, 40, 40, 40);
+        } else {
+            // 方盘：标准内边距
+            rootLayout.setPadding(16, 16, 16, 16);
+        }
+
         deviceListView = findViewById(com.androidnas.watch.R.id.deviceListView);
         Button btnAddDevice = findViewById(com.androidnas.watch.R.id.btnAddDevice);
 
@@ -54,7 +63,6 @@ public class MainActivity extends Activity {
             startActivity(intent);
         });
 
-        // 长按删除设备
         deviceListView.setOnItemLongClickListener((parent, view, position, id) -> {
             showDeleteDeviceDialog(position);
             return true;
@@ -78,7 +86,7 @@ public class MainActivity extends Activity {
         } else if (item.getItemId() == 2) {
             new AlertDialog.Builder(this)
                 .setTitle("关于手表端")
-                .setMessage("版本: v1.0.0\n\n支持多设备、局域网协同投屏。")
+                .setMessage("版本: v1.0.0\n\n支持多设备、局域网协同投屏。\n\n⚠️ 本项目由 AI 辅助生成。")
                 .setPositiveButton("确定", null)
                 .show();
             return true;
@@ -187,28 +195,26 @@ public class MainActivity extends Activity {
         @Override public Object getItem(int position) { return devices.get(position); }
         @Override public long getItemId(int position) { return position; }
         @Override public View getView(int position, View convertView, ViewGroup parent) {
-            // 使用 MD3 卡片风格
             LinearLayout layout = new LinearLayout(MainActivity.this);
             layout.setOrientation(LinearLayout.VERTICAL);
             layout.setPadding(24, 16, 24, 16);
             
-            // 动态圆角背景
             android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-            bg.setColor(0xFF2B2930); // MD3 表面容器色
-            bg.setCornerRadius(32);   // 大圆角
+            bg.setColor(0xFF2B2930);
+            bg.setCornerRadius(32);
             layout.setBackground(bg);
 
             TextView tvName = new TextView(MainActivity.this);
             tvName.setText(devices.get(position).name);
             tvName.setTextColor(0xFFD0BCFF);
             tvName.setTextSize(16);
-            tvName.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+            tvName.setGravity(android.view.Gravity.CENTER);
 
             TextView tvIp = new TextView(MainActivity.this);
             tvIp.setText(devices.get(position).ip);
             tvIp.setTextColor(0xFFCAC4D0);
             tvIp.setTextSize(12);
-            tvIp.setTextAlignment(View.TEXT_ALIGNMENT_CENTER);
+            tvIp.setGravity(android.view.Gravity.CENTER);
 
             layout.addView(tvName);
             layout.addView(tvIp);
