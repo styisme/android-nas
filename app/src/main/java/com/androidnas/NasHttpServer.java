@@ -24,6 +24,8 @@ public class NasHttpServer extends NanoHTTPD {
     public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         String method = session.getMethod().name();
+        String clientIp = session.getHeaders().get("remote-addr");
+        if (clientIp == null) clientIp = "unknown";
         
         try {
             if (uri.startsWith("/share/")) {
@@ -49,6 +51,10 @@ public class NasHttpServer extends NanoHTTPD {
                     res.addHeader("WWW-Authenticate", "Basic realm=\"Android NAS\"");
                     return res;
                 }
+            }
+
+            if (role == 2 && !uri.startsWith("/Public") && !"/".equals(uri) && !"/index.html".equals(uri) && !"/api/list".equals(uri)) {
+                return text(Response.Status.FORBIDDEN, "访客仅能访问 /Public 目录");
             }
 
             if ("/api/clipboard".equals(uri)) {
@@ -89,6 +95,10 @@ public class NasHttpServer extends NanoHTTPD {
                     return text(Response.Status.OK, "OK");
                 }
                 return text(Response.Status.FORBIDDEN, "Fail");
+            }
+
+            if (!"/".equals(uri) && !"/index.html".equals(uri)) {
+                LogManager.add(clientIp, method + " " + uri);
             }
 
             if ("/api/list".equals(uri)) {

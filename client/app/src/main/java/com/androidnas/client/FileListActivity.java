@@ -313,23 +313,26 @@ public class FileListActivity extends AppCompatActivity {
             if (fileName == null) fileName = "upload_" + System.currentTimeMillis();
             final String finalFileName = fileName;
 
-            // 获取文件大小，必须传给 OkHttp，否则 NanoHTTPD 2.2 会卡死
+            // 获取文件大小，必须传给 OkHttp
             long tempSize = -1;
             try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
                 if (cursor != null && cursor.moveToFirst()) {
-                    int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                    int sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE);
                     if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) tempSize = cursor.getLong(sizeIndex);
                 }
             } catch (Exception ignored) {}
             final long finalSize = tempSize;
 
-            LinearProgressIndicator progress = new LinearProgressIndicator(this);
-            progress.setIndeterminate(true); // 上传暂不显示具体进度，使用不确定进度条
+            com.google.android.material.progressindicator.LinearProgressIndicator progress = new com.google.android.material.progressindicator.LinearProgressIndicator(this);
+            progress.setIndeterminate(false);
+            progress.setMax(100);
             androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this).setTitle("上传中").setView(progress).setCancelable(false).show();
 
             new Thread(() -> {
                 try {
                     InputStream is = getContentResolver().openInputStream(uri);
+                    if (is == null) return;
+
                     String encodedName = URLEncoder.encode(finalFileName, "UTF-8").replace("+", "%20");
                     String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + encodedName;
                     
@@ -347,10 +350,10 @@ public class FileListActivity extends AppCompatActivity {
                     mainHandler.post(() -> {
                         dialog.dismiss();
                         if (response.isSuccessful()) loadFiles();
-                        else Toast.makeText(this, "上传失败", Toast.LENGTH_SHORT).show();
+                        else Toast.makeText(FileListActivity.this, "上传失败", Toast.LENGTH_SHORT).show();
                     });
                 } catch (Exception e) {
-                    mainHandler.post(() -> { dialog.dismiss(); Toast.makeText(this, "上传失败", Toast.LENGTH_SHORT).show(); });
+                    mainHandler.post(() -> { dialog.dismiss(); Toast.makeText(FileListActivity.this, "上传失败", Toast.LENGTH_SHORT).show(); });
                 }
             }).start();
         }
