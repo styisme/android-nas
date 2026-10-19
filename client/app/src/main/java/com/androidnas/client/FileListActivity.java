@@ -153,16 +153,32 @@ public class FileListActivity extends AppCompatActivity {
         String fileName = getFileName(uri);
         if (fileName == null) fileName = "upload_" + System.currentTimeMillis();
         Toast.makeText(this, "开始上传 " + fileName, Toast.LENGTH_SHORT).show();
-        String finalFileName = fileName;
+        final String finalFileName = fileName;
+
+        // 获取文件大小，必须传给 OkHttp，否则 NanoHTTPD 2.2 会卡死
+        long tempSize = -1;
+        try (android.database.Cursor cursor = getContentResolver().query(uri, null, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                int sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE);
+                if (sizeIndex >= 0 && !cursor.isNull(sizeIndex)) {
+                    tempSize = cursor.getLong(sizeIndex);
+                }
+            }
+        } catch (Exception ignored) {}
+        final long finalSize = tempSize;
 
         new Thread(() -> {
             try {
                 InputStream is = getContentResolver().openInputStream(uri);
                 if (is == null) return;
 
-                String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + finalFileName;
+                // URL 编码，防止中文或空格导致路径错误
+                String encodedName = URLEncoder.encode(finalFileName, "UTF-8").replace("+", "%20");
+                String targetUrl = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + encodedName;
+
                 RequestBody body = new RequestBody() {
                     @Override public MediaType contentType() { return MediaType.parse("application/octet-stream"); }
+                    @Override public long contentLength() { return finalSize; } // 明确指定大小
                     @Override public void writeTo(okio.BufferedSink sink) throws java.io.IOException {
                         byte[] buf = new byte[8192]; int len;
                         while ((len = is.read(buf)) > 0) sink.write(buf, 0, len);
@@ -176,7 +192,10 @@ public class FileListActivity extends AppCompatActivity {
                 is.close();
 
                 if (response.isSuccessful()) {
-                    runOnUiThread(() -> { Toast.makeText(this, "上传成功", Toast.LENGTH_SHORT).show(); loadFiles(); });
+                    runOnUiThread(() -> { 
+                        Toast.makeText(this, "上传成功", Toast.LENGTH_SHORT).show(); 
+                        loadFiles(); 
+                    });
                 } else {
                     throw new Exception("HTTP " + response.code());
                 }
@@ -185,7 +204,6 @@ public class FileListActivity extends AppCompatActivity {
             }
         }).start();
     }
-
     private String getFileName(Uri uri) {
         String result = null;
         if (uri.getScheme().equals("content")) {
