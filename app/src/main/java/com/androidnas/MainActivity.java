@@ -8,6 +8,7 @@ import android.content.SharedPreferences;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Environment;
+import android.os.Handler;
 import android.os.StatFs;
 import android.text.InputType;
 import android.view.Menu;
@@ -24,7 +25,7 @@ public class MainActivity extends Activity {
     private ListView listView;
     private TextView pathView, statusView, ipView, storageView;
     private Button toggleBtn;
-    private CheckBox cbAuth, cbTunnel;
+    private CheckBox cbAuth, cbTunnel, cbFreeTunnel;
     private FileAdapter adapter;
     private final List<File> items = new ArrayList<File>();
 
@@ -42,6 +43,7 @@ public class MainActivity extends Activity {
         listView = (ListView) findViewById(R.id.listView);
         cbAuth = (CheckBox) findViewById(R.id.cbAuth);
         cbTunnel = (CheckBox) findViewById(R.id.cbTunnel);
+        cbFreeTunnel = (CheckBox) findViewById(R.id.cbFreeTunnel);
 
         SharedPreferences sp = getSharedPreferences("nas_auth", Context.MODE_PRIVATE);
         cbAuth.setChecked(sp.getBoolean("auth_enabled", true));
@@ -49,21 +51,34 @@ public class MainActivity extends Activity {
             AuthManager.setAuthEnabled(this, isChecked);
             if (HttpServerService.isRunning()) {
                 stopService(new Intent(this, HttpServerService.class));
-                new android.os.Handler().postDelayed(() -> startService(new Intent(MainActivity.this, HttpServerService.class)), 500);
+                new Handler().postDelayed(() -> startService(new Intent(MainActivity.this, HttpServerService.class)), 500);
             }
             updateServiceStatus();
         });
 
+        // 高级：SSH 内网穿透
         cbTunnel.setChecked(SshTunnelManager.isRunning());
         cbTunnel.setOnCheckedChangeListener((v, isChecked) -> {
-            if (isChecked) {
-                showSshConfigDialog();
-            } else {
+            if (isChecked) showSshConfigDialog();
+            else {
                 SshTunnelManager.stop();
-                Toast.makeText(this, "内网穿透已关闭", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, "SSH内网穿透已关闭", Toast.LENGTH_SHORT).show();
             }
         });
-        
+
+        // 极简：一键免费公网穿透
+        cbFreeTunnel.setChecked(FreeTunnelManager.isRunning());
+        cbFreeTunnel.setOnCheckedChangeListener((v, isChecked) -> {
+            if (isChecked) {
+                FreeTunnelManager.start(HttpServerService.PORT);
+                Toast.makeText(this, "正在生成公网链接，请稍候...", Toast.LENGTH_LONG).show();
+                waitAndShowFreeUrl();
+            } else {
+                FreeTunnelManager.stop();
+                Toast.makeText(this, "一键穿透已关闭", Toast.LENGTH_SHORT).show();
+            }
+        });
+
         storageView = new TextView(this);
         storageView.setTextSize(14);
         storageView.setTextColor(0xFF666666);
@@ -94,50 +109,58 @@ public class MainActivity extends Activity {
         if (!HttpServerService.isRunning()) startService(new Intent(this, HttpServerService.class));
     }
 
+    // 轮询检测公网 URL 是否生成完毕
+    private void waitAndShowFreeUrl() {
+        new Handler().postDelayed(new Runnable() {
+            int count = 0;
+            @Override
+            public void run() {
+                String url = FreeTunnelManager.getPublicUrl();
+                if (url != null && !url.isEmpty()) {
+                    runOnUiThread(() -> {
+                        new AlertDialog.Builder(MainActivity.this)
+                            .setTitle("公网穿透成功！")
+                            .setMessage("请复制以下链接发给你的同学：\n\n" + url)
+                            .setPositiveButton("复制链接", (d, w) -> {
+                                android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                                cm.setPrimaryClip(android.content.ClipData.newPlainText("url", url));
+                                Toast.makeText(MainActivity.this, "已复制", Toast.LENGTH_SHORT).show();
+                            }).setNegativeButton("关闭", null).show();
+                    });
+                } else if (count < 20 && FreeTunnelManager.isRunning()) {
+                    count++;
+                    new Handler().postDelayed(this, 1000);
+                } else if (!FreeTunnelManager.isRunning()) {
+                    runOnUiThread(() -> {
+                        cbFreeTunnel.setChecked(false);
+                        Toast.makeText(MainActivity.this, "穿透失败，请检查网络", Toast.LENGTH_SHORT).show();
+                    });
+                }
+            }
+        }, 1000);
+    }
+
     private void showSshConfigDialog() {
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(48, 24, 48, 24);
 
-        EditText etHost = new EditText(this);
-        etHost.setHint("公网服务器 IP (如 1.2.3.4)");
-        layout.addView(etHost);
-        
-        EditText etPort = new EditText(this);
-        etPort.setHint("SSH 端口 (默认 22)");
-        etPort.setInputType(InputType.TYPE_CLASS_NUMBER);
-        layout.addView(etPort);
-        
-        EditText etUser = new EditText(this);
-        etUser.setHint("SSH 用户名 (如 root)");
-        layout.addView(etUser);
+        EditText etHost = new EditText(this); etHost.setHint("公网服务器 IP"); layout.addView(etHost);
+        EditText etPort = new EditText(this); etPort.setHint("SSH 端口 (默认 22)"); etPort.setInputType(InputType.TYPE_CLASS_NUMBER); layout.addView(etPort);
+        EditText etUser = new EditText(this); etUser.setHint("SSH 用户名"); layout.addView(etUser);
+        EditText etPass = new EditText(this); etPass.setHint("SSH 密码"); etPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD); layout.addView(etPass);
+        EditText etRemotePort = new EditText(this); etRemotePort.setHint("公网映射端口 (如 8080)"); etRemotePort.setInputType(InputType.TYPE_CLASS_NUMBER); layout.addView(etRemotePort);
 
-        EditText etPass = new EditText(this);
-        etPass.setHint("SSH 密码");
-        etPass.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-        layout.addView(etPass);
-
-        EditText etRemotePort = new EditText(this);
-        etRemotePort.setHint("公网映射端口 (如 8080)");
-        etRemotePort.setInputType(InputType.TYPE_CLASS_NUMBER);
-        layout.addView(etRemotePort);
-
-        new AlertDialog.Builder(this)
-            .setTitle("SSH 内网穿透配置")
-            .setView(layout)
+        new AlertDialog.Builder(this).setTitle("自定义 SSH 穿透").setView(layout)
             .setPositiveButton("连接", (dialog, which) -> {
                 String host = etHost.getText().toString().trim();
                 int port = etPort.getText().toString().isEmpty() ? 22 : Integer.parseInt(etPort.getText().toString());
                 String user = etUser.getText().toString().trim();
                 String pass = etPass.getText().toString();
                 int remotePort = etRemotePort.getText().toString().isEmpty() ? 8080 : Integer.parseInt(etRemotePort.getText().toString());
-                
                 SshTunnelManager.start(host, port, user, pass, remotePort, HttpServerService.PORT);
-                Toast.makeText(this, "正在后台建立隧道...", Toast.LENGTH_SHORT).show();
                 cbTunnel.setChecked(true);
-            })
-            .setNegativeButton("取消", (dialog, which) -> cbTunnel.setChecked(false))
-            .show();
+            }).setNegativeButton("取消", (dialog, which) -> cbTunnel.setChecked(false)).show();
     }
 
     @Override protected void onResume() { super.onResume(); updateServiceStatus(); refresh(); }
@@ -147,9 +170,10 @@ public class MainActivity extends Activity {
         statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
         toggleBtn.setText(running ? "停止服务" : "启动服务");
         String ip = getIpAddress();
-        
         String text = "网页管理: http://" + ip + ":8080\n网络邻居: http://" + ip + ":8081";
-        if (cbAuth.isChecked()) text += "\n管理员: " + AuthManager.getAuthInfo();
+        if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) {
+            text += "\n\n公网链接:\n" + FreeTunnelManager.getPublicUrl();
+        }
         ipView.setText(text);
     }
 
@@ -171,7 +195,6 @@ public class MainActivity extends Activity {
             long bytesTotal = (long)stat.getBlockSize() * (long)stat.getBlockCount();
             storageView.setText("存储空间: 可用 " + (bytesAvailable/1024/1024) + " MB / 总计 " + (bytesTotal/1024/1024) + " MB");
         } catch (Throwable t) { storageView.setText(""); }
-
         items.clear();
         File[] files = currentDir.listFiles();
         if (files != null) Collections.addAll(items, files);
@@ -183,7 +206,7 @@ public class MainActivity extends Activity {
         adapter.notifyDataSetChanged();
     }
 
-    private void showFileMenu(final File f) { /* 占位保持原有逻辑正常 */ }
+    private void showFileMenu(final File f) { /* 占位 */ }
 
     @Override public boolean onCreateOptionsMenu(Menu menu) { 
         menu.add(0, 1, 0, "新建文件夹"); 

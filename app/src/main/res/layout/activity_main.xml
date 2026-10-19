@@ -6,78 +6,24 @@
     android:orientation="vertical"
     android:padding="8dp">
 
-    <TextView
-        android:id="@+id/statusView"
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:textSize="16sp"
-        android:textStyle="bold"
-        android:text="服务状态：已停止" />
+    <TextView android:id="@+id/statusView" android:layout_width="fill_parent" android:layout_height="wrap_content" android:textSize="16sp" android:textStyle="bold" android:text="服务状态：已停止" />
+    <TextView android:id="@+id/ipView" android:layout_width="fill_parent" android:layout_height="wrap_content" android:textSize="14sp" android:textColor="#666666" android:text="网页管理: -\n网络邻居: -" />
 
-    <TextView
-        android:id="@+id/ipView"
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:textSize="14sp"
-        android:textColor="#666666"
-        android:text="网页管理: -\n网络邻居: -" />
-
-    <LinearLayout
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="4dp">
-        <CheckBox
-            android:id="@+id/cbAuth"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="账号验证" />
-        <CheckBox
-            android:id="@+id/cbTunnel"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="SSH内网穿透" />
+    <LinearLayout android:layout_width="fill_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">
+        <CheckBox android:id="@+id/cbAuth" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="账号验证" />
+        <CheckBox android:id="@+id/cbFreeTunnel" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="一键公网穿透(免费)" />
+    </LinearLayout>
+    
+    <LinearLayout android:layout_width="fill_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">
+        <CheckBox android:id="@+id/cbTunnel" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="高级 SSH 内网穿透" />
     </LinearLayout>
 
-    <LinearLayout
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:layout_marginTop="4dp">
-        <Button
-            android:id="@+id/toggleBtn"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="启动服务" />
-        <Button
-            android:id="@+id/upBtn"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="上级目录" />
-        <Button
-            android:id="@+id/refreshBtn"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="刷新" />
+    <LinearLayout android:layout_width="fill_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginTop="4dp">
+        <Button android:id="@+id/toggleBtn" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="启动服务" />
+        <Button android:id="@+id/upBtn" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="上级目录" />
+        <Button android:id="@+id/refreshBtn" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="刷新" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/pathView"
-        android:layout_width="fill_parent"
-        android:layout_height="wrap_content"
-        android:textSize="14sp"
-        android:padding="4dp"
-        android:background="#F0F0F0"
-        android:text="/" />
-
-    <ListView
-        android:id="@+id/listView"
-        android:layout_width="fill_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+    <TextView android:id="@+id/pathView" android:layout_width="fill_parent" android:layout_height="wrap_content" android:textSize="14sp" android:padding="4dp" android:background="#F0F0F0" android:text="/" />
+    <ListView android:id="@+id/listView" android:layout_width="fill_parent" android:layout_height="0dp" android:layout_weight="1" />
 </LinearLayout>
