@@ -3,23 +3,66 @@
 import sys
 import os
 import argparse
-import urllib.parse
+import json
 import requests
 import cmd
 import shlex
+import getpass
 
-CONFIG_FILE = os.path.expanduser("~/.nas_cli_config")
+CONFIG_FILE = os.path.expanduser("~/.nas_cli_config.json")
 
 def format_size(size):
     if size < 1024: return f"{size} B"
     if size < 1024 * 1024: return f"{size / 1024:.1f} KB"
     return f"{size / 1024 / 1024:.1f} MB"
 
+# ================= 配置向导 =================
+def run_setup():
+    print("\033[96m" + "="*40)
+    print("      Android NAS CLI 初始化向导")
+    print("="*40 + "\033[0m")
+    
+    url = input("1. 请输入 NAS 地址 (如 192.168.1.100:8080): ").strip()
+    if not url: url = "http://127.0.0.1:8080"
+    if not url.startswith("http"): url = "http://" + url
+    
+    user = input("2. 请输入账号 (直接回车默认 admin): ").strip() or "admin"
+    pwd = getpass.getpass("3. 请输入密码 (直接回车默认 admin): ").strip() or "admin"
+    
+    print("4. 请选择服务类型:")
+    print("   [1] 原生 NAS 接口 (默认)")
+    print("   [2] WebDAV (暂仅供记录)")
+    print("   [3] FTP (暂仅供记录)")
+    proto = input("   请输入序号 (1/2/3): ").strip()
+    service_type = {"1": "native", "2": "webdav", "3": "ftp"}.get(proto, "native")
+    
+    config = {
+        "url": url,
+        "user": user,
+        "password": pwd,
+        "type": service_type
+    }
+    
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(config, f)
+        
+    print(f"\n\033[92m[+] 配置保存成功！\033[0m")
+    return config
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return None
+
 # ================= 基础网络请求 =================
 class NasAPI:
-    def __init__(self, base_url, user="admin", password="admin"):
-        self.base_url = base_url
-        self.auth = (user, password) if user else None
+    def __init__(self, config):
+        self.base_url = config["url"]
+        self.auth = (config["user"], config["password"])
         self.session = requests.Session()
         self.session.auth = self.auth
         self.session.timeout = 10
@@ -29,7 +72,7 @@ class NasAPI:
         try:
             r = self.session.request(method, url, **kwargs)
             if r.status_code == 401:
-                print("\n\033[91m[-] 认证失败，请检查账号密码\033[0m")
+                print("\n\033[91m[-] 认证失败，请重新运行 --setup\033[0m")
                 sys.exit(1)
             r.raise_for_status()
             return r
@@ -86,8 +129,7 @@ class NasShell(cmd.Cmd):
     def update_prompt(self):
         self.prompt = f"\033[92m{self.cwd}> \033[0m"
 
-    def emptyline(self):
-        pass
+    def emptyline(self): pass
 
     def do_pwd(self, arg):
         """显示当前目录"""
@@ -95,8 +137,7 @@ class NasShell(cmd.Cmd):
 
     def do_cd(self, arg):
         """切换目录 (例如: cd /Movies 或 cd ..)"""
-        if not arg or arg == ".":
-            return
+        if not arg or arg == ".": return
         if arg == "..":
             if self.cwd == "/": return
             parts = self.cwd.strip("/").split("/")
@@ -105,14 +146,10 @@ class NasShell(cmd.Cmd):
         elif arg == "/":
             self.cwd = "/"
         else:
-            # 兼容相对路径和绝对路径
             path = arg if arg.startswith("/") else f"{self.cwd.rstrip('/')}/{arg}"
-            # 验证目录是否存在
             data = self.api.list_dir(path)
-            if data:
-                self.cwd = data.get("path", path)
-            else:
-                print("\033[91m[-] 目录不存在\033[0m")
+            if data: self.cwd = data.get("path", path)
+            else: print("\033[91m[-] 目录不存在\033[0m")
         self.update_prompt()
 
     def do_ls(self, arg):
@@ -122,8 +159,7 @@ class NasShell(cmd.Cmd):
         if data:
             files = data.get("files", [])
             if not files:
-                print(" (空目录)")
-                return
+                print(" (空目录)"); return
             print(f"\033[94m{'类型':<6} {'大小':<10} 名称\033[0m")
             print("-" * 40)
             for f in files:
@@ -132,9 +168,8 @@ class NasShell(cmd.Cmd):
                 print(f"{t:<15} {s:<10} {f['name']}")
 
     def do_cat(self, arg):
-        """查看文本文件内容 (例如: cat /config.txt)"""
-        if not arg:
-            print("[-] 请输入文件路径"); return
+        """查看文本文件内容"""
+        if not arg: return
         path = arg if arg.startswith("/") else f"{self.cwd.rstrip('/')}/{arg}"
         r = self.api.req("GET", "/api/preview", params={"path": path})
         if r: print(r.text)
@@ -142,26 +177,24 @@ class NasShell(cmd.Cmd):
     def do_get(self, arg):
         """下载文件 (例如: get /Movies/a.mp4 本地路径)"""
         args = shlex.split(arg)
-        if not args: print("[-] 请提供远程路径"); return
+        if not args: return
         remote = args[0] if args[0].startswith("/") else f"{self.cwd.rstrip('/')}/{args[0]}"
         local = args[1] if len(args) > 1 else os.path.basename(remote)
         self.api.download(remote, local)
 
     def do_put(self, arg):
         """上传文件 (例如: put ./本地文件.mp4)"""
-        if not arg: print("[-] 请提供本地路径"); return
-        if not os.path.exists(arg):
-            print("[-] 本地文件不存在"); return
+        if not arg or not os.path.exists(arg): return
         self.api.upload(arg, self.cwd)
 
     def do_mkdir(self, arg):
         """创建文件夹 (例如: mkdir NewFolder)"""
-        if not arg: print("[-] 请输入文件夹名称"); return
+        if not arg: return
         self.api.mkdir(self.cwd, arg)
 
     def do_rm(self, arg):
-        """删除文件或文件夹 (例如: rm /Movies/a.mp4)"""
-        if not arg: print("[-] 请输入路径"); return
+        """删除文件或文件夹"""
+        if not arg: return
         path = arg if arg.startswith("/") else f"{self.cwd.rstrip('/')}/{arg}"
         self.api.delete(path)
 
@@ -175,81 +208,60 @@ class NasShell(cmd.Cmd):
         return self.do_exit(arg)
 
 # ================= 主程序 =================
-def get_base_url(args):
-    if args.url: url = args.url
-    else:
-        if os.path.exists(CONFIG_FILE):
-            with open(CONFIG_FILE, "r") as f: url = f.read().strip()
-        else:
-            print("[-] 未提供 URL。请使用 --url，或先运行 --save-url")
-            sys.exit(1)
-    if not url.startswith("http"): url = "http://" + url
-    return url.rstrip("/")
-
 def main():
     parser = argparse.ArgumentParser(description="Android NAS CLI Client")
-    parser.add_argument("--url", help="NAS 地址 (如 http://192.168.1.100:8080)")
-    parser.add_argument("--user", default="admin", help="账号 (默认 admin)")
-    parser.add_argument("--password", default="admin", help="密码 (默认 admin)")
-    parser.add_argument("--save-url", action="store_true", help="保存 URL 到配置文件")
-
-    subparsers = parser.add_subparsers(dest="command", help="可用命令")
-
-    subparsers.add_parser("shell", help="进入交互式文件管理终端")
-
-    p_ls = subparsers.add_parser("ls", help="列出目录")
-    p_ls.add_argument("path", nargs="?", default="/")
-
-    p_cat = subparsers.add_parser("cat", help="查看文本文件")
-    p_cat.add_argument("path")
-
-    p_dl = subparsers.add_parser("download", help="下载文件")
-    p_dl.add_argument("remote"); p_dl.add_argument("local", nargs="?")
-
-    p_up = subparsers.add_parser("upload", help="上传文件")
-    p_up.add_argument("local"); p_up.add_argument("remote_dir", nargs="?", default="/")
-
-    p_mkdir = subparsers.add_parser("mkdir", help="新建文件夹")
-    p_mkdir.add_argument("path"); p_mkdir.add_argument("name")
-
-    p_rm = subparsers.add_parser("rm", help="删除")
-    p_rm.add_argument("path")
+    parser.add_argument("--setup", action="store_true", help="重新运行配置向导")
+    parser.add_argument("command", nargs="?", help="可用命令: shell, ls, cat, get, put, mkdir, rm")
+    parser.add_argument("args", nargs=argparse.REMAINDER, help="命令参数")
 
     args = parser.parse_args()
 
-    if not args.command and not args.save_url:
-        parser.print_help(); sys.exit(0)
+    config = load_config()
 
-    base_url = get_base_url(args)
+    # 如果指定了 --setup，或者没有配置文件
+    if args.setup or not config:
+        config = run_setup()
+        if not args.command and not args.setup:
+            # 如果是第一次运行没带命令，进入 shell
+            args.command = "shell"
+        elif args.setup and not args.command:
+            # 如果是主动 --setup，配置完就退出
+            sys.exit(0)
 
-    if args.save_url:
-        with open(CONFIG_FILE, "w") as f: f.write(base_url)
-        print(f"\033[92m[+] 地址已保存: {base_url}\033[0m")
-        if not args.command: sys.exit(0)
+    api = NasAPI(config)
 
-    api = NasAPI(base_url, args.user, args.password)
-
-    if args.command == "shell":
+    if args.command == "shell" or not args.command:
         shell = NasShell(api)
         shell.cmdloop()
     elif args.command == "ls":
-        data = api.list_dir(args.path or "/")
+        path = args.args[0] if args.args else "/"
+        data = api.list_dir(path)
         if data:
             for f in data.get("files", []):
                 t = "[DIR] " if f["dir"] else "[FILE]"
                 s = "-" if f["dir"] else format_size(f["size"])
                 print(f"{t:<6} {s:<10} {f['name']}")
     elif args.command == "cat":
-        r = api.req("GET", "/api/preview", params={"path": args.path})
+        if not args.args: return
+        r = api.req("GET", "/api/preview", params={"path": args.args[0]})
         if r: print(r.text)
-    elif args.command == "download":
-        api.download(args.remote, args.local or os.path.basename(args.remote))
-    elif args.command == "upload":
-        api.upload(args.local, args.remote_dir)
+    elif args.command == "get":
+        if not args.args: return
+        remote = args.args[0]
+        local = args.args[1] if len(args.args) > 1 else os.path.basename(remote)
+        api.download(remote, local)
+    elif args.command == "put":
+        if not args.args: return
+        remote_dir = args.args[1] if len(args.args) > 1 else "/"
+        api.upload(args.args[0], remote_dir)
     elif args.command == "mkdir":
-        api.mkdir(args.path, args.name)
+        if len(args.args) < 2: return
+        api.mkdir(args.args[0], args.args[1])
     elif args.command == "rm":
-        api.delete(args.path)
+        if not args.args: return
+        api.delete(args.args[0])
+    else:
+        print(f"未知命令: {args.command}")
 
 if __name__ == "__main__":
     main()
