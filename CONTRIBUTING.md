@@ -23,21 +23,18 @@ android-nas/
 │   │   ├── WebDavServer.java            # 纯 Socket 实现的 WebDAV 栈
 │   │   ├── FtpServer.java               # 纯 Socket 实现的 FTP 栈
 │   │   ├── DlnaServer.java              # DLNA 投屏发现
-│   │   └── LocalSendServer.java         # LocalSend 接收端
+│   │   ├── LocalSendServer.java         # LocalSend 接收端
+│   │   ├── RootManager.java             # Root/ADB 底层命令执行器
+│   │   └── AdvancedKeepAliveManager.java# 极客级系统保活注入
 │   └── src/main/assets/index.html       # MD3 网页前端源码
 │
 ├── client/                      # 手机客户端源码 (Android 5.0+)
-│   ├── src/main/java/com/androidnas/client/
-│   │   ├── MainActivity.java            # 多设备管理、局域网扫描
-│   │   ├── FileListActivity.java        # 多协议智能路由 (原生/WebDAV/FTP)
-│   │   ├── SyncHelper.java              # UDP 协同发报器
-│   │   └── SettingsActivity.java        # 设置中心
-│
 ├── tv/                          # TV 端源码 (Android 4.4+)
 ├── watch/                       # 手表端源码 (Android 5.0+)
-├── desktop/                     # 桌面端源码 (Python)
+├── desktop/                     # 桌面端源码 (Python GUI)
+├── cli/                         # 命令行客户端源码 (Python CLI)
 │
-├── .github/workflows/           # 五端独立 CI/CD
+├── .github/workflows/           # 全量发版与独立构建 CI/CD
 └── sync_version.py              # 🔥 版本号全自动同步核心脚本
 ```
 
@@ -47,7 +44,7 @@ android-nas/
 
 - **服务端**：JDK 8 + Gradle 6.7.1 + AGP 4.2.2 (`./gradlew assembleDebug`)
 - **客户端 / TV / 手表**：JDK 11 + Gradle 7.5 + AGP 7.4.2 (`cd client && ./gradlew assembleDebug`)
-- **桌面端**：Python 3.8+ (`python desktop/nas_client.py`)
+- **桌面端 / CLI**：Python 3.8+ (`python desktop/nas_client.py`)
 
 ---
 
@@ -55,95 +52,40 @@ android-nas/
 
 **基础约定**：
 - **Base URL**：`http://<ip>:8080`
-- **Auth**：需在 Header 中携带 `Authorization: Basic Base64(账号:密码)`。若服务端控制中心关闭了账号验证，则无需携带。
-- **Content-Type**：除文件上传/流式传输外，均为 `application/x-www-form-urlencoded` 或 `application/json`。
+- **Auth**：需在 Header 中携带 `Authorization: Basic Base64(账号:密码)`。
 
 ### 1. 获取目录列表
-- **URL**: `/api/list`
-- **Method**: `GET`
-- **Params**: `path` (String, 必填，例如 `/Movies/`)
-- **Response**: `200 OK`
-```json
-{
-  "path": "/Movies/",
-  "files": [
-    {
-      "name": "Inception.mp4",
-      "dir": false,
-      "size": 1024000,
-      "isTxt": false,
-      "isMedia": true,
-      "isZip": false
-    },
-    {
-      "name": "Subtitle",
-      "dir": true,
-      "size": 0,
-      "isTxt": false,
-      "isMedia": false,
-      "isZip": false
-    }
-  ]
-}
-```
+- **URL**: `/api/list` (GET)
+- **Params**: `path` (String, 必填)
 
 ### 2. 文件下载与流媒体分片
-- **URL**: `/api/download`
-- **Method**: `GET`
-- **Params**: `path` (String, 必填)
-- **Headers**: 可携带 `Range: bytes=0-1024` 用于视频进度条拖动。
-- **Response**:
-  - 若携带 Range 请求头，返回 `206 Partial Content`，并带有 `Content-Range` 头。
-  - 否则返回 `200 OK`，`Content-Type` 自动识别（如 `video/mp4`, `application/octet-stream`）。
+- **URL**: `/api/download` (GET)
+- **Headers**: 可携带 `Range: bytes=0-1024`。
 
-### 3. 多文件表单上传
-- **URL**: `/api/upload`
-- **Method**: `POST`
-- **Body**: `multipart/form-data` 格式。需包含 `path` 字段（目标目录）与一个或多个 `file` 字段。
-- **Response**: `200 OK` 返回字符串 `OK: filename.ext`。
-
-### 4. 客户端流式 PUT 上传
-- **URL**: `/*` (任意文件路径，如 `/Movies/new.mp4`)
+### 3. 客户端流式 PUT 上传
+- **URL**: `/*` (任意文件路径)
 - **Method**: `PUT`
-- **Body**: 纯二进制流 (`application/octet-stream`)。
-- **注意**：OkHttp 或 WebDAV 客户端必须携带准确的 `Content-Length`，否则 NanoHTTPD 会无限阻塞等待。
+- **注意**：必须携带准确的 `Content-Length`。
 
-### 5. 预览文本
-- **URL**: `/api/preview`
-- **Method**: `GET`
-- **Params**: `path` (String, 必填)
-- **Response**: 返回文件纯文本内容（限制 2MB 以内，超出返回 400）。
+### 4. 系统控制台配置 (新增)
+- **URL**: `/api/settings`
+- **Method**: `GET` (获取配置) / `POST` (保存配置)
+- **POST Body**: `alias`, `webPort`, `davPort`, `ftpPort`, `webdav`, `ftp`, `dlna`, `stream`, `clipboard`, `lowPower`, `globalMode`。
 
-### 6. 新建文件夹 / 重命名 / 删除
-- **新建**: `POST /api/mkdir`，Body: `path=/当前目录&name=新目录名`
-- **重命名**: `POST /api/rename`，Body: `path=/旧路径&newName=新名字`
-- **删除**: `POST /api/delete`，Body: `path=/目标路径`（服务端会自动递归删除）。
+### 5. 修改密码 (新增)
+- **URL**: `/api/password` (POST)
+- **Body**: `password=新密码`
 
-### 7. 在线解压 ZIP
-- **URL**: `/api/unzip`
-- **Method**: `POST`
-- **Body**: `path=/目标zip文件路径.zip`
-- **Response**: `200 OK` 表示解压完成。服务端内置路径穿越校验，解压安全。
-
-### 8. 剪贴板同步
-- **获取**: `GET /api/clipboard` -> 返回纯文本内容。
-- **设置**: `POST /api/clipboard`，Body: `content=要同步的文字`。
-
-### 9. 生成免密分享
-- **URL**: `/api/share`
-- **Method**: `POST`
-- **Body**: `path=/文件路径`
-- **Response**: 返回 8 位随机 Token（如 `abcd1234`）。外部用户访问 `/share/abcd1234` 即可免密直接下载该文件。
+### 6. Root 命令执行 (新增)
+- **URL**: `/api/shell` (POST)
+- **Body**: `cmd=要执行的命令`
+- **注意**：服务端内置了危险指令（如 `rm -rf /`）拦截。
 
 ---
 
 ## 📡 跨端协同 UDP 协议 (8090端口)
 
-本项目的手机端与 TV 端/手表端通信依赖于 UDP 广播协议：
-1. **发送方 (手机)**：向局域网 `255.255.255.255:8090` 发送字符串：`DISCOVER_TV`。
-2. **接收方 (TV/手表)**：接收到该广播后，向发送方源 IP 单播回复：`TV_HERE`。
-3. **配置下发**：手机收到 IP 后，向 `http://<TV_IP>:8090/sync` 发送 HTTP POST，Body 格式为 `ip=xxx&user=xxx&pass=xxx`。
-4. **投屏下发**：手机向 `http://<TV_IP>:8090/play?<视频绝对URL>` 发送 GET 请求，TV 端立刻启动播放器。
+本项目的手机端与 TV 端/手表端通信依赖于 UDP 广播协议。详见代码 `SyncHelper.java`。
 
 ---
 
@@ -152,20 +94,19 @@ android-nas/
 **严禁手动修改各端 `build.gradle` 中的版本号。**
 
 发版三步曲：
-1. 修改根目录 `CHANGELOG.md` 顶部，增加类似 `## [3.2.0]` 的标题。
+1. 修改根目录 `CHANGELOG.md` 顶部，增加类似 `## [3.3.0]` 的标题。
 2. Push 到 `main` 分支。
-3. Actions 会运行 `sync_version.py` 自动同步并打包。
+3. 触发 **Build All** 流水线，自动输出全平台打包好的 ZIP 文件。
 
 ---
 
 ## 📝 提交规范 (Conventional Commits)
 
-采用 `<type>(<scope>): <subject>` 规范：
 - `feat`: 新功能
 - `fix`: 修复 Bug
 - `docs`: 文档变更
 - `chore`: 构建/依赖更新
 - `refactor`: 代码重构
+- `ci`: CI/CD 配置修改
 
-**Scope 必须是以下之一**：`server`, `web`, `client`, `tv`, `watch`, `desktop`, `ci`。
-示例：`fix(server): 修复 getResponseCode 未捕获 IO 异常导致崩溃`。
+**Scope 必须是以下之一**：`server`, `web`, `client`, `tv`, `watch`, `desktop`, `cli`, `ci`。
