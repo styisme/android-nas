@@ -509,7 +509,11 @@ public class FileListActivity extends AppCompatActivity {
             String contentText = et.getText().toString();
             new Thread(() -> {
                 try {
-                    RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).add("content", contentText).build();
+                    RequestBody b = new okhttp3.MultipartBody.Builder()
+                        .setType(okhttp3.MultipartBody.FORM)
+                        .addFormDataPart("path", f.path)
+                        .addFormDataPart("content", contentText)
+                        .build();
                     Request r = new Request.Builder().url(baseUrl + "/api/save").post(b).header("Authorization", authHeader).build();
                     Response resp = client.newCall(r).execute();
                     if (resp.isSuccessful()) {
