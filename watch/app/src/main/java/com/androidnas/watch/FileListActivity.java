@@ -161,7 +161,8 @@ public class FileListActivity extends Activity {
                 conn.setRequestProperty("Authorization", authHeader);
                 conn.setConnectTimeout(10000);
 
-                if (conn.getResponseCode() == 200) {
+                int code = conn.getResponseCode();
+                if (code == 200) {
                     InputStream is = conn.getInputStream();
                     FileOutputStream fos = new FileOutputStream(dest);
                     byte[] buf = new byte[8192];
@@ -170,7 +171,8 @@ public class FileListActivity extends Activity {
                     fos.close(); is.close();
                     mainHandler.post(() -> Toast.makeText(this, "下载完成: " + f.name, Toast.LENGTH_LONG).show());
                 } else {
-                    mainHandler.post(() -> Toast.makeText(this, "下载失败: HTTP " + conn.getResponseCode(), Toast.LENGTH_SHORT).show());
+                    final int finalCode = code;
+                    mainHandler.post(() -> Toast.makeText(this, "下载失败: HTTP " + finalCode, Toast.LENGTH_SHORT).show());
                 }
             } catch (Exception e) {
                 mainHandler.post(() -> Toast.makeText(this, "下载异常: " + e.getMessage(), Toast.LENGTH_SHORT).show());
