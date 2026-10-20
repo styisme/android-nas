@@ -32,6 +32,9 @@ public class FileListActivity extends Activity {
     private String baseUrl = "", currentPath = "/", authHeader = "";
     private Handler mainHandler = new Handler(Looper.getMainLooper());
 
+    // 将接口移到 Activity 级别
+    interface OnItemClick { void onClick(FileItem f); }
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         device = (WatchDevice) getIntent().getSerializableExtra("device");
@@ -177,7 +180,6 @@ public class FileListActivity extends Activity {
 
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.VH> {
         private OnItemClick clickListener;
-        interface OnItemClick { void onClick(FileItem f); }
         void setOnItemClickListener(OnItemClick l) { clickListener = l; }
 
         @Override public int getItemCount() { return files.size(); }

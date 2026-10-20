@@ -24,6 +24,10 @@ public class MainActivity extends Activity {
     private List<WatchDevice> devices = new ArrayList<>();
     private DeviceAdapter adapter;
 
+    // 将接口定义移到 Activity 级别
+    interface OnItemClick { void onClick(WatchDevice d); }
+    interface OnItemLongClick { boolean onLongClick(int pos); }
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         setContentView(com.androidnas.watch.R.layout.activity_main);
@@ -31,7 +35,6 @@ public class MainActivity extends Activity {
         recyclerView = findViewById(com.androidnas.watch.R.id.recyclerView);
         ImageButton btnAdd = findViewById(com.androidnas.watch.R.id.btnAddDevice);
         
-        // 圆盘屏幕防遮挡边距微调
         boolean round = false;
         if (Build.VERSION.SDK_INT >= 23) {
             try { round = getResources().getConfiguration().isScreenRound(); } catch (Throwable ignored) {}
@@ -151,9 +154,6 @@ public class MainActivity extends Activity {
         private OnItemClick clickListener;
         private OnItemLongClick longClickListener;
 
-        interface OnItemClick { void onClick(WatchDevice d); }
-        interface OnItemLongClick { void onLongClick(int pos); }
-
         void setOnItemClickListener(OnItemClick l) { clickListener = l; }
         void setOnItemLongClickListener(OnItemLongClick l) { longClickListener = l; }
 
@@ -169,9 +169,11 @@ public class MainActivity extends Activity {
             h.tvIp.setText(d.ip);
 
             h.itemView.setOnClickListener(v -> { if (clickListener != null) clickListener.onClick(d); });
-            h.itemView.setOnLongClickListener(v -> { if (longClickListener != null) longClickListener.onLongClick(pos); return true; });
+            h.itemView.setOnLongClickListener(v -> { 
+                if (longClickListener != null) return longClickListener.onLongClick(pos); 
+                return false;
+            });
 
-            // 触摸按压缩放
             h.itemView.setOnTouchListener((v, event) -> {
                 if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
                     v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).start();
