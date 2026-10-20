@@ -509,7 +509,8 @@ public class FileListActivity extends AppCompatActivity {
                 runOnUiThread(() -> Toast.makeText(this, "未找到电视，请确保电视端打开", Toast.LENGTH_SHORT).show());
                 return;
             }
-            String url = baseUrl + "/api/download?path=" + URLEncoder.encode(f.path, "UTF-8");
+            String url = "";
+            try { url = baseUrl + "/api/download?path=" + URLEncoder.encode(f.path, "UTF-8"); } catch (Exception ignored) {}
             boolean ok = SyncHelper.playOnTv(tvIp, url);
             runOnUiThread(() -> Toast.makeText(this, ok ? "已发送投屏指令" : "投屏失败", Toast.LENGTH_SHORT).show());
         }).start();

@@ -73,7 +73,6 @@ public class MainActivity extends AppCompatActivity {
         fab.setOnClickListener(v -> showAddDeviceDialog());
         
         // 动态添加右上角的扫描按钮
-        MaterialToolbar toolbar = findViewById(R.id.toolbar);
         toolbar.inflateMenu(R.menu.menu_search); // 借用一下已有的菜单或者直接添加
         toolbar.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == R.id.action_search) {
@@ -259,7 +258,7 @@ public class MainActivity extends AppCompatActivity {
                             socket.close();
                             
                             // 连通性测试成功，发送 HTTP 请求验证是不是 NAS
-                            String result = SyncHelper.sendConfig(host, "", "", ""); // 借用这个测试
+                            SyncHelper.sendConfig(host, "", "", ""); // 借用这个测试
                             // 简单点，直接用请求测
                             java.net.URL url = new java.net.URL("http://" + host + ":8080/api/status");
                             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();

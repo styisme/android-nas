@@ -70,11 +70,11 @@ public class HttpServerService extends Service {
         String root = Environment.getExternalStorageDirectory().getAbsolutePath();
         boolean ok = true;
         try { try {
-            serverHttp = new NasHttpServer(SettingsManager.getWebPort()); serverHttp.start(); startedServices.add("Web");
+            serverHttp = new NasHttpServer(SettingsManager.getWebPort(), this); serverHttp.start(); startedServices.add("Web");
         } catch (Exception e) {
             if (SettingsManager.getWebPort() < 1024) {
                 lastError += "Web(低端口需Root): " + e.getMessage() + "\n";
-                serverHttp = new NasHttpServer(8080); serverHttp.start(); startedServices.add("Web(8080)");
+                serverHttp = new NasHttpServer(8080, this); serverHttp.start(); startedServices.add("Web(8080)");
             } else throw e;
         } }
         catch (Exception e) { lastError += "Web: " + e.getMessage() + "\n"; ok = false; }

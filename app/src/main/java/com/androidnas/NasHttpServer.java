@@ -1,5 +1,6 @@
 package com.androidnas;
 
+import android.content.Context;
 import android.os.Environment;
 import java.io.*;
 import java.util.*;
@@ -12,7 +13,8 @@ public class NasHttpServer extends NanoHTTPD {
     private Map<String, String> sharedLinks = new ConcurrentHashMap<>();
     private static volatile String clipboardContent = "";
 
-    public NasHttpServer(int port) { super(port); }
+    private Context context;
+    public NasHttpServer(int port, Context context) { super(port); this.context = context; }
 
     private File safeFile(String path) throws IOException {
         if (path == null || path.trim().isEmpty()) path = "/";
@@ -87,7 +89,7 @@ public class NasHttpServer extends NanoHTTPD {
                 if (role != 1) return text(Response.Status.FORBIDDEN, "Admin only");
                 if (Method.GET.equals(session.getMethod())) {
                     String json = "{" +
-                        "\"alias\":\"" + escape(SettingsManager.getDeviceAlias()) + "\"," +
+                        "\"alias\":\"" + esc(SettingsManager.getDeviceAlias()) + "\"," +
                         "\"webPort\":" + SettingsManager.getWebPort() + "," +
                         "\"davPort\":" + SettingsManager.getWebDavPort() + "," +
                         "\"ftpPort\":" + SettingsManager.getFtpPort() + "," +
@@ -132,7 +134,7 @@ public class NasHttpServer extends NanoHTTPD {
                 session.parseBody(files);
                 String newPass = session.getParms().get("password");
                 if (newPass != null && newPass.length() >= 4) {
-                    AuthManager.setAuth(NasHttpServer.this, AuthManager.getAdminUser(), newPass);
+                    AuthManager.setAuth(context, AuthManager.getAdminUser(), newPass);
                     return text(Response.Status.OK, "OK");
                 }
                 return text(Response.Status.BAD_REQUEST, "Password too short");
