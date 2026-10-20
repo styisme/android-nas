@@ -77,6 +77,9 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/mkdir".equals(uri) || "/api/delete".equals(uri) || "/api/save".equals(uri))
                 return handleFileOps(uri, session, role);
             if ("/api/share".equals(uri) && Method.POST.equals(session.getMethod())) return handleShareCreate(session, role);
+            if (Method.PUT.equals(session.getMethod())) {
+                return handlePut(session, role);
+            }
             if ("/".equals(uri) || "/index.html".equals(uri)) {
                 InputStream is = getClass().getClassLoader().getResourceAsStream("assets/index.html");
                 if (is == null) return text(Response.Status.INTERNAL_ERROR, "UI not found");
@@ -216,6 +219,31 @@ public class NasHttpServer extends NanoHTTPD {
             while ((line = r.readLine()) != null) sb.append(line).append("\n");
         }
         return text(Response.Status.OK, sb.toString());
+    }
+
+    private Response handlePut(IHTTPSession session, int role) throws Exception {
+        if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
+        String uri = session.getUri();
+        File f = safeFile(uri);
+        if (f == null) return text(Response.Status.FORBIDDEN, "Path invalid");
+        if (f.getParentFile() != null && !f.getParentFile().exists()) {
+            f.getParentFile().mkdirs();
+        }
+        long contentLength = 0;
+        try { contentLength = Long.parseLong(session.getHeaders().get("content-length")); } catch (Exception ignored) {}
+        if (contentLength <= 0) return text(Response.Status.BAD_REQUEST, "Content-Length required");
+
+        try (java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
+             InputStream is = session.getInputStream()) {
+            byte[] buf = new byte[8192];
+            int len;
+            long total = 0;
+            while (total < contentLength && (len = is.read(buf, 0, (int)Math.min(buf.length, contentLength - total))) > 0) {
+                fos.write(buf, 0, len);
+                total += len;
+            }
+        }
+        return text(Response.Status.OK, "OK");
     }
 
     private Response handleUpload(IHTTPSession session) throws Exception {
