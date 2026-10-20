@@ -63,17 +63,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        storageView = new TextView(this);
-        storageView.setTextSize(14);
-        storageView.setTextColor(0xFF666666);
-        LinearLayout rootLayout = (LinearLayout) findViewById(R.id.main_layout);
-        if (rootLayout != null) {
-            int insertIdx = rootLayout.getChildCount();
-            for (int i = 0; i < rootLayout.getChildCount(); i++) {
-                if (rootLayout.getChildAt(i) == listView) { insertIdx = i; break; }
-            }
-            rootLayout.addView(storageView, insertIdx);
-        }
+        // 移除动态添加，直接在 XML 里排版好
 
         adapter = new FileAdapter();
         listView.setAdapter(adapter);
@@ -294,35 +284,60 @@ public class MainActivity extends Activity {
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(48, 24, 48, 24);
         sv.addView(layout);
+
         EditText etAlias = new EditText(this); etAlias.setHint("设备名称"); etAlias.setText(SettingsManager.getDeviceAlias()); layout.addView(etAlias);
-        CheckBox cbLowPower = new CheckBox(this); cbLowPower.setText("极寒省电模式"); cbLowPower.setChecked(SettingsManager.isLowPowerMode()); layout.addView(cbLowPower);
-        TextView tvHint = new TextView(this);
-        tvHint.setText("警告：开启后将强制降级 Wi-Fi 锁频率、关闭内网穿透、FTP、DLNA 与 LocalSend。");
-        tvHint.setTextSize(12); tvHint.setTextColor(0xFFD32F2F); layout.addView(tvHint);
-        EditText etWebPort = new EditText(this); etWebPort.setHint("Web 端口"); etWebPort.setInputType(InputType.TYPE_CLASS_NUMBER); etWebPort.setText(String.valueOf(SettingsManager.isGlobalMode() ? 80 : SettingsManager.getWebPort())); layout.addView(etWebPort);
-        EditText etDavPort = new EditText(this); etDavPort.setHint("WebDAV 端口"); etDavPort.setInputType(InputType.TYPE_CLASS_NUMBER); etDavPort.setText(String.valueOf(SettingsManager.getWebDavPort())); layout.addView(etDavPort);
-        EditText etFtpPort = new EditText(this); etFtpPort.setHint("FTP 端口"); etFtpPort.setInputType(InputType.TYPE_CLASS_NUMBER); etFtpPort.setText(String.valueOf(SettingsManager.getFtpPort())); layout.addView(etFtpPort);
-        CheckBox cbWebDav = new CheckBox(this); cbWebDav.setText("开启 WebDAV"); cbWebDav.setChecked(SettingsManager.isWebDavEnabled()); layout.addView(cbWebDav);
-        CheckBox cbFtp = new CheckBox(this); cbFtp.setText("开启 FTP 服务"); cbFtp.setChecked(SettingsManager.isFtpEnabled()); layout.addView(cbFtp);
-        CheckBox cbDlna = new CheckBox(this); cbDlna.setText("开启 DLNA 投屏 (电视可直接播放)"); cbDlna.setChecked(SettingsManager.isDlnaEnabled()); layout.addView(cbDlna);
-        CheckBox cbLs = new CheckBox(this); cbLs.setText("开启 LocalSend"); cbLs.setChecked(SettingsManager.isLocalSendEnabled()); layout.addView(cbLs);
-        EditText etPin = new EditText(this); etPin.setHint("LocalSend PIN"); etPin.setText(SettingsManager.getLsPin()); layout.addView(etPin);
-        CheckBox cbStream = new CheckBox(this); cbStream.setText("允许网页流媒体播放"); cbStream.setChecked(SettingsManager.isStreamEnabled()); layout.addView(cbStream);
-        CheckBox cbClipboard = new CheckBox(this); cbClipboard.setText("开启局域网剪贴板"); cbClipboard.setChecked(SettingsManager.isClipboardEnabled()); layout.addView(cbClipboard);
-        
-        CheckBox cbGlobal = new CheckBox(this); cbGlobal.setText("🦅 开启全盘模式 (需 Root)"); cbGlobal.setChecked(SettingsManager.isGlobalMode()); layout.addView(cbGlobal);
-        CheckBox cbSilent = new CheckBox(this); cbSilent.setText("🎵 开启静音保活 (伪装音乐播放防杀)"); cbSilent.setChecked(SettingsManager.isSilentKeepAlive()); layout.addView(cbSilent);
-        cbLowPower.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            @Override public void onCheckedChanged(CompoundButton b, boolean c) {
-                cbLs.setEnabled(!c); cbStream.setEnabled(!c); cbClipboard.setEnabled(!c); cbFtp.setEnabled(!c); cbDlna.setEnabled(!c);
-                if (c) { cbLs.setChecked(false); cbStream.setChecked(false); cbClipboard.setChecked(false); cbFtp.setChecked(false); cbDlna.setChecked(false); }
+
+        // --- 分页选择器 ---
+        RadioGroup tabGroup = new RadioGroup(this);
+        tabGroup.setOrientation(RadioGroup.HORIZONTAL);
+        RadioButton rbBasic = new RadioButton(this); rbBasic.setText("基础"); rbBasic.setId(1); rbBasic.setChecked(true);
+        RadioButton rbServices = new RadioButton(this); rbServices.setText("服务"); rbServices.setId(2);
+        RadioButton rbAdvanced = new RadioButton(this); rbAdvanced.setText("高级"); rbAdvanced.setId(3);
+        tabGroup.addView(rbBasic); tabGroup.addView(rbServices); tabGroup.addView(rbAdvanced);
+        layout.addView(tabGroup);
+
+        // --- 基础设置组 ---
+        LinearLayout groupBasic = new LinearLayout(this);
+        groupBasic.setOrientation(LinearLayout.VERTICAL);
+        EditText etWebPort = new EditText(this); etWebPort.setHint("Web 端口"); etWebPort.setInputType(InputType.TYPE_CLASS_NUMBER); etWebPort.setText(String.valueOf(SettingsManager.getWebPort())); groupBasic.addView(etWebPort);
+        EditText etDavPort = new EditText(this); etDavPort.setHint("WebDAV 端口"); etDavPort.setInputType(InputType.TYPE_CLASS_NUMBER); etDavPort.setText(String.valueOf(SettingsManager.getWebDavPort())); groupBasic.addView(etDavPort);
+        EditText etFtpPort = new EditText(this); etFtpPort.setHint("FTP 端口"); etFtpPort.setInputType(InputType.TYPE_CLASS_NUMBER); etFtpPort.setText(String.valueOf(SettingsManager.getFtpPort())); groupBasic.addView(etFtpPort);
+        layout.addView(groupBasic);
+
+        // --- 服务开关组 ---
+        LinearLayout groupServices = new LinearLayout(this);
+        groupServices.setOrientation(LinearLayout.VERTICAL);
+        groupServices.setVisibility(View.GONE);
+        CheckBox cbWebDav = new CheckBox(this); cbWebDav.setText("开启 WebDAV"); cbWebDav.setChecked(SettingsManager.isWebDavEnabled()); groupServices.addView(cbWebDav);
+        CheckBox cbFtp = new CheckBox(this); cbFtp.setText("开启 FTP 服务"); cbFtp.setChecked(SettingsManager.isFtpEnabled()); groupServices.addView(cbFtp);
+        CheckBox cbDlna = new CheckBox(this); cbDlna.setText("开启 DLNA 投屏"); cbDlna.setChecked(SettingsManager.isDlnaEnabled()); groupServices.addView(cbDlna);
+        CheckBox cbStream = new CheckBox(this); cbStream.setText("允许网页流媒体"); cbStream.setChecked(SettingsManager.isStreamEnabled()); groupServices.addView(cbStream);
+        CheckBox cbClipboard = new CheckBox(this); cbClipboard.setText("开启剪贴板"); cbClipboard.setChecked(SettingsManager.isClipboardEnabled()); groupServices.addView(cbClipboard);
+        layout.addView(groupServices);
+
+        // --- 高级设置组 ---
+        LinearLayout groupAdvanced = new LinearLayout(this);
+        groupAdvanced.setOrientation(LinearLayout.VERTICAL);
+        groupAdvanced.setVisibility(View.GONE);
+        CheckBox cbLowPower = new CheckBox(this); cbLowPower.setText("极寒省电模式"); cbLowPower.setChecked(SettingsManager.isLowPowerMode()); groupAdvanced.addView(cbLowPower);
+        CheckBox cbGlobal = new CheckBox(this); cbGlobal.setText("🦅 全盘模式 (需 Root)"); cbGlobal.setChecked(SettingsManager.isGlobalMode()); groupAdvanced.addView(cbGlobal);
+        CheckBox cbSilent = new CheckBox(this); cbSilent.setText("🎵 静音保活"); cbSilent.setChecked(SettingsManager.isSilentKeepAlive()); groupAdvanced.addView(cbSilent);
+        CheckBox cbLs = new CheckBox(this); cbLs.setText("开启 LocalSend"); cbLs.setChecked(SettingsManager.isLocalSendEnabled()); groupAdvanced.addView(cbLs);
+        EditText etPin = new EditText(this); etPin.setHint("LocalSend PIN"); etPin.setText(SettingsManager.getLsPin()); groupAdvanced.addView(etPin);
+        layout.addView(groupAdvanced);
+
+        tabGroup.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(RadioGroup group, int checkedId) {
+                groupBasic.setVisibility(checkedId == 1 ? View.VISIBLE : View.GONE);
+                groupServices.setVisibility(checkedId == 2 ? View.VISIBLE : View.GONE);
+                groupAdvanced.setVisibility(checkedId == 3 ? View.VISIBLE : View.GONE);
             }
         });
-        if (SettingsManager.isLowPowerMode()) { cbLs.setEnabled(false); cbStream.setEnabled(false); cbClipboard.setEnabled(false); cbFtp.setEnabled(false); cbDlna.setEnabled(false); }
 
         new AlertDialog.Builder(this).setTitle("NAS 驾驶舱").setView(sv)
             .setPositiveButton("保存并重启", new DialogInterface.OnClickListener() {
-                @Override public void onClick(DialogInterface d, int w) {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
                     Integer webPort = parsePortSafe(etWebPort.getText().toString());
                     Integer davPort = parsePortSafe(etDavPort.getText().toString());
                     Integer ftpPort = parsePortSafe(etFtpPort.getText().toString());
@@ -331,23 +346,28 @@ public class MainActivity extends Activity {
                         return;
                     }
                     SettingsManager.setDeviceAlias(etAlias.getText().toString().trim());
-                    SettingsManager.setLowPowerMode(cbLowPower.isChecked());
-                    SettingsManager.setWebDavEnabled(cbWebDav.isChecked());
-                    SettingsManager.setFtpEnabled(cbFtp.isChecked());
-                    SettingsManager.setDlnaEnabled(cbDlna.isChecked());
-                    SettingsManager.setLocalSendEnabled(cbLs.isChecked());
-                    SettingsManager.setStreamEnabled(cbStream.isChecked());
-                    SettingsManager.setClipboardEnabled(cbClipboard.isChecked());
-                    SettingsManager.setGlobalMode(cbGlobal.isChecked());
-                    SettingsManager.setSilentKeepAlive(cbSilent.isChecked());
-                    SettingsManager.setLsPin(etPin.getText().toString().trim());
                     SettingsManager.setWebPort(webPort);
                     SettingsManager.setWebDavPort(davPort);
                     SettingsManager.setFtpPort(ftpPort);
+
+                    SettingsManager.setWebDavEnabled(cbWebDav.isChecked());
+                    SettingsManager.setFtpEnabled(cbFtp.isChecked());
+                    SettingsManager.setDlnaEnabled(cbDlna.isChecked());
+                    SettingsManager.setStreamEnabled(cbStream.isChecked());
+                    SettingsManager.setClipboardEnabled(cbClipboard.isChecked());
+
+                    SettingsManager.setLowPowerMode(cbLowPower.isChecked());
+                    SettingsManager.setGlobalMode(cbGlobal.isChecked());
+                    SettingsManager.setSilentKeepAlive(cbSilent.isChecked());
+                    SettingsManager.setLocalSendEnabled(cbLs.isChecked());
+                    SettingsManager.setLsPin(etPin.getText().toString().trim());
+
                     if (HttpServerService.isRunning()) {
                         stopService(new Intent(MainActivity.this, HttpServerService.class));
                         new Handler().postDelayed(new Runnable() {
-                            @Override public void run() { startService(new Intent(MainActivity.this, HttpServerService.class)); }
+                            @Override public void run() {
+                                startService(new Intent(MainActivity.this, HttpServerService.class));
+                            }
                         }, 500);
                     }
                     updateServiceStatus();
@@ -443,14 +463,10 @@ public class MainActivity extends Activity {
         statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
         toggleBtn.setText(running ? "停止服务" : "启动服务");
         String ip = getIpAddress();
-        String text = "网页管理: http://" + ip + ":" + SettingsManager.getWebPort();
-        if (SettingsManager.isLowPowerMode()) text += "\n❄️ 极寒模式已开启";
-        if (SettingsManager.isWebDavEnabled()) text += "\n网络邻居: http://" + ip + ":" + SettingsManager.getWebDavPort();
-        if (SettingsManager.isFtpEnabled()) text += "\nFTP 服务: ftp://" + ip + ":" + SettingsManager.getFtpPort();
-        if (SettingsManager.isDlnaEnabled()) text += "\nDLNA 投屏: 已开启";
-        if (SettingsManager.isLocalSendEnabled()) text += "\nLocalSend PIN: " + SettingsManager.getLsPin();
-        if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) text += "\n\n公网: " + FreeTunnelManager.getPublicUrl();
-        if (!HttpServerService.lastError.isEmpty()) text += "\n\n⚠️ " + HttpServerService.lastError;
+        String text = "核心访问: http://" + ip + ":" + SettingsManager.getWebPort();
+        if (SettingsManager.isLowPowerMode()) text += "\n❄️ 极寒模式运行中";
+        if (FreeTunnelManager.isRunning() && !FreeTunnelManager.getPublicUrl().isEmpty()) text += "\n公网映射: " + FreeTunnelManager.getPublicUrl();
+        if (!HttpServerService.lastError.isEmpty()) text += "\n⚠️ " + HttpServerService.lastError;
         ipView.setText(text);
     }
 
@@ -495,6 +511,8 @@ public class MainActivity extends Activity {
                 tv = new TextView(MainActivity.this);
                 tv.setPadding(16, 24, 16, 24);
                 tv.setTextSize(16);
+                tv.setTextColor(0xFF1D1B20);
+                tv.setBackgroundColor(0xFFFFFFFF);
             } else tv = (TextView) cv;
             File f = items.get(pos);
             tv.setText((f.isDirectory() ? "📁 " : "📄 ") + f.getName());
