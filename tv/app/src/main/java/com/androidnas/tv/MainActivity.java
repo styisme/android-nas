@@ -14,6 +14,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.*;
+import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.BufferedReader;
@@ -25,11 +27,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends Activity {
-    private ListView listView;
-    private TextView tvPath, tvSearchInput, tvSyncHint;
+    private RecyclerView recyclerView, searchResults;
+    private TextView tvPath, tvSearchInput;
     private Button btnUp, btnConnect, btnSearch, btnBackFromSearch;
     private LinearLayout searchOverlay, keyboardContainer;
-    private ListView searchResults;
+    
     private String baseUrl = "", currentPath = "/", authHeader = "";
     private List<FileItem> files = new ArrayList<>(), searchFiles = new ArrayList<>();
     private FileAdapter adapter, searchAdapter;
@@ -40,33 +42,43 @@ public class MainActivity extends Activity {
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         setContentView(com.androidnas.tv.R.layout.activity_main);
-        listView = findViewById(com.androidnas.tv.R.id.listView);
+        
+        recyclerView = findViewById(com.androidnas.tv.R.id.recyclerView);
         tvPath = findViewById(com.androidnas.tv.R.id.tvPath);
         btnUp = findViewById(com.androidnas.tv.R.id.btnUp);
         btnConnect = findViewById(com.androidnas.tv.R.id.btnConnect);
         btnSearch = findViewById(com.androidnas.tv.R.id.btnSearch);
+        
         searchOverlay = findViewById(com.androidnas.tv.R.id.searchOverlay);
         keyboardContainer = findViewById(com.androidnas.tv.R.id.keyboardContainer);
         tvSearchInput = findViewById(com.androidnas.tv.R.id.tvSearchInput);
         searchResults = findViewById(com.androidnas.tv.R.id.searchResults);
         btnBackFromSearch = findViewById(com.androidnas.tv.R.id.btnBackFromSearch);
-        tvSyncHint = new TextView(this); tvSyncHint.setTextColor(0xFF888888); tvSyncHint.setTextSize(14);
-        RelativeLayout root = findViewById(com.androidnas.tv.R.id.mainRoot);
-        RelativeLayout.LayoutParams p = new RelativeLayout.LayoutParams(-2, -2);
-        p.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM); p.addRule(RelativeLayout.CENTER_HORIZONTAL); p.bottomMargin = 16;
-        root.addView(tvSyncHint, p);
-        adapter = new FileAdapter(files, false); listView.setAdapter(adapter);
+        TextView tvSyncHint = findViewById(com.androidnas.tv.R.id.tvSyncHint);
+
+        // 网格布局：TV 屏幕宽，展示 4 列
+        recyclerView.setLayoutManager(new GridLayoutManager(this, 4));
+        adapter = new FileAdapter(files, false); recyclerView.setAdapter(adapter);
+        
+        searchResults.setLayoutManager(new GridLayoutManager(this, 4));
         searchAdapter = new FileAdapter(searchFiles, true); searchResults.setAdapter(searchAdapter);
-        setupKeyboard(); setupListeners();
+
+        setupKeyboard();
+        setupListeners();
+        
         syncServer = new TvSyncServer(this); syncServer.start();
         tvSyncHint.setText("📱 手机协同 端口: 8090 | IP: " + getLocalIpAddress());
+
         SharedPreferences sp = getSharedPreferences("tv_nas", Context.MODE_PRIVATE);
         baseUrl = sp.getString("url", "");
         String u = sp.getString("user", "admin"), pw = sp.getString("pass", "admin");
         if (!baseUrl.isEmpty()) {
             authHeader = "Basic " + android.util.Base64.encodeToString((u + ":" + pw).getBytes(), android.util.Base64.NO_WRAP);
             loadFiles();
-        } else showConnectDialog();
+        } else {
+            btnConnect.requestFocus();
+            showConnectDialog();
+        }
     }
 
     public void updateNasConfig(String ip, String user, String pass) {
@@ -97,11 +109,16 @@ public class MainActivity extends Activity {
     }
 
     private void setupListeners() {
-        listView.setOnItemClickListener((p, v, pos, id) -> {
-            FileItem f = files.get(pos);
-            if (f.isDir) { if (currentPath.endsWith("/")) currentPath += f.name; else currentPath += "/" + f.name; loadFiles(); }
-            else playVideo(f, currentPath);
+        // 点击（遥控器确认键）
+        adapter.setOnItemClickListener(f -> {
+            if (f.isDir) {
+                if (currentPath.endsWith("/")) currentPath += f.name; else currentPath += "/" + f.name;
+                loadFiles();
+            } else {
+                playVideo(f, currentPath);
+            }
         });
+        
         btnUp.setOnClickListener(v -> {
             if (currentPath.equals("/") || currentPath.isEmpty()) return;
             String[] parts = currentPath.split("/");
@@ -109,11 +126,12 @@ public class MainActivity extends Activity {
             for (int i = 1; i < parts.length - 1; i++) sb.append("/").append(parts[i]);
             currentPath = sb.length() == 0 ? "/" : sb.toString(); loadFiles();
         });
+        
         btnConnect.setOnClickListener(v -> showConnectDialog());
         btnSearch.setOnClickListener(v -> openSearch());
         btnBackFromSearch.setOnClickListener(v -> { searchOverlay.setVisibility(View.GONE); btnSearch.requestFocus(); });
-        searchResults.setOnItemClickListener((p, v, pos, id) -> {
-            FileItem f = searchFiles.get(pos);
+        
+        searchAdapter.setOnItemClickListener(f -> {
             if (f.isDir) { searchOverlay.setVisibility(View.GONE); currentPath = f.path; loadFiles(); }
             else { String pd = f.path.substring(0, f.path.lastIndexOf("/")); playVideo(f, pd); }
         });
@@ -134,12 +152,22 @@ public class MainActivity extends Activity {
             "A","S","D","F","G","H","J","K","L","空格","Z","X","C","V","B","N","M",".","-","删除"};
         int idx = 0;
         for (int i = 0; i < 4; i++) {
-            LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL); row.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2); rp.bottomMargin = 8; row.setLayoutParams(rp);
+            LinearLayout row = new LinearLayout(this); 
+            row.setOrientation(LinearLayout.HORIZONTAL); row.setGravity(Gravity.CENTER);
+            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2); 
+            rp.bottomMargin = 8; row.setLayoutParams(rp);
+            
             for (int j = 0; j < 10 && idx < keys.length; j++) {
-                String k = keys[idx++]; Button btn = new Button(this); btn.setText(k); btn.setTextSize(16); btn.setFocusable(true);
-                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -2, 1f); p.setMargins(4, 0, 4, 0); btn.setLayoutParams(p);
-                btn.setOnClickListener(v -> handleKeyPress(k)); row.addView(btn);
+                String k = keys[idx++]; 
+                Button btn = new Button(this); 
+                btn.setText(k); btn.setTextSize(16); btn.setFocusable(true);
+                btn.setBackgroundResource(com.androidnas.tv.R.drawable.selector_btn);
+                btn.setTextColor(0xFF381E72);
+                
+                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -2, 1f); 
+                p.setMargins(4, 0, 4, 0); btn.setLayoutParams(p);
+                btn.setOnClickListener(v -> handleKeyPress(k)); 
+                row.addView(btn);
             }
             keyboardContainer.addView(row);
         }
@@ -205,7 +233,7 @@ public class MainActivity extends Activity {
     }
 
     private void loadFiles() {
-        files.clear(); adapter.notifyDataSetChanged(); tvPath.setText("当前路径: " + currentPath);
+        files.clear(); adapter.notifyDataSetChanged(); tvPath.setText("路径: " + currentPath);
         new Thread(() -> {
             try {
                 HttpURLConnection conn = (HttpURLConnection) new URL(baseUrl + "/api/list?path=" + URLEncoder.encode(currentPath, "UTF-8")).openConnection();
@@ -222,7 +250,13 @@ public class MainActivity extends Activity {
                         JSONObject f = arr.getJSONObject(i);
                         nf.add(new FileItem(f.getString("name"), currentPath, f.getBoolean("dir")));
                     }
-                    mainHandler.post(() -> { files.clear(); files.addAll(nf); adapter.notifyDataSetChanged(); });
+                    mainHandler.post(() -> { 
+                        files.clear(); 
+                        files.addAll(nf); 
+                        adapter.notifyDataSetChanged(); 
+                        if (files.size() > 0) recyclerView.getChildAt(0).requestFocus();
+                        else btnUp.requestFocus();
+                    });
                 }
             } catch (Exception ignored) {}
         }).start();
@@ -243,19 +277,42 @@ public class MainActivity extends Activity {
         FileItem(String n, String p, boolean d) { name = n; path = p; isDir = d; }
     }
 
-    private class FileAdapter extends BaseAdapter {
+    // ============== 新版 RecyclerView Adapter ==============
+    private class FileAdapter extends RecyclerView.Adapter<FileAdapter.VH> {
         private List<FileItem> data; private boolean isSearch;
+        private OnItemClickListener listener;
+
+        interface OnItemClickListener { void onItemClick(FileItem f); }
+
         FileAdapter(List<FileItem> d, boolean s) { data = d; isSearch = s; }
-        @Override public int getCount() { return data.size(); }
-        @Override public Object getItem(int p) { return data.get(p); }
-        @Override public long getItemId(int p) { return p; }
-        @Override public View getView(int pos, View cv, ViewGroup parent) {
-            TextView tv = new TextView(MainActivity.this);
-            tv.setPadding(24, 24, 24, 24); tv.setTextSize(20); tv.setTextColor(0xFFEEEEEE);
+        void setOnItemClickListener(OnItemClickListener l) { this.listener = l; }
+
+        @Override public int getItemCount() { return data.size(); }
+
+        @Override public VH onCreateViewHolder(ViewGroup parent, int viewType) {
+            View v = getLayoutInflater().inflate(com.androidnas.tv.R.layout.item_tv_file, parent, false);
+            return new VH(v);
+        }
+
+        @Override public void onBindViewHolder(VH h, int pos) {
             FileItem f = data.get(pos);
-            if (isSearch && !f.isDir) tv.setText("🎬 " + f.name + "  (位于: " + f.path + ")");
-            else tv.setText((f.isDir ? "📁 " : "🎬 ") + f.name);
-            return tv;
+            h.tvName.setText(f.name);
+            h.tvIcon.setText(f.isDir ? "📁" : "🎬");
+
+            // 电视端极其重要的焦点放大效果
+            h.itemView.setOnFocusChangeListener((v, hasFocus) -> {
+                float scale = hasFocus ? 1.1f : 1.0f;
+                v.animate().scaleX(scale).scaleY(scale).setDuration(150).start();
+            });
+
+            h.itemView.setOnClickListener(v -> {
+                if (listener != null) listener.onItemClick(f);
+            });
+        }
+
+        class VH extends RecyclerView.ViewHolder {
+            TextView tvName, tvIcon;
+            VH(View v) { super(v); tvName = v.findViewById(com.androidnas.tv.R.id.tvName); tvIcon = v.findViewById(com.androidnas.tv.R.id.tvIcon); }
         }
     }
 }
