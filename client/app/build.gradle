@@ -5,7 +5,6 @@ plugins {
 android {
     namespace 'com.androidnas.client'
     compileSdk 33
-
     defaultConfig {
         applicationId "com.androidnas.client"
         minSdk 21
@@ -13,7 +12,6 @@ android {
         versionCode 30000
         versionName "3.1.0"
     }
-
     buildTypes {
         release {
             minifyEnabled false
@@ -25,7 +23,11 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
     packagingOptions {
-        resources.excludes.add("META-INF/*")
+        // #41: 原 "META-INF/*" 会排掉 okhttp 的 kotlin 元数据，改为精确排除
+        resources.excludes.add("META-INF/DEPENDENCIES")
+        resources.excludes.add("META-INF/LICENSE*")
+        resources.excludes.add("META-INF/NOTICE*")
+        resources.excludes.add("META-INF/INDEX.LIST")
     }
 }
 
@@ -37,7 +39,5 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.10.1'
     implementation 'com.squareup.okhttp3:okhttp:4.11.0'
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
-    
-    // 保留 FTP 依赖（轻量且稳定）
     implementation 'commons-net:commons-net:3.9.0'
 }

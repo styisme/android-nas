@@ -1,4 +1,4 @@
-name: Build Android NAS APK
+name: Build Server APK
 
 on:
   push:
@@ -18,10 +18,14 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # #63: packages 用换行分隔，避免被当成单个包名
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platforms;android-30 build-tools;30.0.3 platform-tools'
+          packages: |
+            platforms;android-30
+            build-tools;30.0.3
+            platform-tools
 
       - name: Set up JDK 8
         uses: actions/setup-java@v4
@@ -29,7 +33,6 @@ jobs:
           distribution: temurin
           java-version: '8'
 
-      # --- 新增：自动同步版本号 ---
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -49,7 +52,6 @@ jobs:
       - name: Build Debug APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      # --- 新增：动态重命名 APK 产物 ---
       - name: Rename APK with Version
         run: |
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)

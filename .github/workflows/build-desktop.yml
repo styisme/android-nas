@@ -25,7 +25,6 @@ jobs:
         with:
           python-version: '3.10'
 
-      # --- 新增：自动同步版本号 ---
       - name: Auto Sync Version
         run: python sync_version.py
 
@@ -36,15 +35,17 @@ jobs:
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
+      # #44: pip 锁版本，避免 PyInstaller 每夜差异
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests pyinstaller
+          pip install 'requests>=2.28,<3' 'pyinstaller>=5.13,<6'
 
       - name: Build with PyInstaller (Windows)
         if: matrix.os == 'windows-latest'
         working-directory: ./desktop
-        run: pyinstaller -F -w nas_client.py -n nas-client-windows-v${{ env.VERSION }}.exe
+        # #87: 去掉 -n 里的 .exe，PyInstaller 会自动追加
+        run: pyinstaller -F -w nas_client.py -n nas-client-windows-v${{ env.VERSION }}
 
       - name: Build with PyInstaller (Linux)
         if: matrix.os == 'ubuntu-latest'
