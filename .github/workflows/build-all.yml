@@ -1,0 +1,187 @@
+name: Build All & Package Release
+
+on:
+  push:
+    paths:
+      - 'CHANGELOG.md'
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-server:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ''
+      - name: Install SDK packages
+        run: |
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-30" "build-tools;30.0.3" "platform-tools"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '8'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Sync Version & Build
+        shell: bash
+        run: |
+          python sync_version.py
+          VERSION=$(python -c "import re; print(re.search(r'##\s*\[?v?\K\d+\.\d+\.\d+', open('CHANGELOG.md', encoding='utf-8').read()).group(1))")
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-server-v${VERSION}.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-apk
+          path: app/build/outputs/apk/debug/*.apk
+
+  build-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '11' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - name: Build
+        shell: bash
+        working-directory: ./client
+        run: |
+          python ../sync_version.py
+          VERSION=$(python -c "import re; print(re.search(r'##\s*\[?v?\K\d+\.\d+\.\d+', open('../CHANGELOG.md', encoding='utf-8').read()).group(1))")
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-client-v${VERSION}.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-apk
+          path: client/app/build/outputs/apk/debug/*.apk
+
+  build-tv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '11' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - name: Build
+        shell: bash
+        working-directory: ./tv
+        run: |
+          python ../sync_version.py
+          VERSION=$(python -c "import re; print(re.search(r'##\s*\[?v?\K\d+\.\d+\.\d+', open('../CHANGELOG.md', encoding='utf-8').read()).group(1))")
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-tv-v${VERSION}.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tv-apk
+          path: tv/app/build/outputs/apk/debug/*.apk
+
+  build-watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '11' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - name: Build
+        shell: bash
+        working-directory: ./watch
+        run: |
+          python ../sync_version.py
+          VERSION=$(python -c "import re; print(re.search(r'##\s*\[?v?\K\d+\.\d+\.\d+', open('../CHANGELOG.md', encoding='utf-8').read()).group(1))")
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-watch-v${VERSION}.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: watch-apk
+          path: watch/app/build/outputs/apk/debug/*.apk
+
+  build-pc:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: cli
+            artifact: cli-linux
+            os_name: linux
+          - os: windows-latest
+            target: cli
+            artifact: cli-windows
+            os_name: windows
+          - os: ubuntu-latest
+            target: gui
+            artifact: desktop-linux
+            os_name: linux
+          - os: windows-latest
+            target: gui
+            artifact: desktop-windows
+            os_name: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.10' }
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'requests>=2.28,<3' 'pyinstaller>=5.13,<6'
+      - name: Build GUI
+        if: matrix.target == 'gui'
+        shell: bash
+        working-directory: ./desktop
+        run: |
+          python ../sync_version.py
+          VERSION=$(python -c "import re; print(re.search(r'##\s*\[?v?\K\d+\.\d+\.\d+', open('../CHANGELOG.md', encoding='utf-8').read()).group(1))")
+          pyinstaller -F -w nas_client.py -n nas-client-${{ matrix.os_name }}-v${VERSION}
+      - name: Build CLI
+        if: matrix.target == 'cli'
+        shell: bash
+        working-directory: ./cli
+        run: |
+          python ../sync_version.py
+          VERSION=$(python -c "import re; print(re.search(r'##\s*\[?v?\K\d+\.\d+\.\d+', open('../CHANGELOG.md', encoding='utf-8').read()).group(1))")
+          pyinstaller -F nas_cli.py -n nas-cli-${{ matrix.os_name }}-v${VERSION}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.target == 'gui' && 'desktop/dist/*' || 'cli/dist/*' }}
+
+  package-all:
+    needs: [build-server, build-client, build-tv, build-watch, build-pc]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.x' }
+      - name: Get Version
+        run: |
+          VERSION=$(python -c "import re; print(re.search(r'##\s*\[?v?\K\d+\.\d+\.\d+', open('CHANGELOG.md', encoding='utf-8').read()).group(1))")
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./all_artifacts
+      - name: Flatten and Zip
+        run: |
+          mkdir -p release_output
+          find ./all_artifacts -type f -exec cp {} ./release_output/ \;
+          cd release_output
+          zip -r ../android-nas-all-v${{ env.VERSION }}.zip ./*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-nas-release-zip
+          path: android-nas-all-v${{ env.VERSION }}.zip
