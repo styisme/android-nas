@@ -282,7 +282,7 @@ public class MainActivity extends Activity {
         TextView tvHint = new TextView(this);
         tvHint.setText("警告：开启后将强制降级 Wi-Fi 锁频率、关闭内网穿透、FTP、DLNA 与 LocalSend。");
         tvHint.setTextSize(12); tvHint.setTextColor(0xFFD32F2F); layout.addView(tvHint);
-        EditText etWebPort = new EditText(this); etWebPort.setHint("Web 端口"); etWebPort.setInputType(InputType.TYPE_CLASS_NUMBER); etWebPort.setText(String.valueOf(SettingsManager.getWebPort())); layout.addView(etWebPort);
+        EditText etWebPort = new EditText(this); etWebPort.setHint("Web 端口"); etWebPort.setInputType(InputType.TYPE_CLASS_NUMBER); etWebPort.setText(String.valueOf(SettingsManager.isGlobalMode() ? 80 : SettingsManager.getWebPort())); layout.addView(etWebPort);
         EditText etDavPort = new EditText(this); etDavPort.setHint("WebDAV 端口"); etDavPort.setInputType(InputType.TYPE_CLASS_NUMBER); etDavPort.setText(String.valueOf(SettingsManager.getWebDavPort())); layout.addView(etDavPort);
         EditText etFtpPort = new EditText(this); etFtpPort.setHint("FTP 端口"); etFtpPort.setInputType(InputType.TYPE_CLASS_NUMBER); etFtpPort.setText(String.valueOf(SettingsManager.getFtpPort())); layout.addView(etFtpPort);
         CheckBox cbWebDav = new CheckBox(this); cbWebDav.setText("开启 WebDAV"); cbWebDav.setChecked(SettingsManager.isWebDavEnabled()); layout.addView(cbWebDav);
@@ -292,6 +292,8 @@ public class MainActivity extends Activity {
         EditText etPin = new EditText(this); etPin.setHint("LocalSend PIN"); etPin.setText(SettingsManager.getLsPin()); layout.addView(etPin);
         CheckBox cbStream = new CheckBox(this); cbStream.setText("允许网页流媒体播放"); cbStream.setChecked(SettingsManager.isStreamEnabled()); layout.addView(cbStream);
         CheckBox cbClipboard = new CheckBox(this); cbClipboard.setText("开启局域网剪贴板"); cbClipboard.setChecked(SettingsManager.isClipboardEnabled()); layout.addView(cbClipboard);
+        
+        CheckBox cbGlobal = new CheckBox(this); cbGlobal.setText("🦅 开启全盘模式 (需 Root)"); cbGlobal.setChecked(SettingsManager.isGlobalMode()); layout.addView(cbGlobal);
         cbLowPower.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(CompoundButton b, boolean c) {
                 cbLs.setEnabled(!c); cbStream.setEnabled(!c); cbClipboard.setEnabled(!c); cbFtp.setEnabled(!c); cbDlna.setEnabled(!c);
@@ -318,6 +320,7 @@ public class MainActivity extends Activity {
                     SettingsManager.setLocalSendEnabled(cbLs.isChecked());
                     SettingsManager.setStreamEnabled(cbStream.isChecked());
                     SettingsManager.setClipboardEnabled(cbClipboard.isChecked());
+                    SettingsManager.setGlobalMode(cbGlobal.isChecked());
                     SettingsManager.setLsPin(etPin.getText().toString().trim());
                     SettingsManager.setWebPort(webPort);
                     SettingsManager.setWebDavPort(davPort);

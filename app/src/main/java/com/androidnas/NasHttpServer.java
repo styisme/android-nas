@@ -16,6 +16,12 @@ public class NasHttpServer extends NanoHTTPD {
 
     private File safeFile(String path) throws IOException {
         if (path == null || path.trim().isEmpty()) path = "/";
+        
+        // 如果开启了全局模式，且拥有 Root，直接返回绝对路径
+        if (SettingsManager.isGlobalMode() && AdvancedKeepAliveManager.hasRoot()) {
+            return new File(path);
+        }
+        
         File f = new File(ROOT, path);
         String c = f.getCanonicalPath();
         String r = new File(ROOT).getCanonicalPath();
@@ -79,6 +85,17 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/share".equals(uri) && Method.POST.equals(session.getMethod())) return handleShareCreate(session, role);
             if (Method.PUT.equals(session.getMethod())) {
                 return handlePut(session, role);
+            }
+
+            if ("/api/shell".equals(uri) && Method.POST.equals(session.getMethod())) {
+                if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
+                Map<String, String> files = new HashMap<>();
+                session.parseBody(files);
+                String cmd = session.getParms().get("cmd");
+                if (cmd == null) cmd = files.get("cmd");
+                if (cmd == null) return text(Response.Status.BAD_REQUEST, "No command");
+                String result = RootManager.execCommand(cmd);
+                return newFixedLengthResponse(Response.Status.OK, "text/plain; charset=utf-8", result);
             }
             if ("/".equals(uri) || "/index.html".equals(uri)) {
                 InputStream is = getClass().getClassLoader().getResourceAsStream("assets/index.html");

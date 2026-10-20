@@ -38,6 +38,7 @@ img,video,audio{max-width:100%;border-radius:8px}
 <header>
 <h1>Android NAS</h1>
 <button class="btn" id="btnClipboard">📋 剪贴板</button>
+<button class="btn" id="btnTerminal">终端</button>
 <button class="btn" id="btnAbout">关于</button>
 </header>
 <div id="lowPowerHint">❄️ 服务端当前处于极寒省电模式</div>
@@ -87,6 +88,13 @@ img,video,audio{max-width:100%;border-radius:8px}
 <button class="btn" id="btnSaveClip">保存同步</button>
 <button class="btn" id="btnCloseClip">关闭</button>
 </div>
+</div></div>
+<div id="termModal" class="modal"><div class="modal-content">
+<h3 style="margin-top:0; color:var(--primary);">🦅 Root Shell 控制台</h3>
+<div id="termOutput" style="background:#000; color:#0f0; padding:10px; font-family:monospace; height:250px; overflow-y:auto; border-radius:8px; margin-bottom:16px; white-space:pre-wrap;">Welcome to Web Root Shell...
+</div>
+<input type="text" id="termInput" placeholder="输入 shell 命令 (回车执行)..." style="width:100%; padding:10px; border-radius:8px; border:1px solid var(--outline); background:transparent; color:inherit;">
+<div style="text-align:right; margin-top:16px;"><button class="btn" id="btnCloseTerm">关闭</button></div>
 </div></div>
 <div id="aboutModal" class="modal"><div class="modal-content">
 <h3 style="margin-top:0;color:var(--primary);">关于 Android NAS</h3>
@@ -247,6 +255,23 @@ document.getElementById("btnClipboard").onclick=function(){
   fetch("/api/clipboard").then(r=>r.text()).then(t=>{document.getElementById("clipContent").value=t;});
 };
 document.getElementById("btnAbout").onclick=function(){showModal("aboutModal");};
+document.getElementById("btnTerminal").onclick=function(){showModal("termModal"); document.getElementById("termInput").focus();};
+document.getElementById("btnCloseTerm").onclick=function(){closeModal("termModal");};
+
+document.getElementById("termInput").addEventListener("keydown", function(e) {
+    if(e.key === "Enter"){
+        var cmd = this.value.trim();
+        if(!cmd) return;
+        var out = document.getElementById("termOutput");
+        out.innerHTML += "\n$ " + cmd + "\n";
+        this.value = "";
+        fetch("/api/shell", { method: "POST", body: new URLSearchParams({ cmd: cmd }) })
+            .then(r => r.text()).then(t => {
+                out.innerHTML += t.replace(/</g, "&lt;") + "\n";
+                out.scrollTop = out.scrollHeight;
+            }).catch(err => { out.innerHTML += "Error: " + err + "\n"; });
+    }
+});
 document.getElementById("btnCancelEdit").onclick=function(){closeModal("editModal");};
 document.getElementById("btnSaveEdit").onclick=doSave;
 document.getElementById("btnCancelMkdir").onclick=function(){closeModal("mkdirModal");};

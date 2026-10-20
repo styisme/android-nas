@@ -14,6 +14,10 @@ public class SettingsManager {
     public static String getDeviceAlias() { return sp.getString("device_alias", "Android NAS"); }
     public static void setDeviceAlias(String alias) { sp.edit().putString("device_alias", alias).apply(); }
 
+    // 全局全盘模式 (需 Root)
+    public static boolean isGlobalMode() { return sp.getBoolean("global_mode", false); }
+    public static void setGlobalMode(boolean enabled) { sp.edit().putBoolean("global_mode", enabled).apply(); }
+
     // 极寒模式
     public static boolean isLowPowerMode() { return sp.getBoolean("low_power_mode", false); }
     public static void setLowPowerMode(boolean enabled) { sp.edit().putBoolean("low_power_mode", enabled).apply(); }
