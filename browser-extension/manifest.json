@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Android NAS Downloader",
+  "version": "1.0",
+  "description": "右键将链接或图片发送到 NAS 后台下载",
+  "permissions": ["contextMenus", "storage"],
+  "action": { "default_title": "Android NAS 设置" },
+  "options_page": "options.html",
+  "background": { "service_worker": "background.js" }
+}

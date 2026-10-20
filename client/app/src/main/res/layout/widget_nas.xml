@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#FEF7FF"
+    android:orientation="vertical"
+    android:padding="16dp"
+    android:gravity="center">
+    <TextView
+        android:id="@+id/tvWidgetStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Android NAS"
+        android:textSize="18sp"
+        android:textStyle="bold"
+        android:textColor="#6750A4" />
+    <TextView
+        android:id="@+id/tvWidgetDetail"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="运行中 | 存储: --"
+        android:textSize="14sp"
+        android:textColor="#49454F"
+        android:layout_marginTop="8dp" />
+</LinearLayout>

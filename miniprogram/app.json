@@ -1,0 +1,8 @@
+{
+  "pages": ["pages/index/index"],
+  "window": {
+    "navigationBarTitleText": "Android NAS",
+    "navigationBarBackgroundColor": "#6750A4",
+    "navigationBarTextStyle": "white"
+  }
+}

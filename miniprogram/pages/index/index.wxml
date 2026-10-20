@@ -1,0 +1,9 @@
+<view class="container">
+  <view class="item" wx:for="{{files}}" wx:key="name" bindtap="onFileClick" data-dir="{{item.dir}}" data-name="{{item.name}}">
+    <text class="icon">{{item.dir ? '📁' : '📄'}}</text>
+    <view class="info">
+      <text class="name">{{item.name}}</text>
+      <text class="size" wx:if="{{!item.dir}}">{{item.size}} B</text>
+    </view>
+  </view>
+</view>

@@ -154,8 +154,31 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.target == 'gui' && 'desktop/dist/*' || 'cli/dist/*' }}
 
+
+  build-extras:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip Browser Extension
+        run: |
+          cd browser-extension
+          zip -r ../browser-extension.zip ./*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: browser-extension
+          path: browser-extension.zip
+      
+      - name: Zip MiniProgram
+        run: |
+          cd miniprogram
+          zip -r ../miniprogram.zip ./*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wechat-miniprogram
+          path: miniprogram.zip
+
   package-all:
-    needs: [build-server, build-client, build-tv, build-watch, build-pc]
+    needs: [build-server, build-client, build-tv, build-watch, build-pc, build-extras]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
