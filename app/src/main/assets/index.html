@@ -1,294 +1,277 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-    <title>Android NAS</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/styles/github-dark.min.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.7.0/highlight.min.js"></script>
-    <style>
-        :root { --primary: #6750A4; --on-primary: #FFFFFF; --primary-container: #EADDFF; --surface: #FEF7FF; --on-surface: #1D1B20; --outline: #79747E; }
-        @media (prefers-color-scheme: dark) { :root { --primary: #D0BCFF; --on-primary: #381E72; --primary-container: #4F378B; --surface: #141218; --on-surface: #E6E0E9; --outline: #938F99; } }
-        * { box-sizing: border-box; }
-        body { font-family: sans-serif; margin: 0; background: var(--surface); color: var(--on-surface); padding-bottom: 80px; }
-        header { padding: 16px; display: flex; align-items: center; border-bottom: 1px solid var(--outline); position: sticky; top: 0; background: var(--surface); z-index: 10; }
-        header h1 { margin: 0; font-size: 20px; flex: 1; }
-        
-        #lowPowerHint { display: none; background: #FFCDD2; color: #B71C1C; padding: 10px; text-align: center; font-size: 14px; }
-        .search-box { margin: 16px; display: flex; gap: 8px; }
-        input[type="text"] { flex: 1; padding: 12px; border-radius: 24px; border: 1px solid var(--outline); background: transparent; color: inherit; font-size: 16px; outline: none; }
-        .drop-zone { margin: 16px; padding: 24px; border: 2px dashed var(--outline); border-radius: 24px; text-align: center; color: var(--outline); transition: 0.2s; }
-        .drop-zone.dragover { background: var(--primary-container); border-color: var(--primary); color: var(--primary); }
-        .card { margin: 16px; border-radius: 16px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        #path { font-size: 14px; color: var(--primary); font-weight: bold; margin-bottom: 12px; word-break: break-all; }
-        
-        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 8px; border-bottom: 1px solid var(--outline); }
-        .name { font-size: 16px; word-break: break-all; }
-        .dir-name { color: var(--primary); font-weight: 500; cursor: pointer; }
-        
-        .btn { background: transparent; color: var(--primary); border: none; padding: 8px 12px; border-radius: 20px; cursor: pointer; font-weight: bold; }
-        .btn:hover { background: rgba(103,80,164,0.1); }
-        .btn-red { color: red; }
-        .fab { position: fixed; bottom: 24px; right: 24px; width: 64px; height: 64px; border-radius: 20px; background: var(--primary); color: var(--on-primary); font-size: 28px; border: none; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-        
-        .modal { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); z-index: 30; align-items: center; justify-content: center; }
-        .modal-content { background: var(--surface); padding: 24px; border-radius: 28px; width: 90%; max-width: 600px; max-height: 85vh; overflow-y: auto; }
-        textarea { width: 100%; height: 250px; padding: 12px; margin: 16px 0; border-radius: 8px; border: 1px solid var(--outline); background: transparent; color: inherit; font-family: monospace; }
-
-        #uploadProgress { display: none; position: fixed; top: 70px; left: 16px; right: 16px; background: var(--primary-container); color: var(--primary); padding: 16px; border-radius: 16px; z-index: 40; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-        .progress-bg { width: 100%; height: 8px; background: rgba(0,0,0,0.1); border-radius: 4px; margin-top: 8px; overflow: hidden; }
-        .progress-fill { height: 100%; background: var(--primary); width: 0%; transition: 0.2s; }
-        img, video, audio { max-width: 100%; border-radius: 8px; }
-    </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Android NAS</title>
+<style>
+:root{--primary:#6750A4;--on-primary:#FFF;--primary-container:#EADDFF;--surface:#FEF7FF;--on-surface:#1D1B20;--outline:#79747E}
+@media (prefers-color-scheme:dark){:root{--primary:#D0BCFF;--on-primary:#381E72;--primary-container:#4F378B;--surface:#141218;--on-surface:#E6E0E9;--outline:#938F99}}
+*{box-sizing:border-box}
+body{font-family:sans-serif;margin:0;background:var(--surface);color:var(--on-surface);padding-bottom:80px}
+header{padding:16px;display:flex;align-items:center;border-bottom:1px solid var(--outline);position:sticky;top:0;background:var(--surface);z-index:10}
+header h1{margin:0;font-size:20px;flex:1}
+#lowPowerHint{display:none;background:#FFCDD2;color:#B71C1C;padding:10px;text-align:center;font-size:14px}
+.search-box{margin:16px;display:flex;gap:8px}
+input[type="text"]{flex:1;padding:12px;border-radius:24px;border:1px solid var(--outline);background:transparent;color:inherit;font-size:16px;outline:none}
+.drop-zone{margin:16px;padding:24px;border:2px dashed var(--outline);border-radius:24px;text-align:center;color:var(--outline);transition:.2s}
+.drop-zone.dragover{background:var(--primary-container);border-color:var(--primary);color:var(--primary)}
+.card{margin:16px;border-radius:16px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
+#path{font-size:14px;color:var(--primary);font-weight:bold;margin-bottom:12px;word-break:break-all}
+.item{display:flex;justify-content:space-between;align-items:center;padding:12px 8px;border-bottom:1px solid var(--outline)}
+.name{font-size:16px;word-break:break-all}
+.dir-name{color:var(--primary);font-weight:500;cursor:pointer}
+.btn{background:transparent;color:var(--primary);border:none;padding:8px 12px;border-radius:20px;cursor:pointer;font-weight:bold}
+.btn:hover{background:rgba(103,80,164,.1)}
+.btn-red{color:red}
+.fab{position:fixed;bottom:24px;right:24px;width:64px;height:64px;border-radius:20px;background:var(--primary);color:var(--on-primary);font-size:28px;border:none;cursor:pointer;box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:30;align-items:center;justify-content:center}
+.modal-content{background:var(--surface);padding:24px;border-radius:28px;width:90%;max-width:600px;max-height:85vh;overflow-y:auto}
+textarea{width:100%;height:250px;padding:12px;margin:16px 0;border-radius:8px;border:1px solid var(--outline);background:transparent;color:inherit;font-family:monospace}
+#uploadProgress{display:none;position:fixed;top:70px;left:16px;right:16px;background:var(--primary-container);color:var(--primary);padding:16px;border-radius:16px;z-index:40;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.progress-bg{width:100%;height:8px;background:rgba(0,0,0,.1);border-radius:4px;margin-top:8px;overflow:hidden}
+.progress-fill{height:100%;background:var(--primary);width:0%;transition:.2s}
+img,video,audio{max-width:100%;border-radius:8px}
+</style>
 </head>
 <body>
 <header>
-    <h1>Android NAS</h1>
-    <button class="btn" onclick="showClipboard()">📋 剪贴板</button>
-    <button class="btn" onclick="showAbout()">关于</button>
+<h1>Android NAS</h1>
+<button class="btn" id="btnClipboard">📋 剪贴板</button>
+<button class="btn" id="btnAbout">关于</button>
 </header>
-
-<div id="lowPowerHint">❄️ 服务端当前处于极寒省电模式，部分功能可能受限。</div>
-
+<div id="lowPowerHint">❄️ 服务端当前处于极寒省电模式</div>
 <div class="search-box">
-    <input type="text" id="searchInput" placeholder="全局搜索文件..." onkeydown="if(event.key==='Enter') doSearch()">
-    <button class="btn" onclick="doSearch()">搜索</button>
-    <button class="btn" onclick="refresh()">重置</button>
+<input type="text" id="searchInput" placeholder="全局搜索文件...">
+<button class="btn" id="btnSearch">搜索</button>
+<button class="btn" id="btnReset">重置</button>
 </div>
-
 <div class="drop-zone" id="dropZone">
-    <div style="font-size:24px;">📤</div>
-    <div>点击或拖拽文件到这里上传</div>
+<div style="font-size:24px;">📤</div>
+<div>点击或拖拽文件到这里上传</div>
 </div>
-
 <div class="card">
-    <div id="path">/</div>
-    <div style="margin-bottom:12px;">
-        <button class="btn" onclick="goUp()">⬆ 上级</button>
-        <button class="btn" onclick="refresh()">🔄 刷新</button>
-        <button class="btn" onclick="showMkdir()">📁 新建文件夹</button>
-    </div>
-    <div id="list"></div>
+<div id="path">/</div>
+<div style="margin-bottom:12px;">
+<button class="btn" id="btnUp">⬆ 上级</button>
+<button class="btn" id="btnRefresh">🔄 刷新</button>
+<button class="btn" id="btnMkdir">📁 新建文件夹</button>
 </div>
-
-<button class="fab" onclick="document.getElementById('fileInput').click()">+</button>
+<div id="list"></div>
+</div>
+<button class="fab" id="btnFab">+</button>
 <input type="file" id="fileInput" multiple style="display:none">
-
 <div id="uploadProgress">
-    <div style="display:flex; justify-content:space-between;">
-        <span>正在上传...</span><span id="progressText">0%</span>
-    </div>
-    <div class="progress-bg"><div class="progress-fill" id="progressFill"></div></div>
+<div style="display:flex;justify-content:space-between;"><span>正在上传...</span><span id="progressText">0%</span></div>
+<div class="progress-bg"><div class="progress-fill" id="progressFill"></div></div>
 </div>
-
-<!-- 弹窗组 -->
 <div id="editModal" class="modal"><div class="modal-content">
-    <h3>编辑: <span id="editFileName"></span></h3>
-    <textarea id="editContent"></textarea>
-    <div style="text-align:right;"><button class="btn" onclick="closeModal('editModal')">取消</button><button class="btn" onclick="doSave()">保存</button></div>
+<h3>编辑: <span id="editFileName"></span></h3>
+<textarea id="editContent"></textarea>
+<div style="text-align:right;"><button class="btn" id="btnCancelEdit">取消</button><button class="btn" id="btnSaveEdit">保存</button></div>
 </div></div>
-
 <div id="mkdirModal" class="modal"><div class="modal-content">
-    <h3>新建文件夹</h3>
-    <input type="text" id="newDirName" placeholder="文件夹名称" style="width:100%; padding:8px; margin-top:10px;">
-    <div style="text-align:right; margin-top:16px;"><button class="btn" onclick="closeModal('mkdirModal')">取消</button><button class="btn" onclick="doMkdir()">创建</button></div>
+<h3>新建文件夹</h3>
+<input type="text" id="newDirName" placeholder="文件夹名称" style="width:100%;padding:8px;margin-top:10px;">
+<div style="text-align:right;margin-top:16px;"><button class="btn" id="btnCancelMkdir">取消</button><button class="btn" id="btnDoMkdir">创建</button></div>
 </div></div>
-
 <div id="previewModal" class="modal"><div class="modal-content">
-    <h3 id="previewTitle">预览</h3>
-    <div id="previewBody" style="text-align:center;"></div>
-    <div style="text-align:right; margin-top:16px;"><button class="btn" onclick="closeModal('previewModal')">关闭</button></div>
+<h3 id="previewTitle">预览</h3>
+<div id="previewBody" style="text-align:center;"></div>
+<div style="text-align:right;margin-top:16px;"><button class="btn" id="btnClosePreview">关闭</button></div>
 </div></div>
-
 <div id="clipModal" class="modal"><div class="modal-content">
-    <h3>局域网剪贴板</h3>
-    <textarea id="clipContent" placeholder="在此输入内容，将自动同步到服务端..."></textarea>
-    <div style="text-align:right; margin-top:16px;">
-        <button class="btn" onclick="saveClipboard()">保存同步</button>
-        <button class="btn" onclick="closeModal('clipModal')">关闭</button>
-    </div>
+<h3>局域网剪贴板</h3>
+<textarea id="clipContent" placeholder="在此输入内容..."></textarea>
+<div style="text-align:right;margin-top:16px;">
+<button class="btn" id="btnSaveClip">保存同步</button>
+<button class="btn" id="btnCloseClip">关闭</button>
+</div>
 </div></div>
-
 <div id="aboutModal" class="modal"><div class="modal-content">
-    <h3 style="margin-top:0; color:var(--primary);">关于 Android NAS</h3>
-    <p>版本: v3.2.0 终极旗舰版</p>
-    <p>一个极简的局域网 WebDAV 与网页文件管理服务器。</p>
-    <p>支持流媒体播放、局域网剪贴板、在线解压、全局搜索、免密分享。</p>
-    <div style="text-align:right; margin-top:16px;"><button class="btn" onclick="closeModal('aboutModal')">关闭</button></div>
+<h3 style="margin-top:0;color:var(--primary);">关于 Android NAS</h3>
+<p>版本: v3.2.0 旗舰版</p>
+<p>支持流媒体、局域网剪贴板、在线解压、全局搜索、免密分享</p>
+<div style="text-align:right;margin-top:16px;"><button class="btn" id="btnCloseAbout">关闭</button></div>
 </div></div>
-
 <script>
-var currentPath = '/';
-var editingFile = '';
-var dropZone = document.getElementById('dropZone');
-var fileInput = document.getElementById('fileInput');
+var currentPath="/";
+var editingFile="";
+var dropZone=document.getElementById("dropZone");
+var fileInput=document.getElementById("fileInput");
 
-function refresh() {
-    document.getElementById('searchInput').value = '';
-    document.getElementById('path').textContent = currentPath;
-    fetch('/api/clipboard').then(r => {
-        if (r.status === 403) document.getElementById('lowPowerHint').style.display = 'block';
-        else document.getElementById('lowPowerHint').style.display = 'none';
-    }).catch(()=>{});
-
-    fetch('/api/list?path=' + encodeURIComponent(currentPath))
-        .then(r => r.json()).then(data => renderList(data.files)).catch(()=>alert('加载失败'));
+function checkStatus(){
+  fetch("/api/status").then(r=>r.json()).then(s=>{
+    document.getElementById("lowPowerHint").style.display = s.lowPower?"block":"none";
+  }).catch(()=>{});
 }
-
-function doSearch() {
-    var q = document.getElementById('searchInput').value;
-    if (!q) { refresh(); return; }
-    document.getElementById('path').textContent = '搜索: ' + q;
-    fetch('/api/search?q=' + encodeURIComponent(q))
-        .then(r => r.json()).then(data => renderList(data)).catch(()=>alert('搜索失败'));
+function refresh(){
+  document.getElementById("searchInput").value="";
+  document.getElementById("path").textContent=currentPath;
+  checkStatus();
+  fetch("/api/list?path="+encodeURIComponent(currentPath))
+    .then(r=>r.json()).then(d=>renderList(d.files)).catch(()=>alert("加载失败"));
 }
-
-function renderList(files) {
-    var list = document.getElementById('list');
-    list.innerHTML = '';
-    if (files.length === 0) { list.innerHTML = '<p>空文件夹</p>'; return; }
-    files.forEach(f => {
-        var div = document.createElement('div');
-        div.className = 'item';
-        var full = f.path || ((currentPath.endsWith('/') ? currentPath : currentPath + '/') + f.name);
-        
-        var info = document.createElement('div');
-        info.innerHTML = `<span class="${f.dir ? 'dir-name' : 'name'}">${f.dir ? '📁' : '📄'} ${f.name}</span>`;
-        if (f.dir) info.onclick = () => { currentPath = full; refresh(); };
-        div.appendChild(info);
-
-        var actions = document.createElement('div');
-        if (!f.dir) {
-            if (f.isMedia) actions.innerHTML += `<button class="btn" onclick="playMedia('${encodeURIComponent(full)}', '${f.name}')">播放</button>`;
-            if (f.isTxt) actions.innerHTML += `<button class="btn" onclick="editFile('${encodeURIComponent(full)}', '${f.name}')">编辑</button>`;
-            if (f.isZip) actions.innerHTML += `<button class="btn" onclick="unzipFile('${encodeURIComponent(full)}')">解压</button>`;
-            actions.innerHTML += `<a href="/api/download?path=${encodeURIComponent(full)}" class="btn" style="text-decoration:none;">下载</a>`;
-            actions.innerHTML += `<button class="btn" onclick="shareFile('${encodeURIComponent(full)}')">分享</button>`;
-        }
-        actions.innerHTML += `<button class="btn btn-red" onclick="delFile('${encodeURIComponent(full)}')">删除</button>`;
-        div.appendChild(actions);
-        list.appendChild(div);
-    });
+function doSearch(){
+  var q=document.getElementById("searchInput").value;
+  if(!q){refresh();return;}
+  document.getElementById("path").textContent="搜索: "+q;
+  fetch("/api/search?q="+encodeURIComponent(q))
+    .then(r=>r.json()).then(d=>renderList(d)).catch(()=>alert("搜索失败"));
 }
-
-function playMedia(encodedPath, name) {
-    document.getElementById('previewTitle').textContent = name;
-    var ext = name.split('.').pop().toLowerCase();
-    var url = `/api/download?path=${encodedPath}`;
-    var body = document.getElementById('previewBody');
-    
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) {
-        body.innerHTML = `<img src="${url}" alt="${name}" />`;
-    } else if (['mp4', 'webm', 'mkv'].includes(ext)) {
-        body.innerHTML = `<video src="${url}" controls autoplay></video>`;
-    } else if (['mp3', 'wav', 'ogg'].includes(ext)) {
-        body.innerHTML = `<audio src="${url}" controls autoplay style="width:100%;"></audio>`;
-    } else {
-        body.innerHTML = `<p>不支持在线预览此媒体格式，请下载后查看。</p>`;
+function makeBtn(label,cls,handler){
+  var b=document.createElement("button");
+  b.className="btn"+(cls?" "+cls:"");
+  b.textContent=label;
+  b.addEventListener("click",handler);
+  return b;
+}
+function escapeHtml(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+function renderList(files){
+  var list=document.getElementById("list");
+  list.innerHTML="";
+  if(!files||files.length===0){list.innerHTML="<p>空文件夹</p>";return;}
+  files.forEach(function(f){
+    var div=document.createElement("div");
+    div.className="item";
+    var full=f.path||((currentPath.endsWith("/")?currentPath:currentPath+"/")+f.name);
+    var info=document.createElement("div");
+    info.innerHTML='<span class="'+(f.dir?"dir-name":"name")+'">'+(f.dir?"📁":"📄")+" "+escapeHtml(f.name)+"</span>";
+    if(f.dir) info.addEventListener("click",function(){currentPath=full;refresh();});
+    div.appendChild(info);
+    var actions=document.createElement("div");
+    if(!f.dir){
+      if(f.isMedia) actions.appendChild(makeBtn("播放","",function(){playMedia(full,f.name);}));
+      if(f.isTxt) actions.appendChild(makeBtn("编辑","",function(){editFile(full,f.name);}));
+      if(f.isZip) actions.appendChild(makeBtn("解压","",function(){unzipFile(full);}));
+      var dl=document.createElement("a");
+      dl.href="/api/download?path="+encodeURIComponent(full);
+      dl.className="btn";
+      dl.style.textDecoration="none";
+      dl.textContent="下载";
+      actions.appendChild(dl);
+      actions.appendChild(makeBtn("分享","",function(){shareFile(full);}));
     }
-    document.getElementById('previewModal').style.display = 'flex';
+    actions.appendChild(makeBtn("删除","btn-red",function(){delFile(full);}));
+    div.appendChild(actions);
+    list.appendChild(div);
+  });
 }
-
-function unzipFile(encodedPath) {
-    fetch('/api/unzip', { method: 'POST', body: new URLSearchParams({ path: decodeURIComponent(encodedPath) }) })
-        .then(r => { if(r.ok) refresh(); else alert('解压失败'); });
+function playMedia(full,name){
+  document.getElementById("previewTitle").textContent=name;
+  var ext=name.split(".").pop().toLowerCase();
+  var url="/api/download?path="+encodeURIComponent(full);
+  var body=document.getElementById("previewBody");
+  if(["jpg","jpeg","png","gif","webp"].indexOf(ext)>=0){
+    body.innerHTML='<img src="'+escapeHtml(url)+'" alt="" />';
+  }else if(["mp4","webm","mkv"].indexOf(ext)>=0){
+    body.innerHTML='<video src="'+escapeHtml(url)+'" controls autoplay></video>';
+  }else if(["mp3","wav","ogg"].indexOf(ext)>=0){
+    body.innerHTML='<audio src="'+escapeHtml(url)+'" controls autoplay style="width:100%"></audio>';
+  }else{
+    body.innerHTML="<p>不支持在线预览</p>";
+  }
+  document.getElementById("previewModal").style.display="flex";
 }
-
-function editFile(encodedPath, name) {
-    editingFile = decodeURIComponent(encodedPath);
-    document.getElementById('editFileName').textContent = name;
-    document.getElementById('editContent').value = '加载中...';
-    document.getElementById('editModal').style.display = 'flex';
-    fetch('/api/preview?path=' + encodedPath).then(r => r.text()).then(txt => {
-        document.getElementById('editContent').value = txt;
-    });
+function unzipFile(full){
+  fetch("/api/unzip",{method:"POST",body:new URLSearchParams({path:full})})
+    .then(r=>{if(r.ok)refresh();else alert("解压失败");});
 }
-function doSave() {
-    var fd = new FormData();
-    fd.append('path', editingFile);
-    fd.append('content', document.getElementById('editContent').value);
-    fetch('/api/save', { method: 'POST', body: fd }).then(() => { closeModal('editModal'); refresh(); });
+function editFile(full,name){
+  editingFile=full;
+  document.getElementById("editFileName").textContent=name;
+  document.getElementById("editContent").value="加载中...";
+  document.getElementById("editModal").style.display="flex";
+  fetch("/api/preview?path="+encodeURIComponent(full)).then(r=>r.text()).then(t=>{
+    document.getElementById("editContent").value=t;
+  });
 }
-
-function shareFile(encodedPath) {
-    fetch('/api/share', { method: 'POST', body: new URLSearchParams({ path: decodeURIComponent(encodedPath) }) })
-        .then(r => r.text()).then(token => {
-            prompt("分享链接已生成 (免密访问):", location.origin + '/share/' + token);
-        });
+function doSave(){
+  var fd=new FormData();
+  fd.append("path",editingFile);
+  fd.append("content",document.getElementById("editContent").value);
+  fetch("/api/save",{method:"POST",body:fd}).then(function(){closeModal("editModal");refresh();});
 }
-
-function showMkdir() { document.getElementById('mkdirModal').style.display = 'flex'; }
-function showClipboard() {
-    document.getElementById('clipModal').style.display = 'flex';
-    fetch('/api/clipboard').then(r => r.text()).then(txt => {
-        document.getElementById('clipContent').value = txt;
-    });
+function shareFile(full){
+  fetch("/api/share",{method:"POST",body:new URLSearchParams({path:full})})
+    .then(r=>r.text()).then(function(t){prompt("分享链接:",location.origin+"/share/"+t);});
 }
-function showAbout() { document.getElementById('aboutModal').style.display = 'flex'; }
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-
-function doMkdir() {
-    var fd = new FormData();
-    fd.append('path', currentPath);
-    fd.append('name', document.getElementById('newDirName').value);
-    fetch('/api/mkdir', { method: 'POST', body: fd }).then(r => {
-        if (r.ok) { closeModal('mkdirModal'); refresh(); }
-        else alert('创建失败');
-    });
+function delFile(full){
+  if(!confirm("确定删除吗？"))return;
+  fetch("/api/delete",{method:"POST",body:new URLSearchParams({path:full})}).then(()=>refresh());
 }
-
-function saveClipboard() {
-    var txt = document.getElementById('clipContent').value;
-    fetch('/api/clipboard', { method: 'POST', body: new URLSearchParams({ content: txt }) })
-        .then(() => { alert('同步成功！'); closeModal('clipModal'); });
+function goUp(){
+  if(currentPath==="/")return;
+  var parts=currentPath.replace(/\/$/,"").split("/");
+  parts.pop();
+  currentPath=parts.join("/")||"/";
+  refresh();
 }
-
-function delFile(encodedPath) {
-    if (!confirm('确定删除吗？')) return;
-    fetch('/api/delete', { method: 'POST', body: new URLSearchParams({ path: decodeURIComponent(encodedPath) }) })
-        .then(() => refresh());
+function showModal(id){document.getElementById(id).style.display="flex";}
+function closeModal(id){document.getElementById(id).style.display="none";}
+function uploadFiles(files){
+  if(!files.length)return;
+  var fd=new FormData();
+  for(var i=0;i<files.length;i++) fd.append("file",files[i],files[i].name);
+  fd.append("path",currentPath);
+  var panel=document.getElementById("uploadProgress");
+  var fill=document.getElementById("progressFill");
+  var text=document.getElementById("progressText");
+  panel.style.display="block";
+  var xhr=new XMLHttpRequest();
+  xhr.open("POST","/api/upload",true);
+  xhr.upload.onprogress=function(e){
+    if(e.lengthComputable){
+      var p=Math.round((e.loaded/e.total)*100);
+      fill.style.width=p+"%";
+      text.textContent=p+"%";
+    }
+  };
+  xhr.onload=function(){
+    panel.style.display="none";fileInput.value="";
+    if(xhr.status===200)refresh();else alert("上传失败");
+  };
+  xhr.send(fd);
 }
-
-function goUp() {
-    if (currentPath === '/') return;
-    var parts = currentPath.replace(/\/$/, '').split('/');
-    parts.pop();
-    currentPath = parts.join('/') || '/';
-    refresh();
-}
-
-function uploadFiles(files) {
-    if (!files.length) return;
-    var fd = new FormData();
-    for (var i = 0; i < files.length; i++) fd.append('file', files[i], files[i].name);
-    fd.append('path', currentPath);
-
-    var panel = document.getElementById('uploadProgress');
-    var fill = document.getElementById('progressFill');
-    var text = document.getElementById('progressText');
-    panel.style.display = 'block';
-
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/upload', true);
-    xhr.upload.onprogress = function(e) {
-        if (e.lengthComputable) {
-            var percent = Math.round((e.loaded / e.total) * 100);
-            fill.style.width = percent + '%';
-            text.textContent = percent + '%';
-        }
-    };
-    xhr.onload = function() {
-        panel.style.display = 'none'; fileInput.value = '';
-        if (xhr.status === 200) refresh(); else alert('上传失败');
-    };
-    xhr.send(fd);
-}
-fileInput.onchange = function () { uploadFiles(this.files); };
-dropZone.onclick = function() { fileInput.click(); };
-dropZone.ondragover = function(e) { e.preventDefault(); this.classList.add('dragover'); };
-dropZone.ondragleave = function() { this.classList.remove('dragover'); };
-dropZone.ondrop = function(e) { e.preventDefault(); this.classList.remove('dragover'); uploadFiles(e.dataTransfer.files); };
-
+document.getElementById("btnSearch").onclick=doSearch;
+document.getElementById("btnReset").onclick=refresh;
+document.getElementById("btnUp").onclick=goUp;
+document.getElementById("btnRefresh").onclick=refresh;
+document.getElementById("btnMkdir").onclick=function(){showModal("mkdirModal");};
+document.getElementById("btnFab").onclick=function(){fileInput.click();};
+document.getElementById("btnClipboard").onclick=function(){
+  showModal("clipModal");
+  fetch("/api/clipboard").then(r=>r.text()).then(t=>{document.getElementById("clipContent").value=t;});
+};
+document.getElementById("btnAbout").onclick=function(){showModal("aboutModal");};
+document.getElementById("btnCancelEdit").onclick=function(){closeModal("editModal");};
+document.getElementById("btnSaveEdit").onclick=doSave;
+document.getElementById("btnCancelMkdir").onclick=function(){closeModal("mkdirModal");};
+document.getElementById("btnDoMkdir").onclick=function(){
+  var fd=new FormData();
+  fd.append("path",currentPath);
+  fd.append("name",document.getElementById("newDirName").value);
+  fetch("/api/mkdir",{method:"POST",body:fd}).then(function(r){
+    if(r.ok){closeModal("mkdirModal");refresh();}else alert("创建失败");
+  });
+};
+document.getElementById("btnClosePreview").onclick=function(){closeModal("previewModal");};
+document.getElementById("btnCloseClip").onclick=function(){closeModal("clipModal");};
+document.getElementById("btnCloseAbout").onclick=function(){closeModal("aboutModal");};
+document.getElementById("btnSaveClip").onclick=function(){
+  var t=document.getElementById("clipContent").value;
+  fetch("/api/clipboard",{method:"POST",body:new URLSearchParams({content:t})})
+    .then(function(){alert("同步成功！");closeModal("clipModal");});
+};
+document.getElementById("searchInput").addEventListener("keydown",function(e){if(e.key==="Enter")doSearch();});
+fileInput.onchange=function(){uploadFiles(this.files);};
+dropZone.onclick=function(){fileInput.click();};
+dropZone.ondragover=function(e){e.preventDefault();this.classList.add("dragover");};
+dropZone.ondragleave=function(){this.classList.remove("dragover");};
+dropZone.ondrop=function(e){e.preventDefault();this.classList.remove("dragover");uploadFiles(e.dataTransfer.files);};
 refresh();
 </script>
 </body>

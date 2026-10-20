@@ -9,42 +9,54 @@ import org.json.JSONObject;
 
 public class LocalSendServer extends NanoHTTPD {
     private static final String SAVE_DIR = Environment.getExternalStorageDirectory().getAbsolutePath() + "/Download/LocalSend/";
-    
+
     private class Session {
         String sessionId;
         long lastActiveTime;
-        Map<String, String> fileTokens = new HashMap<>(); 
-        Map<String, String> fileNames = new HashMap<>();  
+        Map<String, String> fileTokens = new HashMap<>();
+        Map<String, String> fileNames = new HashMap<>();
     }
-    private Map<String, Session> sessions = new ConcurrentHashMap<>();
-    private Timer cleanupTimer = new Timer();
 
-    public LocalSendServer(int port) { 
-        super(port); 
-        // 定时清理 5 分钟无活动的过期 Session
+    private Map<String, Session> sessions = new ConcurrentHashMap<>();
+    private Timer cleanupTimer = new Timer(true);
+
+    public LocalSendServer(int port) {
+        super(port);
         cleanupTimer.schedule(new TimerTask() {
-            @Override
-            public void run() {
+            @Override public void run() {
                 long now = System.currentTimeMillis();
                 Iterator<Map.Entry<String, Session>> it = sessions.entrySet().iterator();
                 while (it.hasNext()) {
                     Session s = it.next().getValue();
-                    if (now - s.lastActiveTime > 5 * 60 * 1000) {
-                        it.remove();
-                    }
+                    if (now - s.lastActiveTime > 5 * 60 * 1000) it.remove();
                 }
             }
         }, 60000, 60000);
     }
 
-    @Override
-    public void stop() {
+    @Override public void stop() {
         cleanupTimer.cancel();
         super.stop();
     }
 
-    @Override
-    public Response serve(IHTTPSession session) {
+    private String readJsonBody(IHTTPSession session) {
+        Map<String, String> files = new HashMap<>();
+        try { session.parseBody(files); } catch (Exception ignored) {}
+        String pd = files.get("postData");
+        if (pd != null && !pd.isEmpty()) return pd;
+        try {
+            InputStream is = session.getInputStream();
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192]; int len;
+            while ((len = is.read(buf)) > 0) {
+                bos.write(buf, 0, len);
+                if (bos.size() > 10 * 1024 * 1024) break;
+            }
+            return new String(bos.toByteArray(), "UTF-8");
+        } catch (Exception e) { return null; }
+    }
+
+    @Override public Response serve(IHTTPSession session) {
         String uri = session.getUri();
 
         if ("/api/localsend/v2/register".equals(uri) && Method.POST.equals(session.getMethod())) {
@@ -53,20 +65,16 @@ public class LocalSendServer extends NanoHTTPD {
         }
 
         if ("/api/localsend/v2/prepare-upload".equals(uri) && Method.POST.equals(session.getMethod())) {
-            String reqPin = session.getParms().get("pin");
-            if (reqPin == null || !reqPin.equals(SettingsManager.getLsPin())) {
-                Response res = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "PIN Required");
-                res.addHeader("X-LocalSend-Pin", "true");
-                return res;
-            }
-
+            String postData = readJsonBody(session);
+            if (postData == null) return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "No body");
             try {
-                Map<String, String> files = new HashMap<>();
-                session.parseBody(files);
-                String postData = files.get("postData");
-                if (postData == null) return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "No data");
-                
                 JSONObject json = new JSONObject(postData);
+                String reqPin = json.optString("pin", "");
+                if (!reqPin.equals(SettingsManager.getLsPin())) {
+                    Response res = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "PIN Required");
+                    res.addHeader("X-LocalSend-Pin", "true");
+                    return res;
+                }
                 JSONObject filesJson = json.optJSONObject("files");
                 if (filesJson == null) return newFixedLengthResponse(Response.Status.BAD_REQUEST, "text/plain", "No files");
 
@@ -74,20 +82,17 @@ public class LocalSendServer extends NanoHTTPD {
                 s.sessionId = UUID.randomUUID().toString();
                 s.lastActiveTime = System.currentTimeMillis();
                 JSONObject resFiles = new JSONObject();
-                
                 Iterator<String> keys = filesJson.keys();
                 while (keys.hasNext()) {
                     String fileId = keys.next();
                     JSONObject fileObj = filesJson.getJSONObject(fileId);
                     String fileName = fileObj.optString("fileName", "unknown_" + fileId);
-                    
                     String token = UUID.randomUUID().toString();
                     s.fileTokens.put(fileId, token);
                     s.fileNames.put(fileId, fileName);
-                    resFiles.put(fileId, token); 
+                    resFiles.put(fileId, token);
                 }
                 sessions.put(s.sessionId, s);
-
                 JSONObject resObj = new JSONObject();
                 resObj.put("sessionId", s.sessionId);
                 resObj.put("files", resFiles);
@@ -101,48 +106,31 @@ public class LocalSendServer extends NanoHTTPD {
             String sessionId = session.getParms().get("sessionId");
             String fileId = session.getParms().get("fileId");
             String token = session.getParms().get("token");
-
             Session s = sessions.get(sessionId);
             if (s == null || token == null || !token.equals(s.fileTokens.get(fileId))) {
                 return newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "Invalid Token");
             }
-
             s.lastActiveTime = System.currentTimeMillis();
             try {
                 File dir = new File(SAVE_DIR);
                 if (!dir.exists()) dir.mkdirs();
-                
                 String fileName = s.fileNames.get(fileId);
                 if (fileName == null || fileName.isEmpty()) fileName = "LS_" + System.currentTimeMillis();
-                
-                // 防覆盖逻辑
                 File destFile = new File(dir, fileName);
                 int count = 1;
                 String baseName = fileName;
                 String ext = "";
                 int dotIndex = fileName.lastIndexOf('.');
-                if (dotIndex > 0) {
-                    baseName = fileName.substring(0, dotIndex);
-                    ext = fileName.substring(dotIndex);
-                }
-                while (destFile.exists()) {
-                    destFile = new File(dir, baseName + "(" + count + ")" + ext);
-                    count++;
-                }
-
-                try (InputStream is = session.getInputStream();
-                     FileOutputStream fos = new FileOutputStream(destFile)) {
-                    byte[] buf = new byte[8192];
-                    int len;
-                    while ((len = is.read(buf)) > 0) {
-                        fos.write(buf, 0, len);
-                    }
+                if (dotIndex > 0) { baseName = fileName.substring(0, dotIndex); ext = fileName.substring(dotIndex); }
+                while (destFile.exists()) { destFile = new File(dir, baseName + "(" + count + ")" + ext); count++; }
+                try (InputStream is = session.getInputStream(); FileOutputStream fos = new FileOutputStream(destFile)) {
+                    byte[] buf = new byte[8192]; int len;
+                    while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
                 }
                 LogManager.add("LocalSend", "收到文件: " + destFile.getName());
                 s.fileTokens.remove(fileId);
                 s.fileNames.remove(fileId);
                 if (s.fileTokens.isEmpty()) sessions.remove(sessionId);
-                
                 return newFixedLengthResponse(Response.Status.OK, "text/plain", "OK");
             } catch (Exception e) {
                 return newFixedLengthResponse(Response.Status.INTERNAL_ERROR, "text/plain", "Write failed");

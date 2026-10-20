@@ -1,17 +1,18 @@
 package com.androidnas;
 
+import com.jcraft.jsch.Channel;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
 
 public class SshTunnelManager {
     private static Session session;
+    private static Channel shellChannel;
     private static Thread keepAliveThread;
 
-    public static boolean isRunning() {
-        return session != null && session.isConnected();
-    }
+    public static boolean isRunning() { return session != null && session.isConnected(); }
 
-    public static synchronized boolean start(final String host, final int port, final String user, final String pass, final int remotePort, final int localPort) {
+    public static synchronized boolean start(final String host, final int port, final String user,
+                                              final String pass, final int remotePort, final int localPort) {
         if (isRunning()) return true;
         new Thread(() -> {
             try {
@@ -21,17 +22,15 @@ public class SshTunnelManager {
                 session.setConfig("StrictHostKeyChecking", "no");
                 session.setTimeout(15000);
                 session.connect();
-                
-                // 将远端的 remotePort 映射到本地的 localPort
                 session.setPortForwardingR(remotePort, "127.0.0.1", localPort);
+                try {
+                    shellChannel = session.openChannel("shell");
+                    shellChannel.connect(5000);
+                } catch (Exception ignored) {}
                 LogManager.add("127.0.0.1", "SSH穿透启动: " + host + ":" + remotePort + " -> 127.0.0.1:" + localPort);
-
                 keepAliveThread = new Thread(() -> {
                     while (isRunning()) {
-                        try { 
-                            Thread.sleep(10000); 
-                            if (session != null) session.sendKeepAliveMsg();
-                        } catch (Exception ignored) {}
+                        try { Thread.sleep(10000); if (session != null) session.sendKeepAliveMsg(); } catch (Exception ignored) {}
                     }
                 });
                 keepAliveThread.start();
@@ -45,13 +44,10 @@ public class SshTunnelManager {
     }
 
     public static synchronized void stop() {
-        if (session != null && session.isConnected()) {
-            session.disconnect();
-        }
+        try { if (shellChannel != null) shellChannel.disconnect(); } catch (Exception ignored) {}
+        shellChannel = null;
+        try { if (session != null && session.isConnected()) session.disconnect(); } catch (Exception ignored) {}
         session = null;
-        if (keepAliveThread != null) {
-            keepAliveThread.interrupt();
-            keepAliveThread = null;
-        }
+        if (keepAliveThread != null) { keepAliveThread.interrupt(); keepAliveThread = null; }
     }
 }
