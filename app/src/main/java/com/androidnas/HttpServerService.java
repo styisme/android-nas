@@ -34,6 +34,7 @@ public class HttpServerService extends Service {
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
     private Handler renewHandler;
+    private SilentPlayer silentPlayer;
     private Runnable renewRunnable;
 
     @Override public void onCreate() {
@@ -82,6 +83,11 @@ public class HttpServerService extends Service {
             startedServices.add("LocalSend");
         } catch (Exception e) { lastError += "LocalSend: " + e.getMessage() + "\n"; ok = false; }
         running = ok || startedServices.contains("Web");
+
+        if (running) {
+            silentPlayer = new SilentPlayer();
+            silentPlayer.start();
+        }
     }
 
 
@@ -140,6 +146,7 @@ public class HttpServerService extends Service {
     @Override public int onStartCommand(Intent i, int f, int s) { return START_STICKY; }
 
     @Override public void onDestroy() {
+        if (silentPlayer != null) { silentPlayer.stopPlayer(); silentPlayer = null; }
         try { FreeTunnelManager.stop(); } catch (Exception ignored) {}
         try { SshTunnelManager.stop(); } catch (Exception ignored) {}
         if (renewHandler != null) { renewHandler.removeCallbacks(renewRunnable); renewHandler = null; }
