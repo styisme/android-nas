@@ -25,12 +25,24 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # 修复：@ohos/ohpm 不在 npm 源，需要通过官方脚本或手动下载工具包配置
       - name: Install ohpm and hvigor
         run: |
+          echo "正在配置华为专属依赖源..."
           npm config set @ohos:registry https://repo.harmonyos.com/npm/
-          npm config set registry https://registry.npmmirror.com
-          echo "正在安装依赖工具..."
-          npm install -g @ohos/hvigor @ohos/hvigor-ohos-plugin @ohos/ohpm
+          
+          echo "安装 hvigor..."
+          npm install -g @ohos/hvigor @ohos/hvigor-ohos-plugin
+          
+          echo "下载并配置独立 ohpm..."
+          # 从 OpenHarmony 官方镜像下载独立的 ohpm 命令行工具
+          wget -q https://repo.huaweicloud.com/openharmony/os/4.1-Release/ohpm-linux-x64-4.1.7.5-Release.zip
+          unzip -q ohpm-linux-x64-4.1.7.5-Release.zip -d ohpm-cli
+          
+          # 配置 ohpm 环境变量与源
+          export PATH=$GITHUB_WORKSPACE/ohpm-cli/bin:$PATH
+          echo "$GITHUB_WORKSPACE/ohpm-cli/bin" >> $GITHUB_PATH
+          ohpm config set registry https://repo.harmonyos.com/ohpm/
 
       - name: Install aria2
         run: sudo apt-get update && sudo apt-get install -y aria2
@@ -57,10 +69,9 @@ jobs:
         run: |
           cd harmony
           
-          # 1. 先使用 ohpm 安装项目依赖（关键步，否则编译找不到三方库）
+          echo "安装项目依赖..."
           ohpm install || true
           
-          # 2. 使用全局安装的 hvigor 进行编译
           echo "开始执行 hvigor 编译..."
           hvigor --version --accept-license || true
           hvigor assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
