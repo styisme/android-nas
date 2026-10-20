@@ -103,6 +103,27 @@ img,video,audio{max-width:100%;border-radius:8px}
 <div style="text-align:right;margin-top:16px;"><button class="btn" id="btnCloseAbout">关闭</button></div>
 </div></div>
 <script>
+// ==== 全局 Fetch 拦截：自动处理 401 鉴权 ====
+window.originalFetch = window.fetch;
+window.fetch = function(url, options) {
+    if (!options) options = {};
+    if (!options.headers) options.headers = {};
+    var auth = localStorage.getItem("nas_auth");
+    if (auth) options.headers["Authorization"] = auth;
+    
+    return window.originalFetch(url, options).then(res => {
+        if (res.status === 401) {
+            var user = prompt("请输入 NAS 账号 (默认 admin):", "admin");
+            if (user === null) return res;
+            var pass = prompt("请输入密码 (默认 admin):", "admin");
+            if (pass === null) return res;
+            localStorage.setItem("nas_auth", "Basic " + btoa(user + ":" + pass));
+            return window.fetch(url, options); // 重新尝试
+        }
+        return res;
+    });
+};
+
 var currentPath="/";
 var editingFile="";
 var dropZone=document.getElementById("dropZone");
@@ -206,6 +227,15 @@ function doSave(){
 function shareFile(full){
   fetch("/api/share",{method:"POST",body:new URLSearchParams({path:full})})
     .then(r=>r.text()).then(function(t){prompt("分享链接:",location.origin+"/share/"+t);});
+}
+function renameFile(full, oldName){
+    var newName = prompt("重命名为:", oldName);
+    if (!newName || newName === oldName) return;
+    var fd = new FormData();
+    fd.append("path", full);
+    fd.append("newName", newName);
+    fetch("/api/rename", { method: "POST", body: fd })
+        .then(r => { if(r.ok) refresh(); else alert("重命名失败"); });
 }
 function delFile(full){
   if(!confirm("确定删除吗？"))return;

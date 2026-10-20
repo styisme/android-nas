@@ -389,7 +389,7 @@ public class FileListActivity extends AppCompatActivity {
             .setPositiveButton("创建", (d, w) -> {
                 String name = et.getText().toString(); if (name.isEmpty()) return;
                 new Thread(() -> { try {
-                    RequestBody b = new okhttp3.FormBody.Builder().add("path", currentPath).add("name", name).build();
+                    RequestBody b = new okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM).addFormDataPart("path", currentPath).addFormDataPart("name", name).build();
                     Request r = new Request.Builder().url(baseUrl + "/api/mkdir").post(b).header("Authorization", authHeader).build();
                     client.newCall(r).execute(); runOnUiThread(this::loadFiles);
                 } catch (Exception ignored) {} }).start();
@@ -436,6 +436,7 @@ public class FileListActivity extends AppCompatActivity {
         java.util.List<String> list = new java.util.ArrayList<>();
         if (isMedia) list.add("预览/播放");
         else if (isText) list.add("修改/编辑");
+        if (ext.equals("zip")) list.add("解压");
         
         list.add("下载");
         list.add("重命名");
@@ -446,6 +447,7 @@ public class FileListActivity extends AppCompatActivity {
         new MaterialAlertDialogBuilder(this).setTitle(f.name).setItems(actions, (dlg, w) -> {
             String a = actions[w];
             if (a.equals("预览/播放")) previewFile(f, ext);
+            else if (a.equals("解压")) unzipFile(f);
             else if (a.equals("修改/编辑")) editFile(f);
             else if (a.equals("下载")) downloadFile(f);
             else if (a.equals("重命名")) renameFile(f);
@@ -526,6 +528,19 @@ public class FileListActivity extends AppCompatActivity {
         });
     }
 
+    private void unzipFile(FileItem f) {
+        Toast.makeText(this, "正在解压...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> { try {
+            RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).build();
+            Request r = new Request.Builder().url(baseUrl + "/api/unzip").post(b).header("Authorization", authHeader).build();
+            Response resp = client.newCall(r).execute();
+            runOnUiThread(() -> {
+                if (resp.isSuccessful()) { loadFiles(); Toast.makeText(this, "解压成功", Toast.LENGTH_SHORT).show(); }
+                else Toast.makeText(this, "解压失败", Toast.LENGTH_SHORT).show();
+            });
+        } catch (Exception e) { runOnUiThread(() -> Toast.makeText(this, "解压异常", Toast.LENGTH_SHORT).show()); } }).start();
+    }
+
     private void renameFile(FileItem f) {
         TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
         til.setHint("新名称"); TextInputEditText et = new TextInputEditText(this); et.setText(f.name); til.addView(et);
@@ -534,7 +549,7 @@ public class FileListActivity extends AppCompatActivity {
             .setPositiveButton("确定", (d, ww) -> {
                 String nn = et.getText().toString(); if (nn.isEmpty()) return;
                 new Thread(() -> { try {
-                    RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).add("newName", nn).build();
+                    RequestBody b = new okhttp3.MultipartBody.Builder().setType(okhttp3.MultipartBody.FORM).addFormDataPart("path", f.path).addFormDataPart("newName", nn).build();
                     Request r = new Request.Builder().url(baseUrl + "/api/rename").post(b).header("Authorization", authHeader).build();
                     client.newCall(r).execute(); runOnUiThread(this::loadFiles);
                 } catch (Exception ignored) {} }).start();
