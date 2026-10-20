@@ -115,9 +115,9 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= 23) {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
-                new AlertDialog.Builder(this).setTitle("后台保活提示")
-                    .setMessage("为保证 NAS 服务在息屏后不断网，请允许忽略电池优化。\n\n如系统有\"锁屏清理\"，请将本应用设为\"无限制\"。")
-                    .setPositiveButton("去设置", new DialogInterface.OnClickListener() {
+                new AlertDialog.Builder(this).setTitle("后台保活核心设置")
+                    .setMessage("为保证 NAS 息屏不断网，必须进行以下设置：\n\n1. 忽略电池优化 (原生 Android)\n2. 允许自启动/后台运行 (国产 ROM)\n3. 锁定后台任务卡片")
+                    .setPositiveButton("去忽略电池优化", new DialogInterface.OnClickListener() {
                         @Override public void onClick(DialogInterface d, int w) {
                             try {
                                 Intent intent = new Intent();
@@ -126,8 +126,39 @@ public class MainActivity extends Activity {
                                 startActivity(intent);
                             } catch (Exception e) { e.printStackTrace(); }
                         }
-                    }).setNegativeButton("暂不", null).show();
+                    })
+                    .setNeutralButton("去自启动管理", new DialogInterface.OnClickListener() {
+                        @Override public void onClick(DialogInterface d, int w) { gotoAutoStart(); }
+                    })
+                    .setNegativeButton("暂不", null).show();
             }
+        }
+    }
+
+    // 尝试跳转各大国产 ROM 的自启动管理页
+    private void gotoAutoStart() {
+        Intent intent = new Intent();
+        String brand = Build.BRAND.toLowerCase();
+        try {
+            if (brand.contains("huawei") || brand.contains("honor")) {
+                intent.setClassName("com.huawei.systemmanager", "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity");
+            } else if (brand.contains("xiaomi") || brand.contains("redmi")) {
+                intent.setClassName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity");
+            } else if (brand.contains("oppo") || brand.contains("realme")) {
+                intent.setClassName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity");
+            } else if (brand.contains("vivo") || brand.contains("iqoo")) {
+                intent.setClassName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity");
+            } else {
+                intent.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+            }
+            startActivity(intent);
+        } catch (Exception e) {
+            try {
+                intent.setAction(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            } catch (Exception ignored) {}
         }
     }
 

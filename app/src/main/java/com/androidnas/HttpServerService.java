@@ -1,6 +1,7 @@
 package com.androidnas;
 
 import android.app.Notification;
+import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
@@ -10,6 +11,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.os.SystemClock;
 import android.os.Environment;
 import java.util.ArrayList;
 import java.util.List;
@@ -80,6 +82,29 @@ public class HttpServerService extends Service {
             startedServices.add("LocalSend");
         } catch (Exception e) { lastError += "LocalSend: " + e.getMessage() + "\n"; ok = false; }
         running = ok || startedServices.contains("Web");
+    }
+
+
+    // 使用 AlarmManager 定时唤醒，防止被系统清理后彻底死亡
+    private void setupAlarmKeepAlive() {
+        try {
+            AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
+            if (am == null) return;
+            Intent intent = new Intent(this, AlarmReceiver.class);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
+            PendingIntent pi = PendingIntent.getBroadcast(this, 0, intent, flags);
+            
+            // 每 5 分钟触发一次唤醒检查
+            long interval = 5 * 60 * 1000L;
+            if (Build.VERSION.SDK_INT >= 23) {
+                am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        SystemClock.elapsedRealtime() + interval, pi);
+            } else {
+                am.setRepeating(AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        SystemClock.elapsedRealtime() + interval, interval, pi);
+            }
+        } catch (Exception ignored) {}
     }
 
     private void goForeground() {
