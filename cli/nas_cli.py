@@ -279,6 +279,30 @@ class NasShell(cmd.Cmd):
         r = self.api.req("GET", "/api/status")
         if r: print(json.dumps(r.json(), indent=4, ensure_ascii=False))
 
+
+    def do_clip(self, arg):
+        """局域网剪贴板同步 (用法: clip 查看 / clip 写入内容)"""
+        if not arg:
+            r = self.api.req("GET", "/api/clipboard")
+            if r: print(f"\033[93m当前剪贴板:\033[0m\n{r.text}")
+        else:
+            r = self.api.req("POST", "/api/clipboard", data={"content": arg})
+            if r: print("\033[92m[+] 剪贴板已同步到服务端\033[0m")
+
+    def do_exec(self, arg):
+        """在 NAS 服务端执行 Root / Shell 命令 (若服务端开启了 Root 全盘模式)"""
+        if not arg:
+            print("[-] 请输入要执行的命令")
+            return
+        print(f"\033[90m[服务端执行]: {arg}\033[0m")
+        r = self.api.req("POST", "/api/shell", data={"cmd": arg})
+        if r:
+            out = r.text
+            if out.strip():
+                print(out)
+            else:
+                print("\033[90m(命令执行完毕，无输出)\033[0m")
+
     def do_exit(self, arg):
         """退出 Shell"""
         print("Bye!")
