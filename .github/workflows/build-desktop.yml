@@ -1,4 +1,4 @@
-name: Build Desktop Client
+name: Build Desktop Client & CLI
 
 on:
   push:
@@ -13,8 +13,16 @@ jobs:
         include:
           - os: ubuntu-latest
             artifact_name: nas-client-linux
+            target: gui
           - os: windows-latest
             artifact_name: nas-client-windows
+            target: gui
+          - os: ubuntu-latest
+            artifact_name: nas-cli-linux
+            target: cli
+          - os: windows-latest
+            artifact_name: nas-cli-windows
+            target: cli
 
     steps:
       - name: Checkout
@@ -35,25 +43,44 @@ jobs:
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
-      # #44: pip 锁版本，避免 PyInstaller 每夜差异
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install 'requests>=2.28,<3' 'pyinstaller>=5.13,<6'
 
-      - name: Build with PyInstaller (Windows)
-        if: matrix.os == 'windows-latest'
+      # ================= 桌面端打包 =================
+      - name: Build GUI (Windows)
+        if: matrix.os == 'windows-latest' && matrix.target == 'gui'
         working-directory: ./desktop
-        # #87: 去掉 -n 里的 .exe，PyInstaller 会自动追加
         run: pyinstaller -F -w nas_client.py -n nas-client-windows-v${{ env.VERSION }}
 
-      - name: Build with PyInstaller (Linux)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Build GUI (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.target == 'gui'
         working-directory: ./desktop
         run: pyinstaller -F -w nas_client.py -n nas-client-linux-v${{ env.VERSION }}
 
-      - name: Upload Artifact
+      # ================= CLI 端打包 =================
+      - name: Build CLI (Windows)
+        if: matrix.os == 'windows-latest' && matrix.target == 'cli'
+        working-directory: ./cli
+        run: pyinstaller -F nas_cli.py -n nas-cli-windows-v${{ env.VERSION }}
+
+      - name: Build CLI (Linux)
+        if: matrix.os == 'ubuntu-latest' && matrix.target == 'cli'
+        working-directory: ./cli
+        run: pyinstaller -F nas_cli.py -n nas-cli-linux-v${{ env.VERSION }}
+
+      # ================= 上传产物 =================
+      - name: Upload GUI Artifact
+        if: matrix.target == 'gui'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: desktop/dist/*
+
+      - name: Upload CLI Artifact
+        if: matrix.target == 'cli'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: cli/dist/*
