@@ -138,22 +138,37 @@ public class FileListActivity extends AppCompatActivity {
         adapter.notifyDataSetChanged(); invalidateOptionsMenu();
     }
 
+    private void selectAll() {
+        selectedPaths.clear();
+        for (FileItem f : files) {
+            selectedPaths.add(f.path);
+        }
+        updateTitle();
+        adapter.notifyDataSetChanged();
+    }
+
     @Override public boolean onCreateOptionsMenu(Menu menu) {
         menu.clear();
-        if (isMultiSelect) { menu.add(0, 1, 0, "删除"); menu.add(0, 2, 0, "取消"); }
-        else { menu.add(0, 3, 0, "新建文件夹"); menu.add(0, 4, 0, "搜索");
-               menu.add(0, 5, 0, isGridMode ? "列表视图" : "网格视图"); }
+        if (isMultiSelect) {
+            menu.add(0, 1, 0, "删除").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+            menu.add(0, 2, 0, "全选").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+            menu.add(0, 3, 0, "取消").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+        } else {
+            menu.add(0, 4, 0, "新建文件夹");
+            menu.add(0, 5, 0, "搜索");
+            menu.add(0, 6, 0, isGridMode ? "列表视图" : "网格视图");
+        }
         return true;
     }
 
     @Override public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         int id = item.getItemId();
         if (id == 1) { deleteSelected(); return true; }
-        if (id == 2) { exitMultiSelect(); return true; }
-        if (id == 3) { showMkdirDialog(); return true; }
-        if (id == 4) { showSearchDialog(); return true; }
-        if (id == 5) {
-            if (isMultiSelect) exitMultiSelect();
+        if (id == 2) { selectAll(); return true; }
+        if (id == 3) { exitMultiSelect(); return true; }
+        if (id == 4) { showMkdirDialog(); return true; }
+        if (id == 5) { showSearchDialog(); return true; }
+        if (id == 6) {
             isGridMode = !isGridMode;
             recyclerView.setLayoutManager(isGridMode ? new GridLayoutManager(this, 3) : new LinearLayoutManager(this));
             adapter = new FileAdapter(); recyclerView.setAdapter(adapter);
@@ -631,7 +646,9 @@ public class FileListActivity extends AppCompatActivity {
 
     private void toggleSelect(String path) {
         if (selectedPaths.contains(path)) selectedPaths.remove(path); else selectedPaths.add(path);
-        updateTitle(); adapter.notifyDataSetChanged();
+        updateTitle(); 
+        adapter.notifyDataSetChanged();
+        invalidateOptionsMenu(); // 关键：每次勾选/取消都刷新菜单，确保“删除”按钮出现
     }
 
     static class ProgressRequestBody extends RequestBody {
