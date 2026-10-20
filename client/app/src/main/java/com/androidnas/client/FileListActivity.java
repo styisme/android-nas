@@ -424,50 +424,135 @@ public class FileListActivity extends AppCompatActivity {
     }
 
     private void showFileMenu(FileItem f) {
+        if (type != NasDevice.TYPE_ANDROID) {
+            new MaterialAlertDialogBuilder(this).setTitle(f.name).setItems(new String[]{"下载"}, (d, w) -> downloadFile(f)).show();
+            return;
+        }
+        
         String ext = f.name.contains(".") ? f.name.substring(f.name.lastIndexOf(".") + 1).toLowerCase() : "";
-        boolean isMedia = ext.equals("jpg") || ext.equals("jpeg") || ext.equals("png") || ext.equals("mp4") || ext.equals("mp3");
-        String[] actions;
-        if (isMedia && type == NasDevice.TYPE_ANDROID) actions = new String[]{"预览/播放", "下载", "重命名", "删除", "属性"};
-        else if (type == NasDevice.TYPE_ANDROID) actions = new String[]{"下载", "重命名", "删除", "属性"};
-        else actions = new String[]{"下载"};
+        boolean isMedia = ext.matches("jpg|jpeg|png|gif|webp|mp4|mp3|mkv|webm|wav");
+        boolean isText = ext.matches("txt|md|json|java|html|xml|js|css|py|log|ini");
+
+        java.util.List<String> list = new java.util.ArrayList<>();
+        if (isMedia) list.add("预览/播放");
+        else if (isText) list.add("修改/编辑");
+        
+        list.add("下载");
+        list.add("重命名");
+        list.add("删除");
+        list.add("属性");
+        
+        String[] actions = list.toArray(new String[0]);
         new MaterialAlertDialogBuilder(this).setTitle(f.name).setItems(actions, (dlg, w) -> {
             String a = actions[w];
-            if (a.equals("预览/播放")) {
-                new Thread(() -> { try {
-                    RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).build();
-                    Request r = new Request.Builder().url(baseUrl + "/api/share").post(b).header("Authorization", authHeader).build();
-                    Response resp = client.newCall(r).execute();
-                    if (resp.isSuccessful() && resp.body() != null) {
-                        String token = resp.body().string();
-                        runOnUiThread(() -> openPlayer(baseUrl + "/share/" + token, ext));
-                    }
-                } catch (Exception e) { runOnUiThread(() -> Toast.makeText(FileListActivity.this, "获取链接失败", Toast.LENGTH_SHORT).show()); } }).start();
-            } else if (a.equals("下载")) downloadFile(f);
-            else if (a.equals("重命名")) {
-                TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-                til.setHint("新名称"); TextInputEditText et = new TextInputEditText(this); et.setText(f.name); til.addView(et);
-                LinearLayout c = new LinearLayout(this); c.setPadding(48, 24, 48, 0); c.addView(til);
-                new MaterialAlertDialogBuilder(this).setTitle("重命名").setView(c)
-                    .setPositiveButton("确定", (d, ww) -> {
-                        String nn = et.getText().toString(); if (nn.isEmpty()) return;
-                        new Thread(() -> { try {
-                            RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).add("newName", nn).build();
-                            Request r = new Request.Builder().url(baseUrl + "/api/rename").post(b).header("Authorization", authHeader).build();
-                            client.newCall(r).execute(); runOnUiThread(this::loadFiles);
-                        } catch (Exception ignored) {} }).start();
-                    }).setNegativeButton("取消", null).show();
-            } else if (a.equals("删除")) {
-                new MaterialAlertDialogBuilder(this).setTitle("确认删除").setMessage("确定要删除此文件吗？")
-                    .setPositiveButton("删除", (d, ww) -> new Thread(() -> { try {
-                        RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).build();
-                        Request r = new Request.Builder().url(baseUrl + "/api/delete").post(b).header("Authorization", authHeader).build();
-                        client.newCall(r).execute(); runOnUiThread(this::loadFiles);
-                    } catch (Exception ignored) {} }).start()).setNegativeButton("取消", null).show();
-            } else {
-                String info = "路径: " + f.path + "\n大小: " + (f.size / 1024) + " KB";
-                new MaterialAlertDialogBuilder(this).setTitle("文件属性").setMessage(info).setPositiveButton("确定", null).show();
-            }
+            if (a.equals("预览/播放")) previewFile(f, ext);
+            else if (a.equals("修改/编辑")) editFile(f);
+            else if (a.equals("下载")) downloadFile(f);
+            else if (a.equals("重命名")) renameFile(f);
+            else if (a.equals("删除")) deleteFile(f);
+            else if (a.equals("属性")) showProps(f);
         }).show();
+    }
+
+    private void previewFile(FileItem f, String ext) {
+        new Thread(() -> {
+            try {
+                RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).build();
+                Request r = new Request.Builder().url(baseUrl + "/api/share").post(b).header("Authorization", authHeader).build();
+                Response resp = client.newCall(r).execute();
+                if (resp.isSuccessful() && resp.body() != null) {
+                    String token = resp.body().string();
+                    runOnUiThread(() -> openPlayer(baseUrl + "/share/" + token, ext));
+                }
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "获取链接失败", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    private void editFile(FileItem f) {
+        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        til.setHint("文件内容");
+        TextInputEditText et = new TextInputEditText(this);
+        et.setMinLines(10);
+        et.setGravity(android.view.Gravity.TOP);
+        til.addView(et);
+        
+        android.widget.ScrollView sv = new android.widget.ScrollView(this);
+        sv.addView(til);
+        LinearLayout c = new LinearLayout(this);
+        c.setPadding(48, 24, 48, 0);
+        c.addView(sv);
+
+        androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this)
+                .setTitle("修改: " + f.name)
+                .setView(c)
+                .setPositiveButton("保存", null)
+                .setNegativeButton("取消", null)
+                .create();
+        
+        dialog.show();
+        
+        new Thread(() -> {
+            try {
+                String url = baseUrl + "/api/preview?path=" + URLEncoder.encode(f.path, "UTF-8");
+                Request req = new Request.Builder().url(url).header("Authorization", authHeader).build();
+                Response resp = client.newCall(req).execute();
+                if (resp.isSuccessful() && resp.body() != null) {
+                    String text = resp.body().string();
+                    runOnUiThread(() -> et.setText(text));
+                }
+            } catch (Exception ignored) {}
+        }).start();
+        
+        dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String contentText = et.getText().toString();
+            new Thread(() -> {
+                try {
+                    RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).add("content", contentText).build();
+                    Request r = new Request.Builder().url(baseUrl + "/api/save").post(b).header("Authorization", authHeader).build();
+                    Response resp = client.newCall(r).execute();
+                    if (resp.isSuccessful()) {
+                        runOnUiThread(() -> { dialog.dismiss(); Toast.makeText(this, "保存成功", Toast.LENGTH_SHORT).show(); });
+                    }
+                } catch (Exception e) {
+                    runOnUiThread(() -> Toast.makeText(this, "保存失败", Toast.LENGTH_SHORT).show());
+                }
+            }).start();
+        });
+    }
+
+    private void renameFile(FileItem f) {
+        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        til.setHint("新名称"); TextInputEditText et = new TextInputEditText(this); et.setText(f.name); til.addView(et);
+        LinearLayout c = new LinearLayout(this); c.setPadding(48, 24, 48, 0); c.addView(til);
+        new MaterialAlertDialogBuilder(this).setTitle("重命名").setView(c)
+            .setPositiveButton("确定", (d, ww) -> {
+                String nn = et.getText().toString(); if (nn.isEmpty()) return;
+                new Thread(() -> { try {
+                    RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).add("newName", nn).build();
+                    Request r = new Request.Builder().url(baseUrl + "/api/rename").post(b).header("Authorization", authHeader).build();
+                    client.newCall(r).execute(); runOnUiThread(this::loadFiles);
+                } catch (Exception ignored) {} }).start();
+            }).setNegativeButton("取消", null).show();
+    }
+
+    private void deleteFile(FileItem f) {
+        new MaterialAlertDialogBuilder(this).setTitle("确认删除").setMessage("确定要删除 " + f.name + " 吗？")
+            .setPositiveButton("删除", (d, ww) -> new Thread(() -> { try {
+                RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).build();
+                Request r = new Request.Builder().url(baseUrl + "/api/delete").post(b).header("Authorization", authHeader).build();
+                client.newCall(r).execute(); runOnUiThread(this::loadFiles);
+            } catch (Exception ignored) {} }).start()).setNegativeButton("取消", null).show();
+    }
+
+    private void showProps(FileItem f) {
+        String sizeStr;
+        if (f.size < 1024) sizeStr = f.size + " B";
+        else if (f.size < 1024 * 1024) sizeStr = String.format(java.util.Locale.US, "%.2f KB", f.size / 1024.0);
+        else sizeStr = String.format(java.util.Locale.US, "%.2f MB", f.size / 1024.0 / 1024.0);
+        String info = "名称: " + f.name + "\n路径: " + f.path + "\n大小: " + sizeStr + "\n类型: " + (f.isDir ? "文件夹" : "文件");
+        new MaterialAlertDialogBuilder(this).setTitle("文件属性").setMessage(info).setPositiveButton("确定", null).show();
     }
 
     private void openPlayer(String url, String ext) {
