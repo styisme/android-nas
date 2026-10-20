@@ -16,7 +16,7 @@ public class FtpServer extends Thread {
 
     public FtpServer(int port, Context context) {
         this.port = port;
-        this.rootDir = Environment.getExternalStorageDirectory().getAbsolutePath();
+        this.rootDir = SettingsManager.isGlobalMode() ? "/" : Environment.getExternalStorageDirectory().getAbsolutePath();
         this.context = context;
     }
 
@@ -223,6 +223,10 @@ public class FtpServer extends Thread {
         private File safeFile(String path) {
             try {
                 if (path == null) return null;
+                if (SettingsManager.isGlobalMode()) {
+                    File f = new File(path).isAbsolute() ? new File(path) : new File(currentDir, path);
+                    return f;
+                }
                 File f = new File(path).isAbsolute() ? new File(rootDir, path) : new File(currentDir, path);
                 String c = f.getCanonicalPath();
                 String r = new File(rootDir).getCanonicalPath();

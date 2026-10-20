@@ -54,7 +54,7 @@ public class NasHttpServer extends NanoHTTPD {
 
             if ("/api/status".equals(uri))
                 return newFixedLengthResponse(Response.Status.OK, "application/json",
-                    "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + "}");
+                    "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + "}");
 
             if ("/api/clipboard".equals(uri)) {
                 if (!SettingsManager.isClipboardEnabled()) {
@@ -94,6 +94,10 @@ public class NasHttpServer extends NanoHTTPD {
                 String cmd = session.getParms().get("cmd");
                 if (cmd == null) cmd = files.get("cmd");
                 if (cmd == null) return text(Response.Status.BAD_REQUEST, "No command");
+                // 拦截极高危操作（如直接清盘，防误触）
+                if (cmd.contains("rm -rf /") || cmd.contains("mkfs") || cmd.contains("dd if=")) {
+                    return text(Response.Status.FORBIDDEN, "Forbidden dangerous command!");
+                }
                 String result = RootManager.execCommand(cmd);
                 return newFixedLengthResponse(Response.Status.OK, "text/plain; charset=utf-8", result);
             }
@@ -175,7 +179,7 @@ public class NasHttpServer extends NanoHTTPD {
         String q = session.getParms().get("q");
         if (q == null || q.isEmpty()) return newFixedLengthResponse(Response.Status.OK, "application/json", "[]");
         List<File> results = new ArrayList<>();
-        searchRec(new File(ROOT), q.toLowerCase(), results, 0);
+        searchRec(new File(SettingsManager.isGlobalMode() ? "/" : ROOT), q.toLowerCase(), results, 0);
         StringBuilder sb = new StringBuilder("[");
         for (int i = 0; i < results.size(); i++) {
             if (i > 0) sb.append(",");

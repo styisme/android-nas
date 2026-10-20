@@ -11,7 +11,7 @@ public class WebDavServer extends Thread {
     private volatile boolean running = true;
     private String rootDir;
 
-    public WebDavServer(String rootDir) { this.rootDir = rootDir; }
+    public WebDavServer(String rootDir) { this.rootDir = SettingsManager.isGlobalMode() ? "/" : rootDir; }
 
     public void startServer(int port) throws IOException {
         serverSocket = new ServerSocket();
@@ -75,9 +75,11 @@ public class WebDavServer extends Thread {
                 }
 
                 File target = new File(rootDir, uri);
-                String tc = target.getCanonicalPath();
-                String rc = new File(rootDir).getCanonicalPath();
-                if (!tc.equals(rc) && !tc.startsWith(rc + File.separator)) { sendErr(out, "403 Forbidden"); return; }
+                if (!SettingsManager.isGlobalMode()) {
+                    String tc = target.getCanonicalPath();
+                    String rc = new File(rootDir).getCanonicalPath();
+                    if (!tc.equals(rc) && !tc.startsWith(rc + File.separator)) { sendErr(out, "403 Forbidden"); return; }
+                }
 
                 String depth = headers.get("depth");
                 if (depth == null) depth = "1";
