@@ -1,7 +1,11 @@
 package com.androidnas.watch;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
@@ -32,7 +36,6 @@ public class FileListActivity extends Activity {
     private String baseUrl = "", currentPath = "/", authHeader = "";
     private Handler mainHandler = new Handler(Looper.getMainLooper());
 
-    // 将接口移到 Activity 级别
     interface OnItemClick { void onClick(FileItem f); }
 
     @Override protected void onCreate(Bundle b) {
@@ -51,17 +54,128 @@ public class FileListActivity extends Activity {
         adapter = new FileAdapter();
         recyclerView.setAdapter(adapter);
         
+        // 点击文件/文件夹
         adapter.setOnItemClickListener(f -> {
             if (f.isDir) {
                 if (currentPath.endsWith("/")) currentPath += f.name;
                 else currentPath += "/" + f.name;
                 loadFiles();
             } else {
-                sendToTv(f);
+                showFileOptions(f);
             }
         });
         
         loadFiles();
+    }
+
+    private void showFileOptions(FileItem f) {
+        String ext = f.name.contains(".") ? f.name.substring(f.name.lastIndexOf(".") + 1).toLowerCase() : "";
+        boolean isMedia = ext.matches("jpg|jpeg|png|gif|webp|mp4|mp3|mkv|webm|wav");
+
+        List<String> options = new ArrayList<>();
+        if (isMedia) options.add("预览/播放");
+        options.add("下载到手表");
+        if (device.type == WatchDevice.TYPE_ANDROID) options.add("投屏到电视");
+
+        String[] items = options.toArray(new String[0]);
+
+        new AlertDialog.Builder(this)
+            .setTitle(f.name)
+            .setItems(items, (dialog, which) -> {
+                String action = items[which];
+                if (action.equals("预览/播放")) previewFile(f, ext);
+                else if (action.equals("下载到手表")) downloadFile(f);
+                else if (action.equals("投屏到电视")) sendToTv(f);
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+
+    private void previewFile(FileItem f, String ext) {
+        if (device.type != WatchDevice.TYPE_ANDROID) {
+            Toast.makeText(this, "仅支持自家 NAS 预览", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Toast.makeText(this, "获取播放链接...", Toast.LENGTH_SHORT).show();
+        String fullPath = currentPath.endsWith("/") ? currentPath + f.name : currentPath + "/" + f.name;
+        
+        new Thread(() -> {
+            try {
+                // 获取免密 Token
+                URL url = new URL(baseUrl + "/api/share");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestMethod("POST");
+                conn.setDoOutput(true);
+                conn.setRequestProperty("Authorization", authHeader);
+                String body = "path=" + URLEncoder.encode(fullPath, "UTF-8");
+                OutputStream os = conn.getOutputStream();
+                os.write(body.getBytes("UTF-8"));
+                os.close();
+
+                if (conn.getResponseCode() == 200) {
+                    BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                    String token = r.readLine();
+                    r.close();
+                    
+                    String shareUrl = baseUrl + "/share/" + token;
+                    mainHandler.post(() -> openSystemPlayer(shareUrl, ext));
+                } else {
+                    mainHandler.post(() -> Toast.makeText(this, "获取链接失败", Toast.LENGTH_SHORT).show());
+                }
+            } catch (Exception e) {
+                mainHandler.post(() -> Toast.makeText(this, "网络异常", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    private void openSystemPlayer(String url, String ext) {
+        try {
+            Intent i = new Intent(Intent.ACTION_VIEW);
+            String mime = (ext.equals("mp4") || ext.equals("mkv") || ext.equals("webm")) ? "video/*"
+                : ((ext.equals("mp3") || ext.equals("wav")) ? "audio/*" : "image/*");
+            i.setDataAndType(Uri.parse(url), mime);
+            startActivity(i);
+        } catch (Exception e) {
+            Toast.makeText(this, "手表未安装可用的播放器", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void downloadFile(FileItem f) {
+        if (device.type != WatchDevice.TYPE_ANDROID) {
+            Toast.makeText(this, "暂不支持外部协议下载", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        Toast.makeText(this, "开始下载: " + f.name, Toast.LENGTH_SHORT).show();
+        String fullPath = currentPath.endsWith("/") ? currentPath + f.name : currentPath + "/" + f.name;
+
+        new Thread(() -> {
+            try {
+                // 手表专属沙盒目录
+                File dir = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS);
+                if (dir == null) dir = new File(Environment.getExternalStorageDirectory(), "Android/data/com.androidnas.watch/files/Download");
+                if (!dir.exists()) dir.mkdirs();
+                File dest = new File(dir, f.name);
+
+                URL url = new URL(baseUrl + "/api/download?path=" + URLEncoder.encode(fullPath, "UTF-8"));
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                conn.setRequestProperty("Authorization", authHeader);
+                conn.setConnectTimeout(10000);
+
+                if (conn.getResponseCode() == 200) {
+                    InputStream is = conn.getInputStream();
+                    FileOutputStream fos = new FileOutputStream(dest);
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
+                    fos.close(); is.close();
+                    mainHandler.post(() -> Toast.makeText(this, "下载完成: " + f.name, Toast.LENGTH_LONG).show());
+                } else {
+                    mainHandler.post(() -> Toast.makeText(this, "下载失败: HTTP " + conn.getResponseCode(), Toast.LENGTH_SHORT).show());
+                }
+            } catch (Exception e) {
+                mainHandler.post(() -> Toast.makeText(this, "下载异常: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        }).start();
     }
 
     private void loadFiles() {
@@ -152,7 +266,6 @@ public class FileListActivity extends Activity {
     }
 
     private void sendToTv(FileItem f) {
-        if (device.type != WatchDevice.TYPE_ANDROID) { Toast.makeText(this, "仅支持自家 NAS 投屏", Toast.LENGTH_SHORT).show(); return; }
         Toast.makeText(this, "正在投屏...", Toast.LENGTH_SHORT).show();
         String full = currentPath.endsWith("/") ? currentPath + f.name : currentPath + "/" + f.name;
         final String videoUrl = baseUrl + "/api/download?path=" + URLEncoder.encode(full);
