@@ -168,6 +168,7 @@ public class MainActivity extends Activity {
         menu.add(0, 3, 0, "内网穿透");
         menu.add(0, 4, 0, "运行日志");
         menu.add(0, 7, 0, "关于");
+        menu.add(0, 8, 0, "高级保活 (Root/ADB)");
         return true;
     }
 
@@ -200,6 +201,9 @@ public class MainActivity extends Activity {
         } else if (id == 4) {
             new AlertDialog.Builder(this).setTitle("最近日志").setMessage(LogManager.getAllLogs()).setPositiveButton("关闭", null).show();
             return true;
+        } else if (id == 8) {
+            showAdvancedKeepAlive();
+            return true;
         } else if (id == 7) {
             new AlertDialog.Builder(this).setTitle("关于 Android NAS")
                 .setMessage("版本: v3.2.0 旗舰版\n\n支持流媒体、剪贴板、内网穿透、FTP、DLNA。\n\n⚠️ 大量代码由 AI 辅助生成。")
@@ -215,6 +219,46 @@ public class MainActivity extends Activity {
             if (p < 1 || p > 65535) return null;
             return p;
         } catch (Exception e) { return null; }
+    }
+
+
+    private void showAdvancedKeepAlive() {
+        boolean root = AdvancedKeepAliveManager.hasRoot();
+        boolean adb = AdvancedKeepAliveManager.hasAdbPermission(this);
+        boolean doze = AdvancedKeepAliveManager.isDozeWhitelisted(this);
+
+        String status = "当前状态：\n";
+        status += "Root 权限：" + (root ? "✅ 已获取" : "❌ 未获取") + "\n";
+        status += "ADB 权限：" + (adb ? "✅ 已获取" : "❌ 未获取") + "\n";
+        status += "Doze 白名单：" + (doze ? "✅ 已加入" : "❌ 未加入") + "\n\n";
+
+        status += "【方案 A：已 Root】\n点击下方按钮，一键将本应用设为系统最高活跃度，彻底免疫杀后台。\n\n";
+        status += "【方案 B：无 Root (借助电脑)】\n使用数据线连接电脑，在终端执行以下命令：\n";
+        status += "adb shell dumpsys deviceidle whitelist +com.androidnas\n";
+        status += "(复制上述命令即可实现同等效果)";
+
+        new AlertDialog.Builder(this)
+            .setTitle("高级保活控制台")
+            .setMessage(status)
+            .setPositiveButton("一键 Root 白名单", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    if (AdvancedKeepAliveManager.hasRoot()) {
+                        AdvancedKeepAliveManager.applyRootWhitelist(MainActivity.this);
+                        Toast.makeText(MainActivity.this, "注入成功！请退出重进查看状态", Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(MainActivity.this, "未获取 Root 权限！", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            })
+            .setNeutralButton("复制 ADB 命令", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    cm.setPrimaryClip(android.content.ClipData.newPlainText("cmd", "adb shell dumpsys deviceidle whitelist +com.androidnas"));
+                    Toast.makeText(MainActivity.this, "命令已复制，快去电脑上执行吧", Toast.LENGTH_SHORT).show();
+                }
+            })
+            .setNegativeButton("关闭", null)
+            .show();
     }
 
     private void showControlCenter() {
