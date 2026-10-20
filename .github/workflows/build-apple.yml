@@ -22,7 +22,7 @@ jobs:
           cd apple
           xcodegen generate
 
-      - name: List Schemes (For Debug)
+      - name: List Schemes
         run: |
           cd apple
           xcodebuild -list -project NASClient.xcodeproj
@@ -30,9 +30,7 @@ jobs:
       - name: Build iOS (Unsigned)
         run: |
           cd apple
-          # 尝试用 scheme 构建；如果找不到，直接 fallback 用 target 构建
-          xcodebuild -project NASClient.xcodeproj -scheme NASClient -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build || \
-          xcodebuild -project NASClient.xcodeproj -target NASClient -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+          xcodebuild -project NASClient.xcodeproj -scheme NASClient -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
 
       - name: Package iOS IPA (Unsigned)
         run: |

@@ -17,18 +17,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Dependencies
+      - name: Setup Harmony Environment
         run: |
           cd harmony
-          # 安装项目依赖
-          ohpm install --all
-
+          # 确保 hvigor 配置文件存在于正确的位置
+          ls -la hvigor/
+          
       - name: Build HAP
         run: |
           cd harmony
-          # 使用镜像内自带的 hvigorw 进行编译
-          hvigorw clean --no-daemon
-          hvigorw assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
+          # 使用镜像自带的 hvigorw 进行编译
+          chmod +x hvigorw || true
+          ./hvigorw clean --no-daemon
+          ./hvigorw assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
 
       - name: Find and Package HAP
         run: |
