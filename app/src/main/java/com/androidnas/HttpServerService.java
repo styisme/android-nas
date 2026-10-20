@@ -94,7 +94,7 @@ public class HttpServerService extends Service {
         } catch (Exception e) { lastError += "LocalSend: " + e.getMessage() + "\n"; ok = false; }
         running = ok || startedServices.contains("Web");
 
-        if (running) {
+        if (running && SettingsManager.isSilentKeepAlive()) {
             silentPlayer = new SilentPlayer();
             silentPlayer.start();
         }

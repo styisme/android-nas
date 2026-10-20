@@ -107,7 +107,24 @@ public class MainActivity extends Activity {
         });
         if (!HttpServerService.isRunning()) {
             startService(new Intent(this, HttpServerService.class));
+            checkAllFilesPermission();
             checkBatteryOptimization();
+        }
+    }
+
+    private void checkAllFilesPermission() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            if (!android.os.Environment.isExternalStorageManager()) {
+                new AlertDialog.Builder(this).setTitle("全盘权限提示")
+                    .setMessage("你需要开启“所有文件访问权限”才能正常读取手机存储和开启全盘模式。")
+                    .setPositiveButton("去开启", (d, w) -> {
+                        try {
+                            Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                            intent.setData(Uri.parse("package:" + getPackageName()));
+                            startActivity(intent);
+                        } catch (Exception ignored) {}
+                    }).setNegativeButton("暂不", null).show();
+            }
         }
     }
 
@@ -294,6 +311,7 @@ public class MainActivity extends Activity {
         CheckBox cbClipboard = new CheckBox(this); cbClipboard.setText("开启局域网剪贴板"); cbClipboard.setChecked(SettingsManager.isClipboardEnabled()); layout.addView(cbClipboard);
         
         CheckBox cbGlobal = new CheckBox(this); cbGlobal.setText("🦅 开启全盘模式 (需 Root)"); cbGlobal.setChecked(SettingsManager.isGlobalMode()); layout.addView(cbGlobal);
+        CheckBox cbSilent = new CheckBox(this); cbSilent.setText("🎵 开启静音保活 (伪装音乐播放防杀)"); cbSilent.setChecked(SettingsManager.isSilentKeepAlive()); layout.addView(cbSilent);
         cbLowPower.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(CompoundButton b, boolean c) {
                 cbLs.setEnabled(!c); cbStream.setEnabled(!c); cbClipboard.setEnabled(!c); cbFtp.setEnabled(!c); cbDlna.setEnabled(!c);
@@ -321,6 +339,7 @@ public class MainActivity extends Activity {
                     SettingsManager.setStreamEnabled(cbStream.isChecked());
                     SettingsManager.setClipboardEnabled(cbClipboard.isChecked());
                     SettingsManager.setGlobalMode(cbGlobal.isChecked());
+                    SettingsManager.setSilentKeepAlive(cbSilent.isChecked());
                     SettingsManager.setLsPin(etPin.getText().toString().trim());
                     SettingsManager.setWebPort(webPort);
                     SettingsManager.setWebDavPort(davPort);

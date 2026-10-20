@@ -326,7 +326,22 @@ fileInput.onchange=function(){uploadFiles(this.files);};
 dropZone.onclick=function(){fileInput.click();};
 dropZone.ondragover=function(e){e.preventDefault();this.classList.add("dragover");};
 dropZone.ondragleave=function(){this.classList.remove("dragover");};
-dropZone.ondrop=function(e){e.preventDefault();this.classList.remove("dragover");uploadFiles(e.dataTransfer.files);};
+dropZone.ondrop=function(e){
+  e.preventDefault();
+  this.classList.remove("dragover");
+  var files = [];
+  for(var i=0; i<e.dataTransfer.items.length; i++) {
+    var item = e.dataTransfer.items[i];
+    if (item.kind === 'file') {
+      var entry = item.webkitGetAsEntry();
+      if (entry && entry.isDirectory) {
+        alert("暂不支持直接拖拽文件夹，请压缩为 ZIP 后上传，或进入文件夹后手动选择文件。");
+        return;
+      }
+    }
+  }
+  uploadFiles(e.dataTransfer.files);
+};
 refresh();
 </script>
 </body>

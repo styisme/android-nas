@@ -95,8 +95,21 @@ public class FileListActivity extends AppCompatActivity {
         FloatingActionButton fab = findViewById(R.id.fabUpload);
         fab.setOnClickListener(v -> openFilePicker());
         filePickerLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(),
-            result -> { if (result.getResultCode() == RESULT_OK && result.getData() != null) {
-                Uri uri = result.getData().getData(); if (uri != null) uploadFile(uri); } });
+            result -> { 
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    Intent data = result.getData();
+                    if (data.getClipData() != null) {
+                        // 多选
+                        int count = data.getClipData().getItemCount();
+                        for (int i = 0; i < count; i++) {
+                            uploadFile(data.getClipData().getItemAt(i).getUri());
+                        }
+                    } else if (data.getData() != null) {
+                        // 单选
+                        uploadFile(data.getData());
+                    }
+                } 
+            });
         loadFiles();
     }
 
@@ -459,15 +472,19 @@ public class FileListActivity extends AppCompatActivity {
     private void previewFile(FileItem f, String ext) {
         new Thread(() -> {
             try {
+                // 先申请免密分享 Token，避免系统播放器不支持 Header 导致 401 黑屏
                 RequestBody b = new okhttp3.FormBody.Builder().add("path", f.path).build();
                 Request r = new Request.Builder().url(baseUrl + "/api/share").post(b).header("Authorization", authHeader).build();
                 Response resp = client.newCall(r).execute();
                 if (resp.isSuccessful() && resp.body() != null) {
-                    String token = resp.body().string();
-                    runOnUiThread(() -> openPlayer(baseUrl + "/share/" + token, ext));
+                    String token = resp.body().string().trim();
+                    String playUrl = baseUrl + "/share/" + token;
+                    runOnUiThread(() -> openPlayer(playUrl, ext));
+                } else {
+                    runOnUiThread(() -> Toast.makeText(this, "获取免密链接失败", Toast.LENGTH_SHORT).show());
                 }
             } catch (Exception e) {
-                runOnUiThread(() -> Toast.makeText(this, "获取链接失败", Toast.LENGTH_SHORT).show());
+                runOnUiThread(() -> Toast.makeText(this, "网络异常", Toast.LENGTH_SHORT).show());
             }
         }).start();
     }
