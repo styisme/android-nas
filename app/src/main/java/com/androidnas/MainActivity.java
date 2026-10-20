@@ -250,8 +250,11 @@ public class MainActivity extends Activity {
             .setPositiveButton("一键免死注入", new DialogInterface.OnClickListener() {
                 @Override public void onClick(DialogInterface d, int w) {
                     if (AdvancedKeepAliveManager.hasRoot()) {
-                        AdvancedKeepAliveManager.applyExtremeWhitelist(MainActivity.this);
-                        Toast.makeText(MainActivity.this, "OOM免死+系统服务冻结 执行成功！", Toast.LENGTH_LONG).show();
+                        Toast.makeText(MainActivity.this, "正在后台执行 Root 注入...", Toast.LENGTH_SHORT).show();
+                        new Thread(() -> {
+                            AdvancedKeepAliveManager.applyExtremeWhitelist(MainActivity.this);
+                            runOnUiThread(() -> Toast.makeText(MainActivity.this, "OOM免死+系统服务冻结 执行成功！", Toast.LENGTH_LONG).show());
+                        }).start();
                     } else {
                         Toast.makeText(MainActivity.this, "需要 Root 权限！", Toast.LENGTH_SHORT).show();
                     }
@@ -260,8 +263,11 @@ public class MainActivity extends Activity {
             .setNeutralButton("生成特权模块", new DialogInterface.OnClickListener() {
                 @Override public void onClick(DialogInterface d, int w) {
                     if (AdvancedKeepAliveManager.hasRoot()) {
-                        AdvancedKeepAliveManager.generateMagiskModule(MainActivity.this);
-                        Toast.makeText(MainActivity.this, "Magisk模块已生成，重启手机后本App将变为系统特权应用！", Toast.LENGTH_LONG).show();
+                        Toast.makeText(MainActivity.this, "正在生成模块...", Toast.LENGTH_SHORT).show();
+                        new Thread(() -> {
+                            AdvancedKeepAliveManager.generateMagiskModule(MainActivity.this);
+                            runOnUiThread(() -> Toast.makeText(MainActivity.this, "Magisk模块已生成，重启手机生效！", Toast.LENGTH_LONG).show());
+                        }).start();
                     } else {
                         Toast.makeText(MainActivity.this, "需要 Root 权限！", Toast.LENGTH_SHORT).show();
                     }
@@ -287,12 +293,12 @@ public class MainActivity extends Activity {
 
         EditText etAlias = new EditText(this); etAlias.setHint("设备名称"); etAlias.setText(SettingsManager.getDeviceAlias()); layout.addView(etAlias);
 
-        // --- 分页选择器 ---
+        // --- 分页选择器 (不使用硬编码 ID 防止与系统冲突) ---
         RadioGroup tabGroup = new RadioGroup(this);
         tabGroup.setOrientation(RadioGroup.HORIZONTAL);
-        RadioButton rbBasic = new RadioButton(this); rbBasic.setText("基础"); rbBasic.setId(1); rbBasic.setChecked(true);
-        RadioButton rbServices = new RadioButton(this); rbServices.setText("服务"); rbServices.setId(2);
-        RadioButton rbAdvanced = new RadioButton(this); rbAdvanced.setText("高级"); rbAdvanced.setId(3);
+        RadioButton rbBasic = new RadioButton(this); rbBasic.setText("基础"); rbBasic.setChecked(true);
+        RadioButton rbServices = new RadioButton(this); rbServices.setText("服务");
+        RadioButton rbAdvanced = new RadioButton(this); rbAdvanced.setText("高级");
         tabGroup.addView(rbBasic); tabGroup.addView(rbServices); tabGroup.addView(rbAdvanced);
         layout.addView(tabGroup);
 
@@ -328,9 +334,12 @@ public class MainActivity extends Activity {
 
         tabGroup.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(RadioGroup group, int checkedId) {
-                groupBasic.setVisibility(checkedId == 1 ? View.VISIBLE : View.GONE);
-                groupServices.setVisibility(checkedId == 2 ? View.VISIBLE : View.GONE);
-                groupAdvanced.setVisibility(checkedId == 3 ? View.VISIBLE : View.GONE);
+                View v = group.findViewById(checkedId);
+                if (v == null) return;
+                String text = ((RadioButton) v).getText().toString();
+                groupBasic.setVisibility(text.equals("基础") ? View.VISIBLE : View.GONE);
+                groupServices.setVisibility(text.equals("服务") ? View.VISIBLE : View.GONE);
+                groupAdvanced.setVisibility(text.equals("高级") ? View.VISIBLE : View.GONE);
             }
         });
 

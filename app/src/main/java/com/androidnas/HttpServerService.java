@@ -174,8 +174,9 @@ public class HttpServerService extends Service {
 
     private void goForeground() {
         try {
-            PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class),
-                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
+            PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), flags);
             Notification n;
             if (Build.VERSION.SDK_INT >= 26) {
                 android.app.NotificationChannel ch = new android.app.NotificationChannel(

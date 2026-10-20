@@ -49,7 +49,7 @@ public class AdvancedKeepAliveManager {
             os.writeBytes(cmd + "\n");
             os.writeBytes("exit\n");
             os.flush();
-            p.waitFor();
+            if (p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) { p.destroy(); }
         } catch (Exception ignored) {
         } finally {
             if (os != null) try { os.close(); } catch (Exception ignored) {}
