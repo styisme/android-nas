@@ -29,22 +29,20 @@ jobs:
         run: |
           npm config set @ohos:registry https://repo.harmonyos.com/npm/
           npm config set registry https://registry.npmmirror.com
-          echo "正在从华为源安装 hvigor..."
-          npm install -g @ohos/hvigor @ohos/hvigor-ohos-plugin
+          echo "正在安装依赖工具..."
+          npm install -g @ohos/hvigor @ohos/hvigor-ohos-plugin @ohos/ohpm
 
       - name: Install aria2
         run: sudo apt-get update && sudo apt-get install -y aria2
 
       - name: Setup OpenHarmony SDK
         run: |
-          echo "正在使用 aria2 多线程下载 OpenHarmony SDK..."
+          echo "正在下载 OpenHarmony SDK..."
           aria2c -x 16 -s 16 -k 1M --timeout=120 --retry-wait=10 -m 10 \
             -o ohos-sdk.tar.gz \
             https://repo.huaweicloud.com/openharmony/os/4.1-Release/ohos-sdk-windows_linux-public.tar.gz
 
-          echo "下载完成，正在解压..."
           tar -zxvf ohos-sdk.tar.gz
-
           cd ohos-sdk/linux
           unzip -q ets-linux-x64-4.1.7.5-Release.zip
           unzip -q js-linux-x64-4.1.7.5-Release.zip
@@ -54,18 +52,18 @@ jobs:
           echo "DEVECO_SDK_HOME=$GITHUB_WORKSPACE/ohos-sdk/linux" >> $GITHUB_ENV
           echo "OHOS_BASE_SDK_HOME=$GITHUB_WORKSPACE/ohos-sdk/linux" >> $GITHUB_ENV
           echo "PATH=$GITHUB_WORKSPACE/ohos-sdk/linux/toolchains:$PATH" >> $GITHUB_ENV
-
+          
       - name: Build HAP
         run: |
           cd harmony
-          # 确保 hvigorw 有执行权限
-          chmod +x hvigorw
           
-          echo "开始执行 hvigorw 编译..."
-          # 按照官方推荐流程：先装依赖，再构建
-          ./hvigorw --version --accept-license
-          ./hvigorw clean --no-parallel --no-daemon
-          ./hvigorw assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
+          # 1. 先使用 ohpm 安装项目依赖（关键步，否则编译找不到三方库）
+          ohpm install || true
+          
+          # 2. 使用全局安装的 hvigor 进行编译
+          echo "开始执行 hvigor 编译..."
+          hvigor --version --accept-license || true
+          hvigor assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
 
       - name: Find and Package HAP
         run: |
