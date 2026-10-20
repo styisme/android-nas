@@ -68,7 +68,10 @@ public class FreeTunnelManager {
             try {
                 channel = tempSession.openChannel("shell");
                 channel.setOutputStream(out);
-                ((com.jcraft.jsch.ChannelExec) channel).setErrStream(out);
+                try {
+                    java.lang.reflect.Method m = channel.getClass().getMethod("setErrStream", java.io.OutputStream.class);
+                    m.invoke(channel, out);
+                } catch (Exception ignored) {}
                 channel.connect(5000);
             } catch (Exception e) {
                 try { if (channel != null) channel.disconnect(); } catch (Exception ignored) {}

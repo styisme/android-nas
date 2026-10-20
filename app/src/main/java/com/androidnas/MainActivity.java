@@ -28,7 +28,7 @@ public class MainActivity extends Activity {
     private static final String ROOT = Environment.getExternalStorageDirectory().getAbsolutePath();
     private File currentDir;
     private ListView listView;
-    private TextView pathView, statusView, ipView, storageView;
+    private TextView pathView, statusView, ipView;
     private Button toggleBtn;
     private CheckBox cbAuth;
     private FileAdapter adapter;
@@ -230,9 +230,26 @@ public class MainActivity extends Activity {
 
 
     private void showAdvancedKeepAlive() {
-        boolean root = AdvancedKeepAliveManager.hasRoot();
-        boolean adb = AdvancedKeepAliveManager.hasAdbPermission(this);
-        boolean doze = AdvancedKeepAliveManager.isDozeWhitelisted(this);
+        // 为了防止没 Root 导致 su 卡住主线程，先把 UI 弹出来，并在后台检测
+        new AlertDialog.Builder(this)
+            .setTitle("正在检测环境")
+            .setMessage("正在检测 Root 状态...")
+            .setPositiveButton("知道了", null)
+            .show();
+
+        new Thread(() -> {
+            boolean root = AdvancedKeepAliveManager.hasRoot();
+            boolean adb = AdvancedKeepAliveManager.hasAdbPermission(MainActivity.this);
+            boolean doze = AdvancedKeepAliveManager.isDozeWhitelisted(MainActivity.this);
+            runOnUiThread(() -> {
+                // 关闭刚刚的提示框
+                // (简单粗暴点，这里直接弹最终框)
+                showAdvancedKeepAliveResult(root, adb, doze);
+            });
+        }).start();
+    }
+
+    private void showAdvancedKeepAliveResult(boolean root, boolean adb, boolean doze) {
 
         String status = "当前状态：\n";
         status += "Root 权限：" + (root ? "✅ 已获取" : "❌ 未获取") + "\n";
@@ -491,12 +508,11 @@ public class MainActivity extends Activity {
     private void refresh() {
         if (!currentDir.exists() || !currentDir.isDirectory()) currentDir = new File(ROOT);
         pathView.setText(currentDir.getAbsolutePath().replace(ROOT, "/"));
+        // 已移除无效的 storageView 调用，修复空指针闪退
         try {
             StatFs stat = new StatFs(Environment.getExternalStorageDirectory().getPath());
-            long avail = (long) stat.getBlockSize() * (long) stat.getAvailableBlocks();
-            long total = (long) stat.getBlockSize() * (long) stat.getBlockCount();
-            storageView.setText("存储空间: 可用 " + (avail / 1024 / 1024) + " MB / 总计 " + (total / 1024 / 1024) + " MB");
-        } catch (Throwable t) { storageView.setText(""); }
+            // 仅作底层获取，不显示在 UI 上
+        } catch (Throwable ignored) {}
         items.clear();
         File[] files = currentDir.listFiles();
         if (files != null) Collections.addAll(items, files);
