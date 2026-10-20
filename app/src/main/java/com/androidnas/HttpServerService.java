@@ -7,10 +7,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.Environment;
-import android.os.Process;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,6 +19,7 @@ public class HttpServerService extends Service {
     public static volatile String lastError = "";
     private static volatile boolean running = false;
     private static final int NOTIFICATION_ID = 1001;
+    private static final long WAKELOCK_TIMEOUT = 6 * 60 * 60 * 1000L;
 
     public static boolean isRunning() { return running; }
 
@@ -28,111 +29,95 @@ public class HttpServerService extends Service {
     private DlnaServer dlnaServer;
     private LocalSendServer lsServer;
     private LocalSendDiscovery lsDiscovery;
-    
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
+    private Handler renewHandler;
+    private Runnable renewRunnable;
 
-    @Override
-    public void onCreate() {
+    @Override public void onCreate() {
         super.onCreate();
         goForeground();
         AuthManager.init(this);
         SettingsManager.init(this);
-        
         startedServices.clear();
         lastError = "";
-        boolean isLowPower = SettingsManager.isLowPowerMode();
-
+        boolean lowPower = SettingsManager.isLowPowerMode();
         try {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AndroidNAS::CpuLock");
-            wakeLock.acquire();
-            
+            wakeLock.acquire(WAKELOCK_TIMEOUT);
             WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            if (isLowPower) wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "AndroidNAS::WifiLockLowPower");
-            else wifiLock = wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "AndroidNAS::WifiLockHighPerf");
+            wifiLock = lowPower ? wm.createWifiLock(WifiManager.WIFI_MODE_FULL, "AndroidNAS::WifiLow")
+                                : wm.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "AndroidNAS::WifiHigh");
             wifiLock.acquire();
-            
-            if (isLowPower) Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
-            
+            renewHandler = new Handler();
+            renewRunnable = new Runnable() {
+                @Override public void run() {
+                    try { if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire(WAKELOCK_TIMEOUT); } catch (Exception ignored) {}
+                    if (renewHandler != null) renewHandler.postDelayed(this, 5 * 60 * 60 * 1000L);
+                }
+            };
+            renewHandler.postDelayed(renewRunnable, 5 * 60 * 60 * 1000L);
         } catch (Exception e) { e.printStackTrace(); }
 
-        String rootDir = Environment.getExternalStorageDirectory().getAbsolutePath();
-
-        try {
-            serverHttp = new NasHttpServer(SettingsManager.getWebPort());
-            serverHttp.start();
-            startedServices.add("Web");
-        } catch (Exception e) { lastError += "Web启动失败: " + e.getMessage() + "\n"; }
-        
-        if (SettingsManager.isWebDavEnabled()) {
-            try {
-                webDavHttp = new WebDavServer(rootDir);
-                webDavHttp.startServer(SettingsManager.getWebDavPort());
-                startedServices.add("WebDAV");
-            } catch (Exception e) { lastError += "WebDAV启动失败: " + e.getMessage() + "\n"; }
-        }
-
-        if (SettingsManager.isFtpEnabled()) {
-            try {
-                ftpServer = new FtpServer(SettingsManager.getFtpPort());
-                ftpServer.start();
-                startedServices.add("FTP");
-            } catch (Exception e) { lastError += "FTP启动失败: " + e.getMessage() + "\n"; }
-        }
-
-        if (SettingsManager.isDlnaEnabled()) {
-            try {
-                dlnaServer = new DlnaServer(this);
-                dlnaServer.start();
-                startedServices.add("DLNA");
-            } catch (Exception e) { lastError += "DLNA启动失败: " + e.getMessage() + "\n"; }
-        }
-
-        if (isLowPower) {
-            FreeTunnelManager.stop();
-            SshTunnelManager.stop();
-        } else if (SettingsManager.isLocalSendEnabled()) {
-            try {
-                lsServer = new LocalSendServer(53317);
-                lsServer.start();
-                lsDiscovery = new LocalSendDiscovery(this);
-                lsDiscovery.start();
-                startedServices.add("LocalSend");
-            } catch (Exception e) { lastError += "LocalSend启动失败: " + e.getMessage() + "\n"; }
-        }
-        
-        running = true;
+        String root = Environment.getExternalStorageDirectory().getAbsolutePath();
+        boolean ok = true;
+        try { serverHttp = new NasHttpServer(SettingsManager.getWebPort()); serverHttp.start(); startedServices.add("Web"); }
+        catch (Exception e) { lastError += "Web: " + e.getMessage() + "\n"; ok = false; }
+        if (SettingsManager.isWebDavEnabled()) try {
+            webDavHttp = new WebDavServer(root); webDavHttp.startServer(SettingsManager.getWebDavPort()); startedServices.add("WebDAV");
+        } catch (Exception e) { lastError += "WebDAV: " + e.getMessage() + "\n"; ok = false; }
+        if (SettingsManager.isFtpEnabled()) try {
+            ftpServer = new FtpServer(SettingsManager.getFtpPort(), this); ftpServer.start(); startedServices.add("FTP");
+        } catch (Exception e) { lastError += "FTP: " + e.getMessage() + "\n"; ok = false; }
+        if (SettingsManager.isDlnaEnabled()) try {
+            dlnaServer = new DlnaServer(this); dlnaServer.start(); startedServices.add("DLNA");
+        } catch (Exception e) { lastError += "DLNA: " + e.getMessage() + "\n"; ok = false; }
+        if (lowPower) { FreeTunnelManager.stop(); SshTunnelManager.stop(); }
+        else if (SettingsManager.isLocalSendEnabled()) try {
+            lsServer = new LocalSendServer(53317); lsServer.start();
+            lsDiscovery = new LocalSendDiscovery(this); lsDiscovery.start();
+            startedServices.add("LocalSend");
+        } catch (Exception e) { lastError += "LocalSend: " + e.getMessage() + "\n"; ok = false; }
+        running = ok || startedServices.contains("Web");
     }
 
     private void goForeground() {
         try {
-            PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_UPDATE_CURRENT);
+            PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class),
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             Notification n;
             if (Build.VERSION.SDK_INT >= 26) {
-                android.app.NotificationChannel channel = new android.app.NotificationChannel("nas_service_channel", "NAS 后台服务", android.app.NotificationManager.IMPORTANCE_LOW);
+                android.app.NotificationChannel ch = new android.app.NotificationChannel(
+                        "nas_service_channel", "NAS 后台服务", android.app.NotificationManager.IMPORTANCE_LOW);
                 android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-                if (nm != null) nm.createNotificationChannel(channel);
-                n = new Notification.Builder(this, "nas_service_channel").setContentTitle("Android NAS").setContentText("文件服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(pi).setOngoing(true).build();
+                if (nm != null) nm.createNotificationChannel(ch);
+                n = new Notification.Builder(this, "nas_service_channel").setContentTitle("Android NAS")
+                        .setContentText("文件服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done)
+                        .setContentIntent(pi).setOngoing(true).build();
             } else if (Build.VERSION.SDK_INT >= 16) {
-                n = new Notification.Builder(this).setContentTitle("Android NAS").setContentText("文件服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(pi).setOngoing(true).build();
+                n = new Notification.Builder(this).setContentTitle("Android NAS")
+                        .setContentText("文件服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done)
+                        .setContentIntent(pi).setOngoing(true).build();
             } else {
-                n = new Notification(android.R.drawable.stat_sys_download_done, "Android NAS 运行中", System.currentTimeMillis());
+                n = new Notification(android.R.drawable.stat_sys_download_done, "Android NAS", System.currentTimeMillis());
                 try {
-                    java.lang.reflect.Method method = n.getClass().getMethod("setLatestEventInfo", android.content.Context.class, CharSequence.class, CharSequence.class, PendingIntent.class);
-                    method.invoke(n, this, "Android NAS", "文件服务运行中", pi);
-                } catch (Exception e) { e.printStackTrace(); }
+                    java.lang.reflect.Method m = n.getClass().getMethod("setLatestEventInfo",
+                        android.content.Context.class, CharSequence.class, CharSequence.class, PendingIntent.class);
+                    m.invoke(n, this, "Android NAS", "运行中", pi);
+                } catch (Exception ignored) {}
                 n.flags |= Notification.FLAG_ONGOING_EVENT;
             }
             startForeground(NOTIFICATION_ID, n);
         } catch (Throwable t) { t.printStackTrace(); }
     }
 
-    @Override
-    public int onStartCommand(Intent intent, int flags, int startId) { return START_STICKY; }
+    @Override public int onStartCommand(Intent i, int f, int s) { return START_STICKY; }
 
-    @Override
-    public void onDestroy() {
+    @Override public void onDestroy() {
+        try { FreeTunnelManager.stop(); } catch (Exception ignored) {}
+        try { SshTunnelManager.stop(); } catch (Exception ignored) {}
+        if (renewHandler != null) { renewHandler.removeCallbacks(renewRunnable); renewHandler = null; }
         if (serverHttp != null) serverHttp.stop();
         if (webDavHttp != null) webDavHttp.stopServer();
         if (ftpServer != null) ftpServer.stopServer();
@@ -146,6 +131,5 @@ public class HttpServerService extends Service {
         super.onDestroy();
     }
 
-    @Override
-    public IBinder onBind(Intent intent) { return null; }
+    @Override public IBinder onBind(Intent i) { return null; }
 }

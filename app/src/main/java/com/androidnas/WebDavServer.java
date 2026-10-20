@@ -1,8 +1,7 @@
 package com.androidnas;
 
 import java.io.*;
-import java.net.ServerSocket;
-import java.net.Socket;
+import java.net.*;
 import java.util.*;
 import java.text.SimpleDateFormat;
 import java.util.Locale;
@@ -15,7 +14,9 @@ public class WebDavServer extends Thread {
     public WebDavServer(String rootDir) { this.rootDir = rootDir; }
 
     public void startServer(int port) throws IOException {
-        serverSocket = new ServerSocket(port);
+        serverSocket = new ServerSocket();
+        serverSocket.setReuseAddress(true);
+        serverSocket.bind(new InetSocketAddress(port));
         this.start();
     }
 
@@ -24,120 +25,127 @@ public class WebDavServer extends Thread {
         try { if (serverSocket != null) serverSocket.close(); } catch (IOException e) {}
     }
 
-    @Override
-    public void run() {
+    @Override public void run() {
         while (running) {
             try {
-                Socket socket = serverSocket.accept();
-                new Thread(new ClientHandler(socket)).start();
+                Socket s = serverSocket.accept();
+                new Thread(new ClientHandler(s)).start();
             } catch (IOException e) { if (running) e.printStackTrace(); }
         }
     }
 
     private class ClientHandler implements Runnable {
         private Socket socket;
-        public ClientHandler(Socket socket) { this.socket = socket; }
+        public ClientHandler(Socket s) { socket = s; }
 
-        @Override
-        public void run() {
+        @Override public void run() {
             InputStream in = null;
             OutputStream out = null;
             try {
                 in = new BufferedInputStream(socket.getInputStream());
                 out = socket.getOutputStream();
-
-                String requestLine = readLine(in);
-                if (requestLine == null || requestLine.isEmpty()) return;
-                String[] parts = requestLine.split(" ");
+                String line = readLine(in);
+                if (line == null || line.isEmpty()) return;
+                String[] parts = line.split(" ");
                 if (parts.length < 2) return;
-
                 String method = parts[0];
                 String uri = parts[1];
                 if (uri.contains("?")) uri = uri.substring(0, uri.indexOf("?"));
-                uri = java.net.URLDecoder.decode(uri, "UTF-8");
+                uri = decUrl(uri);
                 if (!uri.startsWith("/")) uri = "/" + uri;
 
-                Map<String, String> headers = new HashMap<String, String>();
-                String line;
-                int contentLength = 0;
+                Map<String, String> headers = new HashMap<>();
+                long contentLength = 0;
                 while ((line = readLine(in)) != null && !line.isEmpty()) {
                     int idx = line.indexOf(":");
                     if (idx > 0) {
-                        String key = line.substring(0, idx).trim().toLowerCase(Locale.US);
-                        String value = line.substring(idx + 1).trim();
-                        headers.put(key, value);
-                        if (key.equals("content-length")) {
-                            try { contentLength = Integer.parseInt(value); } catch (Exception e) {}
-                        }
+                        String k = line.substring(0, idx).trim().toLowerCase(Locale.US);
+                        String v = line.substring(idx + 1).trim();
+                        headers.put(k, v);
+                        if (k.equals("content-length")) try { contentLength = Long.parseLong(v); } catch (Exception ignored) {}
                     }
                 }
 
                 if (!"OPTIONS".equalsIgnoreCase(method)) {
                     String auth = headers.get("authorization");
                     if (!AuthManager.verify(auth)) {
-                        String resp = "HTTP/1.1 401 Unauthorized\r\n" +
-                                "WWW-Authenticate: Basic realm=\"Android NAS WebDAV\"\r\n" +
-                                "Content-Length: 0\r\n\r\n";
-                        out.write(resp.getBytes("UTF-8"));
+                        out.write("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Android NAS WebDAV\"\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
                         return;
                     }
                 }
 
-                File targetFile = new File(rootDir, uri);
-                if (!targetFile.getCanonicalPath().startsWith(new File(rootDir).getCanonicalPath())) {
-                    sendError(out, "403 Forbidden"); return;
-                }
+                File target = new File(rootDir, uri);
+                String tc = target.getCanonicalPath();
+                String rc = new File(rootDir).getCanonicalPath();
+                if (!tc.equals(rc) && !tc.startsWith(rc + File.separator)) { sendErr(out, "403 Forbidden"); return; }
+
+                String depth = headers.get("depth");
+                if (depth == null) depth = "1";
 
                 if ("OPTIONS".equalsIgnoreCase(method)) {
-                    String resp = "HTTP/1.1 200 OK\r\nDAV: 1, 2\r\nAllow: OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, MKCOL\r\nContent-Length: 0\r\n\r\n";
-                    out.write(resp.getBytes("UTF-8"));
+                    out.write("HTTP/1.1 200 OK\r\nDAV: 1\r\nAllow: OPTIONS,GET,HEAD,PUT,DELETE,PROPFIND,MKCOL\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
                 } else if ("PROPFIND".equalsIgnoreCase(method)) {
-                    if (!targetFile.exists()) { sendError(out, "404 Not Found"); return; }
-                    String xml = buildPropfindXml(targetFile, uri);
-                    byte[] xmlBytes = xml.getBytes("UTF-8");
-                    String resp = "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml; charset=\"utf-8\"\r\nContent-Length: " + xmlBytes.length + "\r\n\r\n";
-                    out.write(resp.getBytes("UTF-8"));
-                    out.write(xmlBytes);
+                    if (!target.exists()) { sendErr(out, "404 Not Found"); return; }
+                    String xml = buildXml(target, uri, "0".equals(depth));
+                    byte[] xb = xml.getBytes("UTF-8");
+                    out.write(("HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml; charset=\"utf-8\"\r\nContent-Length: " + xb.length + "\r\n\r\n").getBytes("UTF-8"));
+                    out.write(xb);
                 } else if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)) {
-                    if (!targetFile.exists() || targetFile.isDirectory()) { sendError(out, "404 Not Found"); return; }
-                    String resp = "HTTP/1.1 200 OK\r\nContent-Length: " + targetFile.length() + "\r\nContent-Type: application/octet-stream\r\n\r\n";
-                    out.write(resp.getBytes("UTF-8"));
+                    if (!target.exists() || target.isDirectory()) { sendErr(out, "404 Not Found"); return; }
+                    out.write(("HTTP/1.1 200 OK\r\nContent-Length: " + target.length() + "\r\nContent-Type: application/octet-stream\r\n\r\n").getBytes("UTF-8"));
                     if (method.equalsIgnoreCase("GET")) {
-                        FileInputStream fis = new FileInputStream(targetFile);
-                        byte[] buf = new byte[8192]; int len;
-                        while ((len = fis.read(buf)) > 0) out.write(buf, 0, len);
-                        fis.close();
+                        try (FileInputStream fis = new FileInputStream(target)) {
+                            byte[] buf = new byte[8192]; int len;
+                            while ((len = fis.read(buf)) > 0) out.write(buf, 0, len);
+                        }
                     }
                 } else if ("PUT".equalsIgnoreCase(method)) {
-                    if (targetFile.isDirectory()) { sendError(out, "409 Conflict"); return; }
-                    if (targetFile.getParentFile() != null) targetFile.getParentFile().mkdirs();
-                    FileOutputStream fos = new FileOutputStream(targetFile);
-                    byte[] buf = new byte[8192]; long totalRead = 0;
-                    while (totalRead < contentLength) {
-                        int toRead = (int) Math.min(buf.length, contentLength - totalRead);
-                        int read = in.read(buf, 0, toRead);
-                        if (read == -1) break;
-                        fos.write(buf, 0, read); totalRead += read;
+                    if (target.isDirectory()) { sendErr(out, "409 Conflict"); return; }
+                    boolean existed = target.exists();
+                    if (target.getParentFile() != null) target.getParentFile().mkdirs();
+                    try (FileOutputStream fos = new FileOutputStream(target)) {
+                        byte[] buf = new byte[8192]; long total = 0;
+                        while (total < contentLength) {
+                            int toRead = (int) Math.min(buf.length, contentLength - total);
+                            int r = in.read(buf, 0, toRead);
+                            if (r == -1) break;
+                            fos.write(buf, 0, r); total += r;
+                        }
                     }
-                    fos.close();
-                    out.write("HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
+                    if (existed) out.write("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
+                    else out.write("HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
                 } else if ("MKCOL".equalsIgnoreCase(method)) {
-                    if (targetFile.exists()) { sendError(out, "405 Method Not Allowed"); return; }
-                    if (targetFile.mkdirs()) out.write("HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
-                    else sendError(out, "403 Forbidden");
+                    if (target.exists()) { sendErr(out, "405 Method Not Allowed"); return; }
+                    if (target.mkdirs()) out.write("HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
+                    else sendErr(out, "403 Forbidden");
                 } else if ("DELETE".equalsIgnoreCase(method)) {
-                    if (deleteRecursive(targetFile)) out.write("HTTP/1.1 204 No Content\r\n\r\n".getBytes("UTF-8"));
-                    else sendError(out, "404 Not Found");
-                } else {
-                    sendError(out, "405 Method Not Allowed");
-                }
-            } catch (Exception e) {
+                    if (deleteRec(target)) out.write("HTTP/1.1 204 No Content\r\n\r\n".getBytes("UTF-8"));
+                    else sendErr(out, "404 Not Found");
+                } else sendErr(out, "405 Method Not Allowed");
+            } catch (Exception ignored) {
             } finally {
-                try { if (out != null) out.flush(); } catch (Exception e) {}
-                try { if (in != null) in.close(); } catch (Exception e) {}
-                try { socket.close(); } catch (Exception e) {}
+                try { if (out != null) out.flush(); } catch (Exception ignored) {}
+                try { if (in != null) in.close(); } catch (Exception ignored) {}
+                try { socket.close(); } catch (Exception ignored) {}
             }
         }
+    }
+
+    private String decUrl(String url) {
+        try {
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < url.length(); i++) {
+                char c = url.charAt(i);
+                if (c == '+') sb.append(' ');
+                else if (c == '%' && i + 2 < url.length()) {
+                    try {
+                        int code = Integer.parseInt(url.substring(i + 1, i + 3), 16);
+                        sb.append((char) code); i += 2;
+                    } catch (Exception e) { sb.append(c); }
+                } else sb.append(c);
+            }
+            return sb.toString();
+        } catch (Exception e) { return url; }
     }
 
     private String readLine(InputStream in) throws IOException {
@@ -149,30 +157,35 @@ public class WebDavServer extends Thread {
         return sb.length() == 0 ? null : sb.toString();
     }
 
-    private void sendError(OutputStream out, String error) throws IOException {
-        out.write(("HTTP/1.1 " + error + "\r\nContent-Length: 0\r\n\r\n").getBytes("UTF-8"));
+    private void sendErr(OutputStream out, String err) throws IOException {
+        out.write(("HTTP/1.1 " + err + "\r\nContent-Length: 0\r\n\r\n").getBytes("UTF-8"));
     }
 
-    private String buildPropfindXml(File file, String uri) {
+    private String xmlEsc(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;");
+    }
+
+    private String buildXml(File file, String uri, boolean d0) {
         StringBuilder sb = new StringBuilder();
         sb.append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<D:multistatus xmlns:D=\"DAV:\">\n");
-        appendResponse(sb, file, uri);
-        if (file.isDirectory()) {
-            File[] children = file.listFiles();
-            if (children != null) for (File child : children) {
-                String childUri = uri.endsWith("/") ? uri + child.getName() : uri + "/" + child.getName();
-                appendResponse(sb, child, childUri);
+        appendResp(sb, file, uri);
+        if (!d0 && file.isDirectory()) {
+            File[] ch = file.listFiles();
+            if (ch != null) for (File c : ch) {
+                String cu = uri.endsWith("/") ? uri + c.getName() : uri + "/" + c.getName();
+                appendResp(sb, c, cu);
             }
         }
         sb.append("</D:multistatus>");
         return sb.toString();
     }
 
-    private void appendResponse(StringBuilder sb, File file, String uri) {
-        sb.append("<D:response>\n<D:href>").append(uri).append("</D:href>\n<D:propstat>\n<D:prop>\n");
-        String displayName = file.getName();
-        if (displayName.isEmpty()) displayName = "SDCard";
-        sb.append("<D:displayname>").append(displayName).append("</D:displayname>\n");
+    private void appendResp(StringBuilder sb, File file, String uri) {
+        sb.append("<D:response>\n<D:href>").append(xmlEsc(uri)).append("</D:href>\n<D:propstat>\n<D:prop>\n");
+        String dn = file.getName();
+        if (dn.isEmpty()) dn = "SDCard";
+        sb.append("<D:displayname>").append(xmlEsc(dn)).append("</D:displayname>\n");
         if (!file.isDirectory()) sb.append("<D:getcontentlength>").append(file.length()).append("</D:getcontentlength>\n");
         SimpleDateFormat sdf = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
         sb.append("<D:getlastmodified>").append(sdf.format(new Date(file.lastModified()))).append("</D:getlastmodified>\n");
@@ -181,11 +194,11 @@ public class WebDavServer extends Thread {
         sb.append("</D:prop>\n<D:status>HTTP/1.1 200 OK</D:status>\n</D:propstat>\n</D:response>\n");
     }
 
-    private boolean deleteRecursive(File f) {
+    private boolean deleteRec(File f) {
         if (!f.exists()) return true;
         if (f.isDirectory()) {
-            File[] children = f.listFiles();
-            if (children != null) for (File c : children) if (!deleteRecursive(c)) return false;
+            File[] ch = f.listFiles();
+            if (ch != null) for (File c : ch) if (!deleteRec(c)) return false;
         }
         return f.delete();
     }
