@@ -6,6 +6,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -143,6 +144,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override public boolean onCreateOptionsMenu(Menu menu) {
+        menu.add(0, 5, 0, "相册自动备份");
         menu.add(0, 4, 0, "发送配置到电视");
         menu.add(0, 1, 0, "局域网剪贴板");
         menu.add(0, 2, 0, "设置");
@@ -151,7 +153,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == 4) { sendConfigToTv(); return true; }
+        if (item.getItemId() == 5) { checkAndStartBackup(); return true; }
+        else if (item.getItemId() == 4) { sendConfigToTv(); return true; }
         else if (item.getItemId() == 1) { showClipboardDialog(); return true; }
         else if (item.getItemId() == 2) { startActivity(new Intent(this, SettingsActivity.class)); return true; }
         else if (item.getItemId() == 3) {
@@ -286,5 +289,56 @@ public class MainActivity extends AppCompatActivity {
                 runOnUiThread(() -> Toast.makeText(this, "扫描失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
             }
         }).start();
+    }
+
+    private void checkAndStartBackup() {
+        if (devices.isEmpty()) {
+            Toast.makeText(this, "请先添加一个自家 NAS 设备", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        NasDevice d = devices.get(0);
+        if (d.type != NasDevice.TYPE_ANDROID) {
+            Toast.makeText(this, "仅支持自家 NAS", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String permission = Build.VERSION.SDK_INT >= 33 ? Manifest.permission.READ_MEDIA_IMAGES : Manifest.permission.READ_EXTERNAL_STORAGE;
+        if (ContextCompat.checkSelfPermission(this, permission) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[]{permission}, 100);
+            return;
+        }
+
+        startBackup(d);
+    }
+
+    private void startBackup(NasDevice d) {
+        Toast.makeText(this, "正在扫描相册...", Toast.LENGTH_SHORT).show();
+        BackupManager bm = new BackupManager(this, d.getBaseUrl(), d.username, d.password);
+        bm.startBackup(new BackupManager.BackupCallback() {
+            @Override public void onProgress(int current, int total, String fileName) {
+                if (current % 5 == 0 || current == 1) {
+                    Toast.makeText(MainActivity.this, "正在备份 (" + current + "/" + total + "): " + fileName, Toast.LENGTH_SHORT).show();
+                }
+            }
+            @Override public void onComplete(int uploaded) {
+                if (uploaded == 0) Toast.makeText(MainActivity.this, "相册已是最新，无需备份", Toast.LENGTH_LONG).show();
+                else Toast.makeText(MainActivity.this, "备份完成！本次上传了 " + uploaded + " 张照片", Toast.LENGTH_LONG).show();
+            }
+            @Override public void onError(String msg) {
+                Toast.makeText(MainActivity.this, "备份失败: " + msg, Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 100) {
+            if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                checkAndStartBackup();
+            } else {
+                Toast.makeText(this, "需要相册权限才能备份", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 }
