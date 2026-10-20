@@ -232,32 +232,42 @@ public class MainActivity extends Activity {
         status += "ADB 权限：" + (adb ? "✅ 已获取" : "❌ 未获取") + "\n";
         status += "Doze 白名单：" + (doze ? "✅ 已加入" : "❌ 未加入") + "\n\n";
 
-        status += "【方案 A：已 Root】\n点击下方按钮，一键将本应用设为系统最高活跃度，彻底免疫杀后台。\n\n";
-        status += "【方案 B：无 Root (借助电脑)】\n使用数据线连接电脑，在终端执行以下命令：\n";
-        status += "adb shell dumpsys deviceidle whitelist +com.androidnas\n";
-        status += "(复制上述命令即可实现同等效果)";
+        status += "【终极特权：已 Root】\n点击按钮执行神级保活：\n";
+        status += "1. 写入内核 OOM -1000 免死金牌\n";
+        status += "2. 强制篡改系统活跃度分桶\n";
+        status += "3. 暴力冻结各厂商的省电守护进程（可能略微增加全局耗电）\n\n";
 
         new AlertDialog.Builder(this)
-            .setTitle("高级保活控制台")
+            .setTitle("系统级护法控制台")
             .setMessage(status)
-            .setPositiveButton("一键 Root 白名单", new DialogInterface.OnClickListener() {
+            .setPositiveButton("一键免死注入", new DialogInterface.OnClickListener() {
                 @Override public void onClick(DialogInterface d, int w) {
                     if (AdvancedKeepAliveManager.hasRoot()) {
-                        AdvancedKeepAliveManager.applyRootWhitelist(MainActivity.this);
-                        Toast.makeText(MainActivity.this, "注入成功！请退出重进查看状态", Toast.LENGTH_LONG).show();
+                        AdvancedKeepAliveManager.applyExtremeWhitelist(MainActivity.this);
+                        Toast.makeText(MainActivity.this, "OOM免死+系统服务冻结 执行成功！", Toast.LENGTH_LONG).show();
                     } else {
-                        Toast.makeText(MainActivity.this, "未获取 Root 权限！", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(MainActivity.this, "需要 Root 权限！", Toast.LENGTH_SHORT).show();
                     }
                 }
             })
-            .setNeutralButton("复制 ADB 命令", new DialogInterface.OnClickListener() {
+            .setNeutralButton("生成特权模块", new DialogInterface.OnClickListener() {
                 @Override public void onClick(DialogInterface d, int w) {
-                    android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                    cm.setPrimaryClip(android.content.ClipData.newPlainText("cmd", "adb shell dumpsys deviceidle whitelist +com.androidnas"));
-                    Toast.makeText(MainActivity.this, "命令已复制，快去电脑上执行吧", Toast.LENGTH_SHORT).show();
+                    if (AdvancedKeepAliveManager.hasRoot()) {
+                        AdvancedKeepAliveManager.generateMagiskModule(MainActivity.this);
+                        Toast.makeText(MainActivity.this, "Magisk模块已生成，重启手机后本App将变为系统特权应用！", Toast.LENGTH_LONG).show();
+                    } else {
+                        Toast.makeText(MainActivity.this, "需要 Root 权限！", Toast.LENGTH_SHORT).show();
+                    }
                 }
             })
-            .setNegativeButton("关闭", null)
+            .setNegativeButton("还原系统服务", new DialogInterface.OnClickListener() {
+                @Override public void onClick(DialogInterface d, int w) {
+                    if (AdvancedKeepAliveManager.hasRoot()) {
+                        AdvancedKeepAliveManager.restoreSystemServices();
+                        Toast.makeText(MainActivity.this, "已解除厂商服务的冻结", Toast.LENGTH_SHORT).show();
+                    }
+                }
+            })
             .show();
     }
 
