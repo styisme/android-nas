@@ -39,6 +39,8 @@ public class MainActivity extends Activity {
     private Handler mainHandler = new Handler(Looper.getMainLooper());
     private TvSyncServer syncServer;
 
+    interface OnItemClickListener { void onItemClick(FileItem f); }
+
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         setContentView(com.androidnas.tv.R.layout.activity_main);
@@ -281,8 +283,6 @@ public class MainActivity extends Activity {
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.VH> {
         private List<FileItem> data; private boolean isSearch;
         private OnItemClickListener listener;
-
-        interface OnItemClickListener { void onItemClick(FileItem f); }
 
         FileAdapter(List<FileItem> d, boolean s) { data = d; isSearch = s; }
         void setOnItemClickListener(OnItemClickListener l) { this.listener = l; }
