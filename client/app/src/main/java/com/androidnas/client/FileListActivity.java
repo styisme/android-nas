@@ -151,6 +151,7 @@ public class FileListActivity extends AppCompatActivity {
         menu.clear();
         if (isMultiSelect) {
             menu.add(0, 1, 0, "删除").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+            menu.add(0, 7, 0, "下载").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
             menu.add(0, 2, 0, "全选").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
             menu.add(0, 3, 0, "取消").setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
         } else {
@@ -164,6 +165,7 @@ public class FileListActivity extends AppCompatActivity {
     @Override public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         int id = item.getItemId();
         if (id == 1) { deleteSelected(); return true; }
+        if (id == 7) { batchDownload(); return true; }
         if (id == 2) { selectAll(); return true; }
         if (id == 3) { exitMultiSelect(); return true; }
         if (id == 4) { showMkdirDialog(); return true; }
@@ -395,6 +397,16 @@ public class FileListActivity extends AppCompatActivity {
         return result;
     }
 
+    private void batchDownload() {
+        Toast.makeText(this, "开始批量下载...", Toast.LENGTH_SHORT).show();
+        for (FileItem f : files) {
+            if (selectedPaths.contains(f.path) && !f.isDir) {
+                downloadFile(f); // 直接复用已有的单个下载逻辑
+            }
+        }
+        exitMultiSelect();
+    }
+
     private void deleteSelected() {
         if (type != NasDevice.TYPE_ANDROID) { Toast.makeText(this, "外部协议暂不支持批量删除", Toast.LENGTH_SHORT).show(); exitMultiSelect(); return; }
         new MaterialAlertDialogBuilder(this).setTitle("确认删除").setMessage("确定要删除选中的 " + selectedPaths.size() + " 个文件吗？")
@@ -462,8 +474,12 @@ public class FileListActivity extends AppCompatActivity {
         boolean isText = ext.matches("txt|md|json|java|html|xml|js|css|py|log|ini");
 
         java.util.List<String> list = new java.util.ArrayList<>();
-        if (isMedia) list.add("预览/播放");
-        else if (isText) list.add("修改/编辑");
+        if (isMedia) {
+            list.add("预览/播放");
+            list.add("投屏到电视");
+        } else if (isText) {
+            list.add("修改/编辑");
+        }
         if (ext.equals("zip")) list.add("解压");
         
         list.add("下载");
@@ -475,6 +491,7 @@ public class FileListActivity extends AppCompatActivity {
         new MaterialAlertDialogBuilder(this).setTitle(f.name).setItems(actions, (dlg, w) -> {
             String a = actions[w];
             if (a.equals("预览/播放")) previewFile(f, ext);
+            else if (a.equals("投屏到电视")) castToTv(f);
             else if (a.equals("解压")) unzipFile(f);
             else if (a.equals("修改/编辑")) editFile(f);
             else if (a.equals("下载")) downloadFile(f);
@@ -482,6 +499,20 @@ public class FileListActivity extends AppCompatActivity {
             else if (a.equals("删除")) deleteFile(f);
             else if (a.equals("属性")) showProps(f);
         }).show();
+    }
+
+    private void castToTv(FileItem f) {
+        Toast.makeText(this, "正在寻找电视...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            String tvIp = SyncHelper.discoverTv();
+            if (tvIp == null) {
+                runOnUiThread(() -> Toast.makeText(this, "未找到电视，请确保电视端打开", Toast.LENGTH_SHORT).show());
+                return;
+            }
+            String url = baseUrl + "/api/download?path=" + URLEncoder.encode(f.path, "UTF-8");
+            boolean ok = SyncHelper.playOnTv(tvIp, url);
+            runOnUiThread(() -> Toast.makeText(this, ok ? "已发送投屏指令" : "投屏失败", Toast.LENGTH_SHORT).show());
+        }).start();
     }
 
     private void previewFile(FileItem f, String ext) {

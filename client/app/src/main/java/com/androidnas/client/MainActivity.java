@@ -1,6 +1,9 @@
 package com.androidnas.client;
 
+import android.Manifest;
 import android.content.Context;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
@@ -67,6 +70,17 @@ public class MainActivity extends AppCompatActivity {
         });
         loadDevices();
         fab.setOnClickListener(v -> showAddDeviceDialog());
+        
+        // 动态添加右上角的扫描按钮
+        MaterialToolbar toolbar = findViewById(R.id.toolbar);
+        toolbar.inflateMenu(R.menu.menu_search); // 借用一下已有的菜单或者直接添加
+        toolbar.setOnMenuItemClickListener(item -> {
+            if (item.getItemId() == R.id.action_search) {
+                startLanScan();
+                return true;
+            }
+            return false;
+        });
     }
 
     private void loadDevices() {
@@ -215,5 +229,62 @@ public class MainActivity extends AppCompatActivity {
             VH(View v) { super(v); tvName = v.findViewById(R.id.tvName); tvIcon = v.findViewById(R.id.tvIcon);
                 tvIp = v.findViewById(R.id.tvIp); btnDelete = v.findViewById(R.id.btnDelete); }
         }
+    }
+
+    private void startLanScan() {
+        Toast.makeText(this, "正在扫描局域网...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                android.net.wifi.WifiManager wm = (android.net.wifi.WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                int ipInt = wm.getConnectionInfo().getIpAddress();
+                if (ipInt == 0) {
+                    runOnUiThread(() -> Toast.makeText(this, "请先连接 WiFi", Toast.LENGTH_SHORT).show());
+                    return;
+                }
+                String ipStr = String.format("%d.%d.%d.%d", (ipInt & 0xff), (ipInt >> 8 & 0xff), (ipInt >> 16 & 0xff), (ipInt >> 24 & 0xff));
+                String subnet = ipStr.substring(0, ipStr.lastIndexOf("."));
+                
+                // 并发扫描 1-254
+                java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(30);
+                final boolean[] found = {false};
+                for (int i = 1; i <= 254; i++) {
+                    final String host = subnet + "." + i;
+                    pool.execute(() -> {
+                        try {
+                            java.net.Socket socket = new java.net.Socket();
+                            socket.connect(new java.net.InetSocketAddress(host, 8080), 300);
+                            socket.close();
+                            
+                            // 连通性测试成功，发送 HTTP 请求验证是不是 NAS
+                            String result = SyncHelper.sendConfig(host, "", "", ""); // 借用这个测试
+                            // 简单点，直接用请求测
+                            java.net.URL url = new java.net.URL("http://" + host + ":8080/api/status");
+                            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+                            conn.setConnectTimeout(500);
+                            if (conn.getResponseCode() == 200) {
+                                synchronized (found) {
+                                    if (!found[0]) {
+                                        found[0] = true;
+                                        runOnUiThread(() -> {
+                                            devices.add(new NasDevice("扫描到的设备", host + ":8080", NasDevice.TYPE_ANDROID, "admin", "admin"));
+                                            saveDevices();
+                                            adapter.notifyDataSetChanged();
+                                            Toast.makeText(MainActivity.this, "发现设备: " + host, Toast.LENGTH_LONG).show();
+                                        });
+                                    }
+                                }
+                            }
+                        } catch (Exception ignored) {}
+                    });
+                }
+                pool.shutdown();
+                Thread.sleep(3000);
+                runOnUiThread(() -> {
+                    if (!found[0]) Toast.makeText(this, "未发现局域网 NAS 设备", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(this, "扫描失败: " + e.getMessage(), Toast.LENGTH_SHORT).show());
+            }
+        }).start();
     }
 }
