@@ -34,7 +34,7 @@
         </activity>
 
         <service android:name=".HttpServerService" android:exported="false" />
-        <service android:name=".RemoteService" android:process=":remote" android:exported="false" />
+        
 
         <receiver android:name=".BootReceiver" android:enabled="true" android:exported="true">
             <intent-filter>

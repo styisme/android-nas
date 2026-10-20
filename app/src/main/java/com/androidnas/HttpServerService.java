@@ -45,6 +45,7 @@ public class HttpServerService extends Service {
         goForeground();
         AuthManager.init(this);
         SettingsManager.init(this);
+        running = false; // 强制重置状态
         startedServices.clear();
         lastError = "";
         boolean lowPower = SettingsManager.isLowPowerMode();
@@ -123,26 +124,6 @@ public class HttpServerService extends Service {
         } catch (Exception ignored) {}
     }
 
-
-    // 双进程守护：绑定远程进程
-    private void bindRemoteService() {
-        try {
-            Intent intent = new Intent(this, RemoteService.class);
-            bindService(intent, new ServiceConnection() {
-                @Override public void onServiceConnected(ComponentName name, IBinder service) {}
-                @Override public void onServiceDisconnected(ComponentName name) {
-                    // 远程进程被杀了，立刻尝试重新绑定并拉起
-                    bindRemoteService();
-        try {
-            android.content.IntentFilter filter = new android.content.IntentFilter();
-            filter.addAction(android.content.Intent.ACTION_SCREEN_OFF);
-            filter.addAction(android.content.Intent.ACTION_SCREEN_ON);
-            registerReceiver(screenReceiver, filter);
-        } catch (Exception ignored) {}
-                }
-            }, Context.BIND_AUTO_CREATE);
-        } catch (Exception ignored) {}
-    }
 
 
     private android.content.BroadcastReceiver screenReceiver = new android.content.BroadcastReceiver() {

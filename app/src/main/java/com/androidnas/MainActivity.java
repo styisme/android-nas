@@ -81,9 +81,18 @@ public class MainActivity extends Activity {
         });
         toggleBtn.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) {
-                if (HttpServerService.isRunning()) stopService(new Intent(MainActivity.this, HttpServerService.class));
-                else startService(new Intent(MainActivity.this, HttpServerService.class));
-                updateServiceStatus();
+                if (HttpServerService.isRunning()) {
+                    // 停止服务
+                    stopService(new Intent(MainActivity.this, HttpServerService.class));
+                    Toast.makeText(MainActivity.this, "正在停止...", Toast.LENGTH_SHORT).show();
+                    // 延迟刷新状态，给底层 Socket 释放端口的时间
+                    new Handler().postDelayed(() -> updateServiceStatus(), 1000);
+                } else {
+                    // 启动服务
+                    startService(new Intent(MainActivity.this, HttpServerService.class));
+                    Toast.makeText(MainActivity.this, "正在启动...", Toast.LENGTH_SHORT).show();
+                    new Handler().postDelayed(() -> updateServiceStatus(), 500);
+                }
             }
         });
         findViewById(R.id.upBtn).setOnClickListener(new View.OnClickListener() {
@@ -390,11 +399,13 @@ public class MainActivity extends Activity {
 
                     if (HttpServerService.isRunning()) {
                         stopService(new Intent(MainActivity.this, HttpServerService.class));
+                        Toast.makeText(MainActivity.this, "正在重启服务...", Toast.LENGTH_SHORT).show();
                         new Handler().postDelayed(new Runnable() {
                             @Override public void run() {
                                 startService(new Intent(MainActivity.this, HttpServerService.class));
+                                new Handler().postDelayed(() -> updateServiceStatus(), 500);
                             }
-                        }, 500);
+                        }, 1000); // 延迟 1 秒等旧端口释放
                     }
                     updateServiceStatus();
                 }
@@ -488,6 +499,7 @@ public class MainActivity extends Activity {
         boolean running = HttpServerService.isRunning();
         statusView.setText(running ? "服务状态：运行中" : "服务状态：已停止");
         toggleBtn.setText(running ? "停止服务" : "启动服务");
+        toggleBtn.setEnabled(running ? true : true); // 确保按钮永远可点
         String ip = getIpAddress();
         String text = "核心访问: http://" + ip + ":" + SettingsManager.getWebPort();
         if (SettingsManager.isLowPowerMode()) text += "\n❄️ 极寒模式运行中";
