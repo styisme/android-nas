@@ -239,19 +239,33 @@ public class NasHttpServer extends NanoHTTPD {
     }
 
     private Response handlePut(IHTTPSession session, int role) throws Exception {
-        if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
+        if (role != 1) {
+            drainInput(session);
+            return text(Response.Status.FORBIDDEN, "Forbidden");
+        }
         String uri = session.getUri();
+        try { uri = java.net.URLDecoder.decode(uri, "UTF-8"); } catch (Exception ignored) {}
+        
         File f = safeFile(uri);
-        if (f == null) return text(Response.Status.FORBIDDEN, "Path invalid");
+        if (f == null) {
+            drainInput(session);
+            return text(Response.Status.FORBIDDEN, "Path invalid");
+        }
         if (f.getParentFile() != null && !f.getParentFile().exists()) {
             f.getParentFile().mkdirs();
         }
         long contentLength = 0;
         try { contentLength = Long.parseLong(session.getHeaders().get("content-length")); } catch (Exception ignored) {}
-        if (contentLength <= 0) return text(Response.Status.BAD_REQUEST, "Content-Length required");
+        if (contentLength <= 0) {
+            drainInput(session);
+            return text(Response.Status.BAD_REQUEST, "Content-Length required");
+        }
 
-        try (java.io.FileOutputStream fos = new java.io.FileOutputStream(f);
-             InputStream is = session.getInputStream()) {
+        InputStream is = null;
+        java.io.FileOutputStream fos = null;
+        try {
+            is = session.getInputStream();
+            fos = new java.io.FileOutputStream(f);
             byte[] buf = new byte[8192];
             int len;
             long total = 0;
@@ -259,8 +273,22 @@ public class NasHttpServer extends NanoHTTPD {
                 fos.write(buf, 0, len);
                 total += len;
             }
+        } catch (Exception e) {
+            // 核心修复：如果发生 IOException（如权限不足），先把客户端发来的数据排空
+            drainInput(session);
+            return text(Response.Status.INTERNAL_ERROR, "Write Error: " + e.getMessage());
+        } finally {
+            if (fos != null) try { fos.close(); } catch (Exception ignored) {}
         }
         return text(Response.Status.OK, "OK");
+    }
+
+    private void drainInput(IHTTPSession session) {
+        try {
+            InputStream is = session.getInputStream();
+            byte[] buf = new byte[4096];
+            while (is.read(buf) > 0) { /* drain */ }
+        } catch (Exception ignored) {}
     }
 
     private Response handleUpload(IHTTPSession session) throws Exception {
