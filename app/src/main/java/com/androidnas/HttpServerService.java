@@ -4,7 +4,10 @@ import android.app.Notification;
 import android.app.AlarmManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.ServiceConnection;
+import android.os.IBinder;
 import android.content.Intent;
 import android.net.wifi.WifiManager;
 import android.os.Build;
@@ -113,6 +116,55 @@ public class HttpServerService extends Service {
         } catch (Exception ignored) {}
     }
 
+
+    // 双进程守护：绑定远程进程
+    private void bindRemoteService() {
+        try {
+            Intent intent = new Intent(this, RemoteService.class);
+            bindService(intent, new ServiceConnection() {
+                @Override public void onServiceConnected(ComponentName name, IBinder service) {}
+                @Override public void onServiceDisconnected(ComponentName name) {
+                    // 远程进程被杀了，立刻尝试重新绑定并拉起
+                    bindRemoteService();
+        try {
+            android.content.IntentFilter filter = new android.content.IntentFilter();
+            filter.addAction(android.content.Intent.ACTION_SCREEN_OFF);
+            filter.addAction(android.content.Intent.ACTION_SCREEN_ON);
+            registerReceiver(screenReceiver, filter);
+        } catch (Exception ignored) {}
+                }
+            }, Context.BIND_AUTO_CREATE);
+        } catch (Exception ignored) {}
+    }
+
+
+    private android.content.BroadcastReceiver screenReceiver = new android.content.BroadcastReceiver() {
+        @Override
+        public void onReceive(android.content.Context context, android.content.Intent intent) {
+            if (intent.getAction().equals(android.content.Intent.ACTION_SCREEN_OFF)) {
+                try {
+                    Intent activityIntent = new Intent(context, OnePixelActivity.class);
+                    activityIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(activityIntent);
+                } catch (Exception ignored) {}
+            } else if (intent.getAction().equals(android.content.Intent.ACTION_SCREEN_ON)) {
+                // 屏幕亮起时关闭 OnePixelActivity
+                try {
+                    android.app.ActivityManager am = (android.app.ActivityManager) context.getSystemService(Context.ACTIVITY_SERVICE);
+                    if (am != null) {
+                        for (android.app.ActivityManager.RunningTaskInfo task : am.getRunningTasks(10)) {
+                            if (task.topActivity != null && task.topActivity.getClassName().contains("OnePixelActivity")) {
+                                // 发送一个自定义广播让 Activity 结束
+                                Intent finishIntent = new Intent("finish_one_pixel");
+                                context.sendBroadcast(finishIntent);
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+    };
+
     private void goForeground() {
         try {
             PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class),
@@ -147,6 +199,7 @@ public class HttpServerService extends Service {
 
     @Override public void onDestroy() {
         if (silentPlayer != null) { silentPlayer.stopPlayer(); silentPlayer = null; }
+        try { unregisterReceiver(screenReceiver); } catch (Exception ignored) {}
         try { FreeTunnelManager.stop(); } catch (Exception ignored) {}
         try { SshTunnelManager.stop(); } catch (Exception ignored) {}
         if (renewHandler != null) { renewHandler.removeCallbacks(renewRunnable); renewHandler = null; }
