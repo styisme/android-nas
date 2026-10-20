@@ -1,0 +1,21 @@
+name: NASClient
+options:
+  bundleIdPrefix: com.androidnas
+  deploymentTarget:
+    iOS: 15.0
+    macOS: 12.0
+  createIntermediateGroups: true
+
+targets:
+  NASClient:
+    type: application
+    platform: [iOS, macOS]
+    sources: 
+      - path: NASClient
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.androidnas.apple
+        INFOPLIST_FILE: NASClient/Info.plist
+        MARKETING_VERSION: 3.3.0
+        CURRENT_PROJECT_VERSION: 3300
+        GENERATE_INFOPLIST_FILE: YES

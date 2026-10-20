@@ -1,0 +1,48 @@
+name: Build Apple Client
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'apple/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-13
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode Project
+        run: |
+          cd apple
+          xcodegen generate
+
+      - name: Build iOS (Unsigned)
+        run: |
+          cd apple
+          xcodebuild -project NASClient.xcodeproj -scheme NASClient -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+
+      - name: Package iOS IPA (Unsigned)
+        run: |
+          cd apple
+          mkdir -p Payload
+          # 从默认的 DerivedData 目录找到 .app
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "NASClient.app" -path "*Release-iphoneos*" | head -n 1)
+          if [ -n "$APP_PATH" ]; then
+            cp -r "$APP_PATH" Payload/
+            zip -r NASClient-unsigned.ipa Payload
+          else
+            echo "未找到编译产物"
+            exit 1
+          fi
+
+      - name: Upload iOS IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-ipa-unsigned
+          path: apple/NASClient-unsigned.ipa
