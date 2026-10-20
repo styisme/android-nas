@@ -25,48 +25,50 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # 1. 使用华为专属 NPM 源安装 hvigor
       - name: Install ohpm and hvigor
         run: |
-          # 配置 @ohos 命名空间的专属源，这是华为官方发包的地方
           npm config set @ohos:registry https://repo.harmonyos.com/npm/
           npm config set registry https://registry.npmmirror.com
-          
           echo "正在从华为源安装 hvigor..."
           npm install -g @ohos/hvigor @ohos/hvigor-ohos-plugin
           
       - name: Install aria2
         run: sudo apt-get update && sudo apt-get install -y aria2
 
-      # 2. 下载 SDK
       - name: Setup OpenHarmony SDK
         run: |
           echo "正在使用 aria2 多线程下载 OpenHarmony SDK..."
-          # 增加重试次数，并开启分片下载
           aria2c -x 16 -s 16 -k 1M --timeout=120 --retry-wait=10 -m 10 \
             -o ohos-sdk.tar.gz \
             https://repo.huaweicloud.com/openharmony/os/4.1-Release/ohos-sdk-windows_linux-public.tar.gz
           
           echo "下载完成，正在解压..."
-          mkdir -p ohos-sdk
-          tar -zxvf ohos-sdk.tar.gz -C ohos-sdk
+          # 不要提前 mkdir，tar 包里自带了 ohos-sdk 顶层目录
+          tar -zxvf ohos-sdk.tar.gz
           
-          # 解压 linux 平台工具链
+          # 现在的路径是 ohos-sdk/linux
           cd ohos-sdk/linux
+          
+          # 解压所有需要的组件
           unzip -q ets-linux-x64-4.1.7.5-Release.zip
+          unzip -q js-linux-x64-4.1.7.5-Release.zip
           unzip -q native-linux-x64-4.1.7.5-Release.zip
           unzip -q toolchains-linux-x64-4.1.7.5-Release.zip
           
-          # 配置环境变量
-          echo "DEVECO_SDK_HOME=$GITHUB_WORKSPACE/ohos-sdk" >> $GITHUB_ENV
+          # 配置环境变量，指向 linux 这一级目录
+          echo "DEVECO_SDK_HOME=$GITHUB_WORKSPACE/ohos-sdk/linux" >> $GITHUB_ENV
+          echo "OHOS_BASE_SDK_HOME=$GITHUB_WORKSPACE/ohos-sdk/linux" >> $GITHUB_ENV
           echo "PATH=$GITHUB_WORKSPACE/ohos-sdk/linux/toolchains:$PATH" >> $GITHUB_ENV
-          echo "SDK 配置完成"
+          
+          # 验证环境变量
+          echo "SDK 路径配置为: $DEVECO_SDK_HOME"
+          ls $DEVECO_SDK_HOME
 
       - name: Build HAP
         run: |
           cd harmony
           echo "开始执行 hvigor 编译..."
-          # 尝试使用安装好的 hvigor 进行编译
+          # 使用全局安装的 hvigor 进行编译
           hvigor --mode module -p product=default -p buildMode=debug assembleHap || true
           
       - name: Find and Package HAP
