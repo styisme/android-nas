@@ -6,7 +6,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.*;
+import android.widget.TextView;
+import android.widget.Toast;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPFile;
@@ -21,7 +24,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class FileListActivity extends Activity {
-    private ListView listView;
+    private RecyclerView recyclerView;
     private TextView tvTitle;
     private List<FileItem> files = new ArrayList<>();
     private FileAdapter adapter;
@@ -33,32 +36,33 @@ public class FileListActivity extends Activity {
         super.onCreate(b);
         device = (WatchDevice) getIntent().getSerializableExtra("device");
         if (device == null) { finish(); return; }
+        
         if (device.type != WatchDevice.TYPE_FTP) baseUrl = "http://" + device.ip + ":" + device.port;
         authHeader = "Basic " + android.util.Base64.encodeToString((device.user + ":" + device.pass).getBytes(), android.util.Base64.NO_WRAP);
-        setContentView(com.androidnas.watch.R.layout.activity_main);
-        listView = findViewById(com.androidnas.watch.R.id.deviceListView);
+        
+        setContentView(com.androidnas.watch.R.layout.activity_file_list);
+        recyclerView = findViewById(com.androidnas.watch.R.id.recyclerView);
         tvTitle = findViewById(com.androidnas.watch.R.id.tvTitle);
-        findViewById(com.androidnas.watch.R.id.btnAddDevice).setVisibility(View.GONE);
-        adapter = new FileAdapter(); listView.setAdapter(adapter);
-        listView.setOnItemClickListener((p, v, pos, id) -> {
-            FileItem f = files.get(pos);
-            if (f.isDir) { if (currentPath.endsWith("/")) currentPath += f.name; else currentPath += "/" + f.name; loadFiles(); }
-            else sendToTv(f);
-        });
-        listView.setOnItemLongClickListener((p, v, pos, id) -> {
-            if (!currentPath.equals("/")) {
-                String[] parts = currentPath.split("/");
-                StringBuilder sb = new StringBuilder();
-                for (int i = 1; i < parts.length - 1; i++) sb.append("/").append(parts[i]);
-                currentPath = sb.length() == 0 ? "/" : sb.toString(); loadFiles();
+        
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        adapter = new FileAdapter();
+        recyclerView.setAdapter(adapter);
+        
+        adapter.setOnItemClickListener(f -> {
+            if (f.isDir) {
+                if (currentPath.endsWith("/")) currentPath += f.name;
+                else currentPath += "/" + f.name;
+                loadFiles();
+            } else {
+                sendToTv(f);
             }
-            return true;
         });
+        
         loadFiles();
     }
 
     private void loadFiles() {
-        files.clear(); tvTitle.setText("路径: " + currentPath); adapter.notifyDataSetChanged();
+        files.clear(); tvTitle.setText(currentPath); adapter.notifyDataSetChanged();
         new Thread(() -> {
             try {
                 if (device.type == WatchDevice.TYPE_ANDROID) loadAndroid();
@@ -87,7 +91,6 @@ public class FileListActivity extends Activity {
         }
     }
 
-    // #15: HttpURLConnection 不支持自定义 method（PROPFIND），改用裸 Socket 手写 HTTP
     private void loadWebDav() throws Exception {
         String urlStr = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/");
         URL url = new URL(urlStr);
@@ -172,16 +175,41 @@ public class FileListActivity extends Activity {
         FileItem(String n, boolean d) { name = n; isDir = d; }
     }
 
-    private class FileAdapter extends BaseAdapter {
-        @Override public int getCount() { return files.size(); }
-        @Override public Object getItem(int p) { return files.get(p); }
-        @Override public long getItemId(int p) { return p; }
-        @Override public View getView(int pos, View cv, ViewGroup parent) {
-            TextView tv = new TextView(FileListActivity.this);
-            tv.setPadding(24, 24, 24, 24); tv.setTextSize(18); tv.setTextColor(0xFFE6E0E9);
+    private class FileAdapter extends RecyclerView.Adapter<FileAdapter.VH> {
+        private OnItemClick clickListener;
+        interface OnItemClick { void onClick(FileItem f); }
+        void setOnItemClickListener(OnItemClick l) { clickListener = l; }
+
+        @Override public int getItemCount() { return files.size(); }
+
+        @Override public VH onCreateViewHolder(ViewGroup parent, int viewType) {
+            return new VH(getLayoutInflater().inflate(com.androidnas.watch.R.layout.item_watch_file, parent, false));
+        }
+
+        @Override public void onBindViewHolder(VH h, int pos) {
             FileItem f = files.get(pos);
-            tv.setText((f.isDir ? "📁 " : "🎬 ") + f.name);
-            return tv;
+            h.tvName.setText(f.name);
+            h.tvIcon.setText(f.isDir ? "📁" : "🎬");
+
+            h.itemView.setOnClickListener(v -> { if (clickListener != null) clickListener.onClick(f); });
+
+            h.itemView.setOnTouchListener((v, event) -> {
+                if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                    v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).start();
+                } else if (event.getAction() == android.view.MotionEvent.ACTION_UP || event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+                    v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start();
+                }
+                return false;
+            });
+        }
+
+        class VH extends RecyclerView.ViewHolder {
+            TextView tvName, tvIcon;
+            VH(View v) { 
+                super(v); 
+                tvName = v.findViewById(com.androidnas.watch.R.id.tvName); 
+                tvIcon = v.findViewById(com.androidnas.watch.R.id.tvIcon); 
+            }
         }
     }
 }

@@ -12,40 +12,61 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.*;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 
 public class MainActivity extends Activity {
-    private ListView deviceListView;
+    private RecyclerView recyclerView;
     private List<WatchDevice> devices = new ArrayList<>();
     private DeviceAdapter adapter;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
         setContentView(com.androidnas.watch.R.layout.activity_main);
-        LinearLayout root = findViewById(com.androidnas.watch.R.id.rootLayout);
-        // #23: isScreenRound 是 API 23+，minSdk 21 老手表上会 NoSuchMethodError
+        
+        recyclerView = findViewById(com.androidnas.watch.R.id.recyclerView);
+        ImageButton btnAdd = findViewById(com.androidnas.watch.R.id.btnAddDevice);
+        
+        // 圆盘屏幕防遮挡边距微调
         boolean round = false;
         if (Build.VERSION.SDK_INT >= 23) {
             try { round = getResources().getConfiguration().isScreenRound(); } catch (Throwable ignored) {}
         }
-        if (round) root.setPadding(40, 40, 40, 40); else root.setPadding(16, 16, 16, 16);
-        deviceListView = findViewById(com.androidnas.watch.R.id.deviceListView);
-        Button btnAdd = findViewById(com.androidnas.watch.R.id.btnAddDevice);
-        adapter = new DeviceAdapter(); deviceListView.setAdapter(adapter);
+        if (round) {
+            recyclerView.setPadding(20, 20, 20, 40);
+        }
+
+        recyclerView.setLayoutManager(new LinearLayoutManager(this));
+        adapter = new DeviceAdapter();
+        recyclerView.setAdapter(adapter);
+
         loadDevices();
-        deviceListView.setOnItemClickListener((p, v, pos, id) -> {
-            WatchDevice d = devices.get(pos);
+        
+        adapter.setOnItemClickListener(device -> {
             Intent i = new Intent(this, FileListActivity.class);
-            i.putExtra("device", d); startActivity(i);
+            i.putExtra("device", device); 
+            startActivity(i);
         });
-        deviceListView.setOnItemLongClickListener((p, v, pos, id) -> { delDevice(pos); return true; });
-        btnAdd.setOnClickListener(v -> addDevice());
+        
+        adapter.setOnItemLongClickListener(pos -> {
+            new AlertDialog.Builder(this).setTitle("删除设备").setMessage("确定删除 " + devices.get(pos).name + " 吗？")
+                .setPositiveButton("删除", (d, w) -> { devices.remove(pos); saveDevices(); adapter.notifyDataSetChanged(); })
+                .setNegativeButton("取消", null).show();
+            return true;
+        });
+
+        btnAdd.setOnClickListener(v -> showAddDeviceDialog());
     }
 
-    @Override public boolean onCreateOptionsMenu(Menu m) { m.add(0, 1, 0, "设置"); m.add(0, 2, 0, "关于"); return true; }
+    @Override public boolean onCreateOptionsMenu(Menu m) { 
+        m.add(0, 1, 0, "设置"); 
+        m.add(0, 2, 0, "关于"); 
+        return true; 
+    }
 
     @Override public boolean onOptionsItemSelected(MenuItem item) {
         if (item.getItemId() == 1) {
@@ -90,7 +111,7 @@ public class MainActivity extends Activity {
         getSharedPreferences("watch_devices", Context.MODE_PRIVATE).edit().putString("devices", arr.toString()).apply();
     }
 
-    private void addDevice() {
+    private void showAddDeviceDialog() {
         ScrollView sv = new ScrollView(this);
         LinearLayout l = new LinearLayout(this);
         l.setOrientation(LinearLayout.VERTICAL); l.setPadding(32, 16, 32, 16); sv.addView(l);
@@ -105,6 +126,7 @@ public class MainActivity extends Activity {
         RadioButton rbW = new RadioButton(this); rbW.setText("WebDAV"); rbW.setId(View.generateViewId());
         RadioButton rbF = new RadioButton(this); rbF.setText("FTP"); rbF.setId(View.generateViewId());
         rg.addView(rbA); rg.addView(rbW); rg.addView(rbF); l.addView(rg);
+        
         new AlertDialog.Builder(this).setTitle("添加设备").setView(sv)
             .setPositiveButton("添加", (d, w) -> {
                 String name = etName.getText().toString().trim();
@@ -119,33 +141,50 @@ public class MainActivity extends Activity {
                 int type = WatchDevice.TYPE_ANDROID;
                 if (rg.getCheckedRadioButtonId() == rbW.getId()) type = WatchDevice.TYPE_WEBDAV;
                 else if (rg.getCheckedRadioButtonId() == rbF.getId()) type = WatchDevice.TYPE_FTP;
-                devices.add(new WatchDevice(name, ip, port, user, pass, type)); saveDevices(); adapter.notifyDataSetChanged();
+                devices.add(new WatchDevice(name, ip, port, user, pass, type)); 
+                saveDevices(); adapter.notifyDataSetChanged();
             }).setNegativeButton("取消", null).show();
     }
 
-    private void delDevice(final int pos) {
-        new AlertDialog.Builder(this).setTitle("删除设备").setMessage("确定删除 " + devices.get(pos).name + " 吗？")
-            .setPositiveButton("删除", (d, w) -> { devices.remove(pos); saveDevices(); adapter.notifyDataSetChanged(); })
-            .setNegativeButton("取消", null).show();
-    }
+    private class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.VH> {
+        private List<WatchDevice> data = devices;
+        private OnItemClick clickListener;
+        private OnItemLongClick longClickListener;
 
-    private class DeviceAdapter extends BaseAdapter {
-        @Override public int getCount() { return devices.size(); }
-        @Override public Object getItem(int p) { return devices.get(p); }
-        @Override public long getItemId(int p) { return p; }
-        @Override public View getView(int pos, View cv, ViewGroup parent) {
-            LinearLayout l = new LinearLayout(MainActivity.this);
-            l.setOrientation(LinearLayout.VERTICAL); l.setPadding(24, 16, 24, 16);
-            android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
-            bg.setColor(0xFF2B2930); bg.setCornerRadius(32); l.setBackground(bg);
-            TextView tvName = new TextView(MainActivity.this);
-            tvName.setText(devices.get(pos).name); tvName.setTextColor(0xFFD0BCFF); tvName.setTextSize(16);
-            tvName.setGravity(android.view.Gravity.CENTER);
-            TextView tvIp = new TextView(MainActivity.this);
-            tvIp.setText(devices.get(pos).ip); tvIp.setTextColor(0xFFCAC4D0); tvIp.setTextSize(12);
-            tvIp.setGravity(android.view.Gravity.CENTER);
-            l.addView(tvName); l.addView(tvIp);
-            return l;
+        interface OnItemClick { void onClick(WatchDevice d); }
+        interface OnItemLongClick { void onLongClick(int pos); }
+
+        void setOnItemClickListener(OnItemClick l) { clickListener = l; }
+        void setOnItemLongClickListener(OnItemLongClick l) { longClickListener = l; }
+
+        @Override public int getItemCount() { return data.size(); }
+
+        @Override public VH onCreateViewHolder(ViewGroup parent, int viewType) {
+            return new VH(getLayoutInflater().inflate(com.androidnas.watch.R.layout.item_watch_device, parent, false));
+        }
+
+        @Override public void onBindViewHolder(VH h, int pos) {
+            WatchDevice d = data.get(pos);
+            h.tvName.setText(d.name);
+            h.tvIp.setText(d.ip);
+
+            h.itemView.setOnClickListener(v -> { if (clickListener != null) clickListener.onClick(d); });
+            h.itemView.setOnLongClickListener(v -> { if (longClickListener != null) longClickListener.onLongClick(pos); return true; });
+
+            // 触摸按压缩放
+            h.itemView.setOnTouchListener((v, event) -> {
+                if (event.getAction() == android.view.MotionEvent.ACTION_DOWN) {
+                    v.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).start();
+                } else if (event.getAction() == android.view.MotionEvent.ACTION_UP || event.getAction() == android.view.MotionEvent.ACTION_CANCEL) {
+                    v.animate().scaleX(1.0f).scaleY(1.0f).setDuration(100).start();
+                }
+                return false;
+            });
+        }
+
+        class VH extends RecyclerView.ViewHolder {
+            TextView tvName, tvIp;
+            VH(View v) { super(v); tvName = v.findViewById(com.androidnas.watch.R.id.tvName); tvIp = v.findViewById(com.androidnas.watch.R.id.tvIp); }
         }
     }
 }

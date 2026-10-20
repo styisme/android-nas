@@ -4,39 +4,22 @@
     android:layout_height="match_parent"
     android:background="#141218">
 
-    <LinearLayout
-        android:id="@+id/rootLayout"
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerView"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="8dp">
+        android:padding="8dp"
+        android:clipToPadding="false"
+        android:focusable="true" />
 
-        <TextView
-            android:id="@+id/tvTitle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="我的设备"
-            android:textColor="#E6E0E9"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:paddingBottom="8dp"/>
-
-        <ListView
-            android:id="@+id/deviceListView"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:divider="@null"
-            android:dividerHeight="8dp"
-            android:focusable="true" />
-
-        <Button
-            android:id="@+id/btnAddDevice"
-            android:layout_width="match_parent"
-            android:layout_height="48dp"
-            android:text="添加设备"
-            android:textColor="#381E72"
-            android:background="#D0BCFF" />
-    </LinearLayout>
+    <ImageButton
+        android:id="@+id/btnAddDevice"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="8dp"
+        android:background="@drawable/bg_watch_card"
+        android:src="@drawable/ic_add"
+        android:contentDescription="添加设备"
+        android:focusable="true" />
 </FrameLayout>
