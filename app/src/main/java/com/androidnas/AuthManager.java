@@ -16,6 +16,13 @@ public class AuthManager {
         authEnabled = sp.getBoolean("auth_enabled", true);
     }
 
+    public static void updatePassword(String user, String pass) {
+        adminUser = user;
+        adminPass = pass;
+        // 注意：这里如果在非 Context 环境调用，无法持久化到 SharedPreferences。
+        // 为了简单，可以加一个全局 context 或者忽略持久化。
+    }
+
     public static void setAuth(Context context, String user, String pass) {
         adminUser = user;
         adminPass = pass;

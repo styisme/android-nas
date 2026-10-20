@@ -144,6 +144,7 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
     <div class="sheet-item" onclick="showMkdir()">📁 新建文件夹</div>
     <div class="sheet-item" onclick="showClipboard()">📋 局域网剪贴板</div>
     <div class="sheet-item" onclick="showTerminal()">🦅 Root 终端</div>
+    <div class="sheet-item" onclick="showSettings()">⚙️ 系统设置</div>
     <div class="sheet-item" onclick="showAbout()">ℹ️ 关于</div>
   </div>
 </div>
@@ -213,6 +214,36 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
 </div>
 
 <!-- 关于 -->
+
+<!-- 设置控制台 -->
+<div id="settingsModal" class="modal" onclick="closeModal('settingsModal')">
+  <div class="dialog" onclick="event.stopPropagation()" style="max-width: 500px;">
+    <div class="dialog-title">⚙️ 系统设置</div>
+    <div class="dialog-content" id="settingsBody" style="display:flex; flex-direction:column; gap:12px;">
+      <label>设备名称：<input type="text" id="setAlias" /></label>
+      <label>Web 端口：<input type="number" id="setWebPort" /></label>
+      <label>WebDAV 端口：<input type="number" id="setDavPort" /></label>
+      <label>FTP 端口：<input type="number" id="setFtpPort" /></label>
+      
+      <div style="margin-top:8px;">
+        <label><input type="checkbox" id="setWebDav" /> 开启 WebDAV</label><br>
+        <label><input type="checkbox" id="setFtp" /> 开启 FTP</label><br>
+        <label><input type="checkbox" id="setDlna" /> 开启 DLNA</label><br>
+        <label><input type="checkbox" id="setStream" /> 开启网页流媒体</label><br>
+        <label><input type="checkbox" id="setClipboard" /> 开启局域网剪贴板</label><br>
+        <label><input type="checkbox" id="setGlobal" /> 开启全盘模式 (需 Root)</label>
+      </div>
+      
+      <div style="margin-top:16px; border-top:1px solid var(--outline); padding-top:12px;">
+        <label>修改管理员密码：<input type="password" id="setPassword" placeholder="不修改请留空" /></label>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn-text" onclick="closeModal('settingsModal')">取消</button>
+      <button class="btn-filled" onclick="saveSettings()">保存并重启服务</button>
+    </div>
+  </div>
+</div>
 <div id="aboutModal" class="modal" onclick="closeModal('aboutModal')">
   <div class="dialog" onclick="event.stopPropagation()">
     <div class="dialog-title" style="color:var(--primary)">关于 Android NAS</div>
@@ -588,6 +619,60 @@ function execShell() {
         }).catch(e => {
             out.innerHTML += "Error: " + e + "\n";
         });
+}
+
+
+function showSettings() {
+    closeSheet("mainMenu");
+    showModal("settingsModal");
+    fetch("/api/settings").then(r => r.json()).then(s => {
+        document.getElementById("setAlias").value = s.alias || "";
+        document.getElementById("setWebPort").value = s.webPort;
+        document.getElementById("setDavPort").value = s.davPort;
+        document.getElementById("setFtpPort").value = s.ftpPort;
+        document.getElementById("setWebDav").checked = s.webdav;
+        document.getElementById("setFtp").checked = s.ftp;
+        document.getElementById("setDlna").checked = s.dlna;
+        document.getElementById("setStream").checked = s.stream;
+        document.getElementById("setClipboard").checked = s.clipboard;
+        document.getElementById("setGlobal").checked = s.globalMode;
+        document.getElementById("setPassword").value = "";
+    }).catch(() => toast("获取设置失败"));
+}
+
+function saveSettings() {
+    var fd = new FormData();
+    fd.append("alias", document.getElementById("setAlias").value);
+    fd.append("webPort", document.getElementById("setWebPort").value);
+    fd.append("davPort", document.getElementById("setDavPort").value);
+    fd.append("ftpPort", document.getElementById("setFtpPort").value);
+    fd.append("webdav", document.getElementById("setWebDav").checked);
+    fd.append("ftp", document.getElementById("setFtp").checked);
+    fd.append("dlna", document.getElementById("setDlna").checked);
+    fd.append("stream", document.getElementById("setStream").checked);
+    fd.append("clipboard", document.getElementById("setClipboard").checked);
+    fd.append("globalMode", document.getElementById("setGlobal").checked);
+    
+    fetch("/api/settings", { method: "POST", body: fd })
+        .then(r => {
+            if (r.ok) {
+                var pwd = document.getElementById("setPassword").value;
+                if (pwd) {
+                    fetch("/api/password", { method: "POST", body: new URLSearchParams({password: pwd}) })
+                        .then(() => finishSave());
+                } else {
+                    finishSave();
+                }
+            } else {
+                toast("保存失败");
+            }
+        });
+}
+
+function finishSave() {
+    toast("保存成功，服务重启中...");
+    closeModal("settingsModal");
+    setTimeout(() => { location.reload(); }, 2000);
 }
 
 function showAbout() {

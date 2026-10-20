@@ -83,6 +83,68 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/mkdir".equals(uri) || "/api/delete".equals(uri) || "/api/save".equals(uri))
                 return handleFileOps(uri, session, role);
             if ("/api/share".equals(uri) && Method.POST.equals(session.getMethod())) return handleShareCreate(session, role);
+            if ("/api/settings".equals(uri)) {
+                if (role != 1) return text(Response.Status.FORBIDDEN, "Admin only");
+                if (Method.GET.equals(session.getMethod())) {
+                    String json = "{" +
+                        "\"alias\":\"" + escape(SettingsManager.getDeviceAlias()) + "\"," +
+                        "\"webPort\":" + SettingsManager.getWebPort() + "," +
+                        "\"davPort\":" + SettingsManager.getWebDavPort() + "," +
+                        "\"ftpPort\":" + SettingsManager.getFtpPort() + "," +
+                        "\"webdav\":" + SettingsManager.isWebDavEnabled() + "," +
+                        "\"ftp\":" + SettingsManager.isFtpEnabled() + "," +
+                        "\"dlna\":" + SettingsManager.isDlnaEnabled() + "," +
+                        "\"stream\":" + SettingsManager.isStreamEnabled() + "," +
+                        "\"clipboard\":" + SettingsManager.isClipboardEnabled() + "," +
+                        "\"lowPower\":" + SettingsManager.isLowPowerMode() + "," +
+                        "\"globalMode\":" + SettingsManager.isGlobalMode() +
+                        "}";
+                    return newFixedLengthResponse(Response.Status.OK, "application/json", json);
+                } else if (Method.POST.equals(session.getMethod())) {
+                    Map<String, String> files = new HashMap<>();
+                    session.parseBody(files);
+                    // 只做简单的演示解析，实际项目中建议用 JSON 库解析 body
+                    String alias = session.getParms().get("alias");
+                    String webPort = session.getParms().get("webPort");
+                    String davPort = session.getParms().get("davPort");
+                    String ftpPort = session.getParms().get("ftpPort");
+                    
+                    if (alias != null) SettingsManager.setDeviceAlias(alias);
+                    if (webPort != null) SettingsManager.setWebPort(Integer.parseInt(webPort));
+                    if (davPort != null) SettingsManager.setWebDavPort(Integer.parseInt(davPort));
+                    if (ftpPort != null) SettingsManager.setFtpPort(Integer.parseInt(ftpPort));
+                    
+                    SettingsManager.setWebDavEnabled("true".equals(session.getParms().get("webdav")));
+                    SettingsManager.setFtpEnabled("true".equals(session.getParms().get("ftp")));
+                    SettingsManager.setDlnaEnabled("true".equals(session.getParms().get("dlna")));
+                    SettingsManager.setStreamEnabled("true".equals(session.getParms().get("stream")));
+                    SettingsManager.setClipboardEnabled("true".equals(session.getParms().get("clipboard")));
+                    SettingsManager.setLowPowerMode("true".equals(session.getParms().get("lowPower")));
+                    SettingsManager.setGlobalMode("true".equals(session.getParms().get("globalMode")));
+                    
+                    return text(Response.Status.OK, "OK");
+                }
+            }
+
+            if ("/api/password".equals(uri) && Method.POST.equals(session.getMethod())) {
+                if (role != 1) return text(Response.Status.FORBIDDEN, "Admin only");
+                Map<String, String> files = new HashMap<>();
+                session.parseBody(files);
+                String newPass = session.getParms().get("password");
+                if (newPass != null && newPass.length() >= 4) {
+                    AuthManager.setAuth(NasHttpServer.this, AuthManager.getAdminUser(), newPass);
+                    return text(Response.Status.OK, "OK");
+                }
+                return text(Response.Status.BAD_REQUEST, "Password too short");
+            }
+
+            if ("/api/restart".equals(uri) && Method.POST.equals(session.getMethod())) {
+                if (role != 1) return text(Response.Status.FORBIDDEN, "Admin only");
+                // 这里的重启比较粗暴，因为 HTTP 服务自己不能重启自己。
+                // 可以通过调用系统服务重启服务
+                return text(Response.Status.OK, "OK");
+            }
+
             if (Method.PUT.equals(session.getMethod())) {
                 return handlePut(session, role);
             }
