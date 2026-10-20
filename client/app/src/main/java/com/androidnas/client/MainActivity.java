@@ -1,11 +1,8 @@
 package com.androidnas.client;
 
-import android.Manifest;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -13,21 +10,19 @@ import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.EditText;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
-
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
-
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 import com.google.android.material.appbar.MaterialToolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.FloatingActionButton;
@@ -37,40 +32,39 @@ import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanOptions;
-
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import okhttp3.Credentials;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
-    private RecyclerView recyclerView;
+    private RecyclerView recyclerView; private SwipeRefreshLayout swipeRefresh;
     private List<NasDevice> devices = new ArrayList<>();
-    private Gson gson = new Gson();
-    private DeviceAdapter adapter;
+    private Gson gson = new Gson(); private DeviceAdapter adapter;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
-
     private ActivityResultLauncher<ScanOptions> barcodeLauncher = registerForActivityResult(new ScanContract(), result -> {
         if (result.getContents() != null) {
             devices.add(new NasDevice("扫码设备", result.getContents(), NasDevice.TYPE_ANDROID, "admin", "admin"));
-            saveDevices();
-            adapter.notifyDataSetChanged();
+            saveDevices(); adapter.notifyDataSetChanged();
         }
     });
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-
-        MaterialToolbar toolbar = findViewById(R.id.toolbar);
-        setSupportActionBar(toolbar);
+        MaterialToolbar toolbar = findViewById(R.id.toolbar); setSupportActionBar(toolbar);
         recyclerView = findViewById(R.id.recyclerView);
+        swipeRefresh = findViewById(R.id.swipeRefresh);
         FloatingActionButton fab = findViewById(R.id.fabAddDevice);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new DeviceAdapter();
-        recyclerView.setAdapter(adapter);
-
+        adapter = new DeviceAdapter(); recyclerView.setAdapter(adapter);
+        if (swipeRefresh != null) swipeRefresh.setOnRefreshListener(() -> {
+            loadDevices();
+            mainHandler.postDelayed(() -> { if (swipeRefresh != null) swipeRefresh.setRefreshing(false); }, 300);
+        });
         loadDevices();
         fab.setOnClickListener(v -> showAddDeviceDialog());
     }
@@ -78,9 +72,11 @@ public class MainActivity extends AppCompatActivity {
     private void loadDevices() {
         SharedPreferences sp = getSharedPreferences("nas", Context.MODE_PRIVATE);
         String json = sp.getString("devices", "");
-        if (!json.isEmpty()) {
-            devices = gson.fromJson(json, new TypeToken<List<NasDevice>>(){}.getType());
-        }
+        devices.clear();
+        if (!json.isEmpty()) try {
+            List<NasDevice> l = gson.fromJson(json, new TypeToken<List<NasDevice>>(){}.getType());
+            if (l != null) devices.addAll(l);
+        } catch (Exception ignored) {}
         adapter.notifyDataSetChanged();
     }
 
@@ -90,98 +86,49 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showAddDeviceDialog() {
-        new MaterialAlertDialogBuilder(this)
-            .setTitle("添加设备")
-            .setItems(new String[]{"手动输入 IP", "扫描二维码"}, (dialog, which) -> {
-                if (which == 0) showManualDialog();
-                else {
-                    ScanOptions options = new ScanOptions();
-                    options.setDesiredBarcodeFormats(ScanOptions.QR_CODE);
-                    barcodeLauncher.launch(options);
-                }
+        new MaterialAlertDialogBuilder(this).setTitle("添加设备")
+            .setItems(new String[]{"手动输入 IP", "扫描二维码"}, (d, w) -> {
+                if (w == 0) showManualDialog();
+                else { ScanOptions o = new ScanOptions(); o.setDesiredBarcodeFormats(ScanOptions.QR_CODE); barcodeLauncher.launch(o); }
             }).show();
     }
 
     private void showManualDialog() {
-        ScrollView scrollView = new ScrollView(this);
+        ScrollView sv = new ScrollView(this);
         LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(48, 32, 48, 16);
-        scrollView.addView(layout, new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
+        layout.setOrientation(LinearLayout.VERTICAL); layout.setPadding(48, 32, 48, 16);
+        sv.addView(layout, new ViewGroup.LayoutParams(-1, -2));
         TextInputLayout tilName = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilName.setHint("设备名称");
-        TextInputEditText etName = new TextInputEditText(this);
-        tilName.addView(etName);
-        layout.addView(tilName);
-
+        tilName.setHint("设备名称"); TextInputEditText etName = new TextInputEditText(this); tilName.addView(etName); layout.addView(tilName);
         TextInputLayout tilUrl = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilUrl.setHint("地址 (如 192.168.1.100:8080)");
-        TextInputEditText etUrl = new TextInputEditText(this);
-        tilUrl.addView(etUrl);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        params.topMargin = 24;
-        layout.addView(tilUrl, params);
-
-        RadioGroup rgType = new RadioGroup(this);
-        RadioButton rbAndroid = new RadioButton(this);
-        rbAndroid.setText("自家 NAS (原生接口)");
-        rbAndroid.setId(View.generateViewId());
-        rbAndroid.setChecked(true);
-        
-        RadioButton rbWebDav = new RadioButton(this);
-        rbWebDav.setText("WebDAV 协议");
-        rbWebDav.setId(View.generateViewId());
-        
-        RadioButton rbFtp = new RadioButton(this);
-        rbFtp.setText("FTP 协议");
-        rbFtp.setId(View.generateViewId());
-        
-        rgType.addView(rbAndroid); 
-        rgType.addView(rbWebDav);
-        rgType.addView(rbFtp);
-        layout.addView(rgType, params);
-
+        tilUrl.setHint("地址 (如 192.168.1.100:8080)"); TextInputEditText etUrl = new TextInputEditText(this); tilUrl.addView(etUrl);
+        LinearLayout.LayoutParams pp = new LinearLayout.LayoutParams(-1, -2); pp.topMargin = 24;
+        layout.addView(tilUrl, pp);
+        RadioGroup rg = new RadioGroup(this);
+        RadioButton rbA = new RadioButton(this); rbA.setText("自家 NAS"); rbA.setId(View.generateViewId()); rbA.setChecked(true);
+        RadioButton rbW = new RadioButton(this); rbW.setText("WebDAV"); rbW.setId(View.generateViewId());
+        RadioButton rbF = new RadioButton(this); rbF.setText("FTP"); rbF.setId(View.generateViewId());
+        rg.addView(rbA); rg.addView(rbW); rg.addView(rbF); layout.addView(rg, pp);
         TextInputLayout tilUser = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilUser.setHint("账号 (默认 admin)");
-        TextInputEditText etUser = new TextInputEditText(this);
-        tilUser.addView(etUser);
-        layout.addView(tilUser, params);
-
+        tilUser.setHint("账号 (默认 admin)"); TextInputEditText etUser = new TextInputEditText(this); tilUser.addView(etUser); layout.addView(tilUser, pp);
         TextInputLayout tilPass = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
-        tilPass.setHint("密码 (默认 admin)");
-        TextInputEditText etPass = new TextInputEditText(this);
-        tilPass.addView(etPass);
-        layout.addView(tilPass, params);
-
-        new MaterialAlertDialogBuilder(this)
-            .setTitle("手动添加设备")
-            .setView(scrollView)
-            .setPositiveButton("添加", (dialog, which) -> {
+        tilPass.setHint("密码 (默认 admin)"); TextInputEditText etPass = new TextInputEditText(this); tilPass.addView(etPass); layout.addView(tilPass, pp);
+        new MaterialAlertDialogBuilder(this).setTitle("手动添加设备").setView(sv)
+            .setPositiveButton("添加", (d, w) -> {
                 String name = etName.getText() != null ? etName.getText().toString() : "";
                 String url = etUrl.getText() != null ? etUrl.getText().toString().trim() : "";
                 String user = etUser.getText() != null ? etUser.getText().toString() : "admin";
                 String pass = etPass.getText() != null ? etPass.getText().toString() : "admin";
-                
-                if (name.isEmpty() || url.isEmpty()) {
-                    Toast.makeText(MainActivity.this, "名称和地址不能为空", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-                
+                if (name.isEmpty() || url.isEmpty()) { Toast.makeText(this, "名称和地址不能为空", Toast.LENGTH_SHORT).show(); return; }
+                if (user.isEmpty()) user = "admin"; if (pass.isEmpty()) pass = "admin";
                 int type = NasDevice.TYPE_ANDROID;
-                if (rgType.getCheckedRadioButtonId() == rbWebDav.getId()) type = NasDevice.TYPE_WEBDAV;
-                else if (rgType.getCheckedRadioButtonId() == rbFtp.getId()) type = NasDevice.TYPE_FTP;
-                
-                devices.add(new NasDevice(name, url, type, user, pass));
-                saveDevices();
-                adapter.notifyDataSetChanged();
+                if (rg.getCheckedRadioButtonId() == rbW.getId()) type = NasDevice.TYPE_WEBDAV;
+                else if (rg.getCheckedRadioButtonId() == rbF.getId()) type = NasDevice.TYPE_FTP;
+                devices.add(new NasDevice(name, url, type, user, pass)); saveDevices(); adapter.notifyDataSetChanged();
             }).setNegativeButton("取消", null).show();
     }
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
+    @Override public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, 4, 0, "发送配置到电视");
         menu.add(0, 1, 0, "局域网剪贴板");
         menu.add(0, 2, 0, "设置");
@@ -189,94 +136,84 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
-    @Override
-    public boolean onOptionsItemSelected(@NonNull MenuItem item) {
-        if (item.getItemId() == 4) {
-            sendConfigToTv();
-            return true;
-        } else if (item.getItemId() == 1) {
-            // 剪贴板逻辑保持原样
-            return true;
-        } else if (item.getItemId() == 3) {
-            new MaterialAlertDialogBuilder(this)
-                .setTitle("关于 NAS 客户端")
-                .setMessage("版本: v3.1.0 旗舰版\n\n支持多设备管理、WebDAV、FTP、相册备份。")
-                .setPositiveButton("确定", null)
-                .show();
-            return true;
-        } else if (item.getItemId() == 2) {
-            startActivity(new Intent(MainActivity.this, SettingsActivity.class));
+    @Override public boolean onOptionsItemSelected(@NonNull MenuItem item) {
+        if (item.getItemId() == 4) { sendConfigToTv(); return true; }
+        else if (item.getItemId() == 1) { showClipboardDialog(); return true; }
+        else if (item.getItemId() == 2) { startActivity(new Intent(this, SettingsActivity.class)); return true; }
+        else if (item.getItemId() == 3) {
+            new MaterialAlertDialogBuilder(this).setTitle("关于 NAS 客户端")
+                .setMessage("版本: v3.2.0\n\n支持多设备管理、WebDAV、FTP。\n\n⚠️ 大量代码由 AI 辅助生成。")
+                .setPositiveButton("确定", null).show();
             return true;
         }
         return super.onOptionsItemSelected(item);
     }
 
-    private void sendConfigToTv() {
-        if (devices.isEmpty()) {
-            Toast.makeText(this, "请先添加一个自家 NAS", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        final NasDevice targetDevice = devices.get(0);
-        if (targetDevice.type != NasDevice.TYPE_ANDROID) {
-            Toast.makeText(this, "只能发送自家 NAS 的配置", Toast.LENGTH_SHORT).show();
-            return;
-        }
+    private void showClipboardDialog() {
+        if (devices.isEmpty()) { Toast.makeText(this, "请先添加一个自家 NAS", Toast.LENGTH_SHORT).show(); return; }
+        final NasDevice d = devices.get(0);
+        if (d.type != NasDevice.TYPE_ANDROID) { Toast.makeText(this, "仅支持自家 NAS", Toast.LENGTH_SHORT).show(); return; }
+        final TextInputEditText et = new TextInputEditText(this); et.setMinLines(3);
+        LinearLayout c = new LinearLayout(this); c.setPadding(48, 24, 48, 0); c.addView(et);
+        final String base = d.getBaseUrl();
+        final String auth = Credentials.basic(d.username, d.password);
+        new MaterialAlertDialogBuilder(this).setTitle("局域网剪贴板").setView(c)
+            .setPositiveButton("保存", (dlg, w) -> new Thread(() -> { try {
+                OkHttpClient c2 = new OkHttpClient();
+                RequestBody b = new okhttp3.FormBody.Builder().add("content", et.getText().toString()).build();
+                Request r = new Request.Builder().url(base + "/api/clipboard").post(b).header("Authorization", auth).build();
+                c2.newCall(r).execute().close();
+                mainHandler.post(() -> Toast.makeText(this, "已同步", Toast.LENGTH_SHORT).show());
+            } catch (Exception e) { mainHandler.post(() -> Toast.makeText(this, "同步失败", Toast.LENGTH_SHORT).show()); } }).start())
+            .setNeutralButton("加载", (dlg, w) -> new Thread(() -> { try {
+                OkHttpClient c2 = new OkHttpClient();
+                Request r = new Request.Builder().url(base + "/api/clipboard").header("Authorization", auth).build();
+                Response resp = c2.newCall(r).execute();
+                final String t = resp.isSuccessful() && resp.body() != null ? resp.body().string() : "";
+                mainHandler.post(() -> et.setText(t));
+            } catch (Exception ignored) {} }).start())
+            .setNegativeButton("取消", null).show();
+    }
 
+    private void sendConfigToTv() {
+        if (devices.isEmpty()) { Toast.makeText(this, "请先添加一个自家 NAS", Toast.LENGTH_SHORT).show(); return; }
+        final NasDevice d = devices.get(0);
+        if (d.type != NasDevice.TYPE_ANDROID) { Toast.makeText(this, "只能发送自家 NAS", Toast.LENGTH_SHORT).show(); return; }
         Toast.makeText(this, "正在寻找电视...", Toast.LENGTH_SHORT).show();
         new Thread(() -> {
             String tvIp = SyncHelper.discoverTv();
-            if (tvIp == null) {
-                mainHandler.post(() -> Toast.makeText(MainActivity.this, "未找到电视，请确保电视端 App 已打开并在同一 WiFi", Toast.LENGTH_LONG).show());
-                return;
-            }
-            
-            boolean success = SyncHelper.sendConfig(tvIp, targetDevice.getBaseUrl(), targetDevice.username, targetDevice.password);
-            if (success) {
-                mainHandler.post(() -> Toast.makeText(MainActivity.this, "配置已下发，电视端已自动连接！", Toast.LENGTH_LONG).show());
-            } else {
-                mainHandler.post(() -> Toast.makeText(MainActivity.this, "配置发送失败", Toast.LENGTH_SHORT).show());
-            }
+            if (tvIp == null) { mainHandler.post(() -> Toast.makeText(this, "未找到电视", Toast.LENGTH_LONG).show()); return; }
+            boolean ok = SyncHelper.sendConfig(tvIp, d.getBaseUrl(), d.username, d.password);
+            mainHandler.post(() -> Toast.makeText(this, ok ? "配置已下发" : "发送失败", Toast.LENGTH_SHORT).show());
         }).start();
     }
 
     private class DeviceAdapter extends RecyclerView.Adapter<DeviceAdapter.VH> {
-        @NonNull @Override public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-            return new VH(getLayoutInflater().inflate(R.layout.item_device, parent, false));
+        @NonNull @Override public VH onCreateViewHolder(@NonNull ViewGroup p, int vt) {
+            return new VH(getLayoutInflater().inflate(R.layout.item_device, p, false));
         }
-        @Override public void onBindViewHolder(@NonNull VH holder, final int position) {
-            final NasDevice d = devices.get(position);
-            holder.tvName.setText(d.name);
-            holder.tvIp.setText(d.url);
-            if (d.type == NasDevice.TYPE_ANDROID) holder.tvIcon.setText("📱");
-            else if (d.type == NasDevice.TYPE_WEBDAV) holder.tvIcon.setText("🖥️");
-            else if (d.type == NasDevice.TYPE_FTP) holder.tvIcon.setText("📂");
-            
-            holder.itemView.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    Intent intent = new Intent(MainActivity.this, FileListActivity.class);
-                    intent.putExtra("url", d.getBaseUrl());
-                    intent.putExtra("type", d.type);
-                    intent.putExtra("username", d.username);
-                    intent.putExtra("password", d.password);
-                    startActivity(intent);
-                }
+        @Override public void onBindViewHolder(@NonNull VH h, final int pos) {
+            final NasDevice d = devices.get(pos);
+            h.tvName.setText(d.name); h.tvIp.setText(d.url);
+            if (d.type == NasDevice.TYPE_ANDROID) h.tvIcon.setText("📱");
+            else if (d.type == NasDevice.TYPE_WEBDAV) h.tvIcon.setText("🖥️");
+            else if (d.type == NasDevice.TYPE_FTP) h.tvIcon.setText("📂");
+            h.itemView.setOnClickListener(v -> {
+                Intent i = new Intent(MainActivity.this, FileListActivity.class);
+                i.putExtra("url", d.getBaseUrl()); i.putExtra("type", d.type);
+                i.putExtra("username", d.username); i.putExtra("password", d.password);
+                startActivity(i);
             });
-            
-            holder.itemView.setOnLongClickListener(new View.OnLongClickListener() {
-                @Override
-                public boolean onLongClick(View v) {
-                    devices.remove(position);
-                    saveDevices();
-                    adapter.notifyDataSetChanged();
-                    return true;
-                }
+            if (h.btnDelete != null) h.btnDelete.setOnClickListener(v -> {
+                devices.remove(pos); saveDevices(); adapter.notifyDataSetChanged();
+                Toast.makeText(MainActivity.this, "已删除", Toast.LENGTH_SHORT).show();
             });
         }
         @Override public int getItemCount() { return devices.size(); }
         class VH extends RecyclerView.ViewHolder {
-            TextView tvName, tvIcon, tvIp;
-            VH(View v) { super(v); tvName = v.findViewById(R.id.tvName); tvIcon = v.findViewById(R.id.tvIcon); tvIp = v.findViewById(R.id.tvIp); }
+            TextView tvName, tvIcon, tvIp; Button btnDelete;
+            VH(View v) { super(v); tvName = v.findViewById(R.id.tvName); tvIcon = v.findViewById(R.id.tvIcon);
+                tvIp = v.findViewById(R.id.tvIp); btnDelete = v.findViewById(R.id.btnDelete); }
         }
     }
 }
