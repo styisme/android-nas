@@ -19,3 +19,6 @@ targets:
         MARKETING_VERSION: 3.3.0
         CURRENT_PROJECT_VERSION: 3300
         GENERATE_INFOPLIST_FILE: YES
+    # 强制 XcodeGen 生成并共享 Scheme
+    scheme:
+      testTargets: []

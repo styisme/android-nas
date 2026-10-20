@@ -22,16 +22,22 @@ jobs:
           cd apple
           xcodegen generate
 
+      - name: List Schemes (For Debug)
+        run: |
+          cd apple
+          xcodebuild -list -project NASClient.xcodeproj
+
       - name: Build iOS (Unsigned)
         run: |
           cd apple
-          xcodebuild -project NASClient.xcodeproj -scheme NASClient -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+          # 尝试用 scheme 构建；如果找不到，直接 fallback 用 target 构建
+          xcodebuild -project NASClient.xcodeproj -scheme NASClient -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build || \
+          xcodebuild -project NASClient.xcodeproj -target NASClient -sdk iphoneos -configuration Release CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
 
       - name: Package iOS IPA (Unsigned)
         run: |
           cd apple
           mkdir -p Payload
-          # 从默认的 DerivedData 目录找到 .app
           APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "NASClient.app" -path "*Release-iphoneos*" | head -n 1)
           if [ -n "$APP_PATH" ]; then
             cp -r "$APP_PATH" Payload/
