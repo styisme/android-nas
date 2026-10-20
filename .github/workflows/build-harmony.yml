@@ -1,4 +1,4 @@
-name: Build HarmonyOS HAP (Overseas Optimized)
+name: Build HarmonyOS HAP (Docker)
 
 on:
   push:
@@ -10,71 +10,25 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/sanchuanhehe/harmony-next-pipeline-docker/harmonyos-ci-image:v5.0.4
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
-
-      # 修复：@ohos/ohpm 不在 npm 源，需要通过官方脚本或手动下载工具包配置
-      - name: Install ohpm and hvigor
+      - name: Install Dependencies
         run: |
-          echo "正在配置华为专属依赖源..."
-          npm config set @ohos:registry https://repo.harmonyos.com/npm/
-          
-          echo "安装 hvigor..."
-          npm install -g @ohos/hvigor @ohos/hvigor-ohos-plugin
-          
-          echo "下载并配置独立 ohpm..."
-          # 从 OpenHarmony 官方镜像下载独立的 ohpm 命令行工具
-          wget -q https://repo.huaweicloud.com/openharmony/os/4.1-Release/ohpm-linux-x64-4.1.7.5-Release.zip
-          unzip -q ohpm-linux-x64-4.1.7.5-Release.zip -d ohpm-cli
-          
-          # 配置 ohpm 环境变量与源
-          export PATH=$GITHUB_WORKSPACE/ohpm-cli/bin:$PATH
-          echo "$GITHUB_WORKSPACE/ohpm-cli/bin" >> $GITHUB_PATH
-          ohpm config set registry https://repo.harmonyos.com/ohpm/
+          cd harmony
+          # 安装项目依赖
+          ohpm install --all
 
-      - name: Install aria2
-        run: sudo apt-get update && sudo apt-get install -y aria2
-
-      - name: Setup OpenHarmony SDK
-        run: |
-          echo "正在下载 OpenHarmony SDK..."
-          aria2c -x 16 -s 16 -k 1M --timeout=120 --retry-wait=10 -m 10 \
-            -o ohos-sdk.tar.gz \
-            https://repo.huaweicloud.com/openharmony/os/4.1-Release/ohos-sdk-windows_linux-public.tar.gz
-
-          tar -zxvf ohos-sdk.tar.gz
-          cd ohos-sdk/linux
-          unzip -q ets-linux-x64-4.1.7.5-Release.zip
-          unzip -q js-linux-x64-4.1.7.5-Release.zip
-          unzip -q native-linux-x64-4.1.7.5-Release.zip
-          unzip -q toolchains-linux-x64-4.1.7.5-Release.zip
-
-          echo "DEVECO_SDK_HOME=$GITHUB_WORKSPACE/ohos-sdk/linux" >> $GITHUB_ENV
-          echo "OHOS_BASE_SDK_HOME=$GITHUB_WORKSPACE/ohos-sdk/linux" >> $GITHUB_ENV
-          echo "PATH=$GITHUB_WORKSPACE/ohos-sdk/linux/toolchains:$PATH" >> $GITHUB_ENV
-          
       - name: Build HAP
         run: |
           cd harmony
-          
-          echo "安装项目依赖..."
-          ohpm install || true
-          
-          echo "开始执行 hvigor 编译..."
-          hvigor --version --accept-license || true
-          hvigor assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
+          # 使用镜像内自带的 hvigorw 进行编译
+          hvigorw clean --no-daemon
+          hvigorw assembleHap --mode module -p product=default -p buildMode=debug --no-daemon
 
       - name: Find and Package HAP
         run: |
