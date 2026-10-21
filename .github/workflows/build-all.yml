@@ -7,7 +7,6 @@ on:
       - 'CHANGELOG.md'
   workflow_dispatch:
 
-# 赋予自动打 Tag 和发布 Release 的权限
 permissions:
   contents: write
 
@@ -154,7 +153,6 @@ jobs:
       - name: Check and Create Tag
         id: check_tag
         run: |
-          # 提取版本号
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
           if [ -z "$VERSION" ]; then
             echo "skip_release=true" >> $GITHUB_OUTPUT
@@ -174,22 +172,39 @@ jobs:
             git push origin "v$VERSION"
           fi
 
-      # 下载所有端编译好的产物
       - uses: actions/download-artifact@v4
         if: steps.check_tag.outputs.skip_release == 'false'
         with:
           path: ./all_artifacts
 
-      # 平铺所有文件到同一个目录
-      - name: Collect All Files
+      # ======= 核心升级：高容错重命名平铺 =======
+      - name: Prepare Standalone Files
         if: steps.check_tag.outputs.skip_release == 'false'
         run: |
           mkdir -p release_files
-          find ./all_artifacts -type f -exec cp {} ./release_files/ \;
-          echo "即将发布的文件列表："
+          VERSION="${{ steps.check_tag.outputs.version }}"
+          
+          # 安卓端：抓取所有 apk，重命名，带 || true 防止崩溃
+          cp ./all_artifacts/server-apk/*.apk release_files/AndroidNAS-Server-$VERSION.apk || true
+          cp ./all_artifacts/client-apk/*.apk release_files/AndroidNAS-Client-$VERSION.apk || true
+          cp ./all_artifacts/tv-apk/*.apk release_files/AndroidNAS-TV-$VERSION.apk || true
+          cp ./all_artifacts/watch-apk/*.apk release_files/AndroidNAS-Watch-$VERSION.apk || true
+          
+          # PC端 Windows
+          cp ./all_artifacts/desktop-windows/*.exe release_files/AndroidNAS-Desktop-Windows-$VERSION.exe || true
+          cp ./all_artifacts/cli-windows/*.exe release_files/AndroidNAS-CLI-Windows-$VERSION.exe || true
+          
+          # PC端 Linux
+          cp ./all_artifacts/desktop-linux/* release_files/AndroidNAS-Desktop-Linux-$VERSION || true
+          cp ./all_artifacts/cli-linux/* release_files/AndroidNAS-CLI-Linux-$VERSION || true
+          
+          # 额外生态
+          cp ./all_artifacts/browser-extension/*.zip release_files/Browser-Extension.zip || true
+          cp ./all_artifacts/wechat-miniprogram/*.zip release_files/WeChat-MiniProgram.zip || true
+          
+          echo "====== 即将发布的文件列表 ======"
           ls -la release_files/
 
-      # 提取 CHANGELOG 里的更新说明
       - name: Extract Release Notes
         if: steps.check_tag.outputs.skip_release == 'false'
         run: |
@@ -203,7 +218,6 @@ jobs:
                   f.write(match.group(1).strip())
           "
 
-      # 发布 Release，直接挂载平铺目录下的所有文件
       - name: Create GitHub Release
         if: steps.check_tag.outputs.skip_release == 'false'
         uses: softprops/action-gh-release@v2
