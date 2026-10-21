@@ -1,13 +1,18 @@
-name: Build All & Package Release
+name: Build All & Auto Release
 
 on:
   push:
+    branches: [ main, master ]
     paths:
       - 'CHANGELOG.md'
-    branches: [ main, master ]
   workflow_dispatch:
 
+# 赋予自动打 Tag 和发布 Release 的权限
+permissions:
+  contents: write
+
 jobs:
+  # ================= 编译部分 =================
   build-server:
     runs-on: ubuntu-22.04
     steps:
@@ -34,9 +39,7 @@ jobs:
           ./gradlew assembleDebug --no-daemon
           mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-server-v${VERSION}.apk
       - uses: actions/upload-artifact@v4
-        with:
-          name: server-apk
-          path: app/build/outputs/apk/debug/*.apk
+        with: { name: server-apk, path: app/build/outputs/apk/debug/*.apk }
 
   build-client:
     runs-on: ubuntu-latest
@@ -51,14 +54,10 @@ jobs:
         run: |
           python sync_version.py
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
-          cd client
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          cd client && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
           mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-client-v${VERSION}.apk
       - uses: actions/upload-artifact@v4
-        with:
-          name: client-apk
-          path: client/app/build/outputs/apk/debug/*.apk
+        with: { name: client-apk, path: client/app/build/outputs/apk/debug/*.apk }
 
   build-tv:
     runs-on: ubuntu-latest
@@ -73,14 +72,10 @@ jobs:
         run: |
           python sync_version.py
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
-          cd tv
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          cd tv && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
           mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-tv-v${VERSION}.apk
       - uses: actions/upload-artifact@v4
-        with:
-          name: tv-apk
-          path: tv/app/build/outputs/apk/debug/*.apk
+        with: { name: tv-apk, path: tv/app/build/outputs/apk/debug/*.apk }
 
   build-watch:
     runs-on: ubuntu-latest
@@ -95,87 +90,128 @@ jobs:
         run: |
           python sync_version.py
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
-          cd watch
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          cd watch && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
           mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-watch-v${VERSION}.apk
       - uses: actions/upload-artifact@v4
-        with:
-          name: watch-apk
-          path: watch/app/build/outputs/apk/debug/*.apk
+        with: { name: watch-apk, path: watch/app/build/outputs/apk/debug/*.apk }
 
   build-pc:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
-            target: cli
-            artifact: cli-linux
-            os_name: linux
-          - os: windows-latest
-            target: cli
-            artifact: cli-windows
-            os_name: windows
-          - os: ubuntu-latest
-            target: gui
-            artifact: desktop-linux
-            os_name: linux
-          - os: windows-latest
-            target: gui
-            artifact: desktop-windows
-            os_name: windows
+          - { os: ubuntu-latest, target: cli, artifact: cli-linux, os_name: linux }
+          - { os: windows-latest, target: cli, artifact: cli-windows, os_name: windows }
+          - { os: ubuntu-latest, target: gui, artifact: desktop-linux, os_name: linux }
+          - { os: windows-latest, target: gui, artifact: desktop-windows, os_name: windows }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.10' }
       - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install 'requests>=2.28,<3' 'pyinstaller>=5.13,<6'
+        run: pip install 'requests>=2.28,<3' 'pyinstaller>=5.13,<6'
       - name: Build GUI
         if: matrix.target == 'gui'
         shell: bash
         run: |
           python sync_version.py
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
-          cd desktop
-          pyinstaller -F -w nas_client.py -n nas-client-${{ matrix.os_name }}-v${VERSION}
+          cd desktop && pyinstaller -F -w nas_client.py -n nas-client-${{ matrix.os_name }}-v${VERSION}
       - name: Build CLI
         if: matrix.target == 'cli'
         shell: bash
         run: |
           python sync_version.py
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
-          cd cli
-          pyinstaller -F nas_cli.py -n nas-cli-${{ matrix.os_name }}-v${VERSION}
+          cd cli && pyinstaller -F nas_cli.py -n nas-cli-${{ matrix.os_name }}-v${VERSION}
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.target == 'gui' && 'desktop/dist/*' || 'cli/dist/*' }}
 
-  package-all:
-    needs: [build-server, build-client, build-tv, build-watch, build-pc]
+  build-extras:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.x' }
-      - name: Get Version
+      - name: Zip Browser Extension
+        run: cd browser-extension && zip -r ../browser-extension.zip ./*
+      - uses: actions/upload-artifact@v4
+        with: { name: browser-extension, path: browser-extension.zip }
+      - name: Zip MiniProgram
+        run: cd miniprogram && zip -r ../miniprogram.zip ./*
+      - uses: actions/upload-artifact@v4
+        with: { name: wechat-miniprogram, path: miniprogram.zip }
+
+  # ================= 自动发布部分 =================
+  auto-release:
+    needs: [build-server, build-client, build-tv, build-watch, build-pc, build-extras]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check and Create Tag
+        id: check_tag
         run: |
+          # 提取版本号
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-      - name: Download All Artifacts
-        uses: actions/download-artifact@v4
+          if [ -z "$VERSION" ]; then
+            echo "skip_release=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION 已存在，跳过发布。"
+            echo "skip_release=true" >> $GITHUB_OUTPUT
+          else
+            echo "发现新版本 v$VERSION，开始发版流程！"
+            echo "skip_release=false" >> $GITHUB_OUTPUT
+            echo "version=v$VERSION" >> $GITHUB_OUTPUT
+            git config user.name "GitHub Action"
+            git config user.email "action@github.com"
+            git tag -a "v$VERSION" -m "Auto Release v$VERSION"
+            git push origin "v$VERSION"
+          fi
+
+      # 下载所有端编译好的产物
+      - uses: actions/download-artifact@v4
+        if: steps.check_tag.outputs.skip_release == 'false'
         with:
           path: ./all_artifacts
-      - name: Flatten and Zip
+
+      # 平铺所有文件到同一个目录
+      - name: Collect All Files
+        if: steps.check_tag.outputs.skip_release == 'false'
         run: |
-          mkdir -p release_output
-          find ./all_artifacts -type f -exec cp {} ./release_output/ \;
-          cd release_output
-          zip -r ../android-nas-all-v${{ env.VERSION }}.zip ./*
-      - uses: actions/upload-artifact@v4
+          mkdir -p release_files
+          find ./all_artifacts -type f -exec cp {} ./release_files/ \;
+          echo "即将发布的文件列表："
+          ls -la release_files/
+
+      # 提取 CHANGELOG 里的更新说明
+      - name: Extract Release Notes
+        if: steps.check_tag.outputs.skip_release == 'false'
+        run: |
+          python3 -c "
+          import re
+          with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
+              text = f.read()
+          match = re.search(r'## \[.*?\n(.*?)(?=\n## \[|\Z)', text, re.DOTALL)
+          if match:
+              with open('release_notes.md', 'w', encoding='utf-8') as f:
+                  f.write(match.group(1).strip())
+          "
+
+      # 发布 Release，直接挂载平铺目录下的所有文件
+      - name: Create GitHub Release
+        if: steps.check_tag.outputs.skip_release == 'false'
+        uses: softprops/action-gh-release@v2
         with:
-          name: android-nas-release-zip
-          path: android-nas-all-v${{ env.VERSION }}.zip
+          tag_name: ${{ steps.check_tag.outputs.version }}
+          files: release_files/*
+          body_path: release_notes.md
+          generate_release_notes: false
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
