@@ -483,6 +483,7 @@ public class FileListActivity extends AppCompatActivity {
         if (ext.equals("zip")) list.add("解压");
         
         list.add("下载");
+        list.add("分享外链");
         list.add("重命名");
         list.add("删除");
         list.add("属性");
@@ -495,6 +496,7 @@ public class FileListActivity extends AppCompatActivity {
             else if (a.equals("解压")) unzipFile(f);
             else if (a.equals("修改/编辑")) editFile(f);
             else if (a.equals("下载")) downloadFile(f);
+            else if (a.equals("分享外链")) shareLink(f);
             else if (a.equals("重命名")) renameFile(f);
             else if (a.equals("删除")) deleteFile(f);
             else if (a.equals("属性")) showProps(f);
@@ -636,6 +638,29 @@ public class FileListActivity extends AppCompatActivity {
         else sizeStr = String.format(java.util.Locale.US, "%.2f MB", f.size / 1024.0 / 1024.0);
         String info = "名称: " + f.name + "\n路径: " + f.path + "\n大小: " + sizeStr + "\n类型: " + (f.isDir ? "文件夹" : "文件");
         new MaterialAlertDialogBuilder(this).setTitle("文件属性").setMessage(info).setPositiveButton("确定", null).show();
+    }
+
+    private void shareLink(FileItem f) {
+        if (type != NasDevice.TYPE_ANDROID) return;
+        new Thread(() -> {
+            try {
+                RequestBody body = new okhttp3.FormBody.Builder().add("path", f.path).build();
+                Request req = new Request.Builder().url(baseUrl + "/api/share").post(body).header("Authorization", authHeader).build();
+                Response res = client.newCall(req).execute();
+                if (res.isSuccessful() && res.body() != null) {
+                    String token = res.body().string();
+                    String link = baseUrl + "/share/" + token;
+                    runOnUiThread(() -> {
+                        Intent sendIntent = new Intent(Intent.ACTION_SEND);
+                        sendIntent.putExtra(Intent.EXTRA_TEXT, "分享文件: " + f.name + "\n下载链接: " + link);
+                        sendIntent.setType("text/plain");
+                        startActivity(Intent.createChooser(sendIntent, "分享到..."));
+                    });
+                }
+            } catch (Exception e) {
+                runOnUiThread(() -> Toast.makeText(FileListActivity.this, "生成分享链接失败", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
     }
 
     private void openPlayer(String url, String ext) {

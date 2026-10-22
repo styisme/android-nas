@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Android NAS</string>
+
+    <string name="accessibility_service_description">用于在网页端远程控制本机。开启后，您可以在电脑浏览器上直接点击、滑动手机屏幕。若未获取 Root 权限，这是反向控制的唯一方式。数据仅在内网传输，绝对安全。</string>
 </resources>

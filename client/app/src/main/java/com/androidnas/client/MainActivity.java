@@ -144,6 +144,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, 5, 0, "相册自动备份");
+        menu.add(0, 6, 0, "Web 远程管理");
         menu.add(0, 4, 0, "发送配置到电视");
         menu.add(0, 1, 0, "局域网剪贴板");
         menu.add(0, 2, 0, "设置");
@@ -153,6 +154,14 @@ public class MainActivity extends AppCompatActivity {
 
     @Override public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         if (item.getItemId() == 5) { checkAndStartBackup(); return true; }
+        else if (item.getItemId() == 6) {
+            if (devices.isEmpty()) { Toast.makeText(this, "请先添加一个设备", Toast.LENGTH_SHORT).show(); return true; }
+            Intent i = new Intent(MainActivity.this, WebViewActivity.class);
+            i.putExtra("url", devices.get(0).getBaseUrl());
+            i.putExtra("title", "Web 控制台");
+            startActivity(i);
+            return true;
+        }
         else if (item.getItemId() == 4) { sendConfigToTv(); return true; }
         else if (item.getItemId() == 1) { showClipboardDialog(); return true; }
         else if (item.getItemId() == 2) { startActivity(new Intent(this, SettingsActivity.class)); return true; }
