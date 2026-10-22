@@ -133,11 +133,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Zip Browser Extension
-        run: cd browser-extension && zip -r ../browser-extension.zip ./*
+        run: |
+          if [ -d "browser-extension" ]; then
+            cd browser-extension && zip -r ../browser-extension.zip ./*
+          else
+            echo "browser-extension 目录不存在，跳过"
+            touch browser-extension.zip
+          fi
       - uses: actions/upload-artifact@v4
         with: { name: browser-extension, path: browser-extension.zip }
+        
       - name: Zip MiniProgram
-        run: cd miniprogram && zip -r ../miniprogram.zip ./*
+        run: |
+          if [ -d "miniprogram" ]; then
+            cd miniprogram && zip -r ../miniprogram.zip ./*
+          else
+            echo "miniprogram 目录不存在，跳过"
+            touch miniprogram.zip
+          fi
       - uses: actions/upload-artifact@v4
         with: { name: wechat-miniprogram, path: miniprogram.zip }
 

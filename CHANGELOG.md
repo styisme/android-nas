@@ -2,7 +2,47 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/) 规范，
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
-**注意：推送到 main 分支修改此文件，将自动触发全平台代码编译并打包为单一 ZIP。**
+**注意：推送到 main 分支修改此文件，将自动触发全平台 10 端代码并行编译，并自动打 Tag 平铺发布至 Releases。**
+
+## [4.0.0] - 2026-10-23
+
+**👑 史诗级生态闭环：十端大满贯与多模态云端控制**
+
+这是一个具有极其重要里程碑意义的版本。我们在保持底层极致轻量与极限兼容的前提下，实现了史无前例的“十端全覆盖”（Android/Web/TV/Watch/Desktop/CLI/Apple/HarmonyOS/小程序/浏览器插件）。不仅如此，我们将触角伸向了 Android 系统的底层控制，成功将 NAS 演变成了一个真正的“云端手机控制台”。
+
+### Added (多模态远程控制中心 - 全新模块)
+- **原生 H264 硬件编码推流**：彻底抛弃低效的截图轮询方案。基于底层 `MediaProjection` 和 `MediaCodec` (Surface 模式) 进行硬件级 H264 编码，将屏幕以 30fps、4Mbps 的画质实时推流。前端引入 `JMuxer.js` 实现极低延迟的实时播放。
+- **免授权 Root 截图流降级方案**：考虑到 Android 11+ 每次重启需手动授权录屏的痛点，全新开发 Root 截图引擎。利用 Root 权限在后台极速执行 `screencap -p` 压缩为 JPEG 并推流，实现“零授权、免打扰”的屏幕监控。
+- **双引擎触控注入 (Dual-Engine Touch Injection)**：
+  - **无障碍引擎**：针对未 Root 设备，自建 `NasAccessibilityService`，通过重写 `dispatchGesture` 将网页端传来的坐标转化为真实触摸手势。
+  - **Root 引擎**：针对极客玩家，底层直接调用 `su -c input tap/swipe`，无视一切系统限制。
+- **WebSocket 实时双向通信**：新增 8082 端口独立服务，不仅承载高并发的视频流下发，还负责前端触控指令的毫秒级上报，彻底摆脱 HTTP 请求延迟。
+
+### Added (十端独占功能全面拉齐)
+- **手机端 (Android Client)**：引入原生 `WebViewActivity`，实现全屏无缝嵌入 Web 控制台。文件列表新增“生成分享外链”，直接调起系统分享面板发送至微信/QQ。
+- **桌面端 (Python Tkinter)**：重构 UI，新增全局实时搜索框、局域网剪贴板同步弹窗、一键复制免密外链、以及一键唤起 Web 控制台入口。
+- **微信小程序端 (MiniProgram)**：重构 MD3 风格，支持全盘文件搜索、局域网剪贴板浮层、通过 API 生成免密分享短链并自动复制。
+- **苹果端 (SwiftUI)**：基于现代 Swift 并发模型重构 `NetworkManager`，补齐全盘搜索、剪贴板双向同步，并调用系统级 API 唤起外部浏览器。
+- **鸿蒙端 (ArkTS)**：重构 `ApiClient` 利用 `@ohos.net.http` 实现网络请求，UI 补齐搜索与剪贴板，通过 `Want` 机制拉起外部控制台。
+
+### Added (.NET 10 双核架构开启)
+- **新项目 `android-nas-dotnet` 启航**：基于最新的 .NET 10 (MAUI) 构建。
+- **C/S 彻底分离**：将服务端与客户端完全解耦。
+- **跨平台编译矩阵**：一套 C# 代码，同时产出 Android 服务端、Android 客户端、Windows GUI、Linux GUI、以及纯命令行 CLI 版本。
+
+### CI/CD & DevOps (全量发版革命)
+- **平铺直传发布**：彻底废除“打包成大 ZIP 给用户下载”的设计。发版时直接将 10 个端的独立文件按规范重命名，平铺展示在 Releases 页面。
+- **高容错防崩机制**：全面废弃粗暴的 `cp *`，改为 `find -type f` 提取文件，并加入 `|| true` 容错，确保单端编译失败不影响其他 9 个端的发版。
+- **云端全平台编译**：成功接入 macOS-13 Runner（编译苹果包）与基于 OpenHarmony 的 Docker 镜像（编译鸿蒙 HAP）。
+
+### Fixed (核心 Bug 修复)
+- **PMS 拦截修复**：修复了添加 Root 保活模块后，系统级安装器因 PMS 被 Hook 导致提示“应用未卸载”的冲突。
+- **版本号误覆盖修复**：修复了服务端误将 `minSdkVersion 8` 覆盖为 21 的致命降级问题。
+- **桌面端功能回退修复**：修复了桌面端因重构导致“在线文本编辑”丢失、以及大文件上传进度条不动的 Bug。
+- **系统级调用修复**：补全了苹果端缺失的 `UIKit/AppKit` 导入，以及鸿蒙端的系统级应用拉起。
+- **无障碍描述修复**：补充了无障碍服务详细描述，防止用户被系统警告吓退。
+
+---
 
 ## [3.3.0] - 2026-10-21
 
