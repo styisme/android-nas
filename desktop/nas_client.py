@@ -117,6 +117,7 @@ class DesktopNasClient:
         
         ttk.Button(bottom, text="📤 上传", command=self.upload_files).pack(side=tk.LEFT, padx=5)
         ttk.Button(bottom, text="📥 下载", command=self.download_file).pack(side=tk.LEFT, padx=5)
+        ttk.Button(bottom, text="✏️ 修改文本", command=self.edit_file).pack(side=tk.LEFT, padx=5)
         ttk.Button(bottom, text="🔗 分享外链", command=self.share_link).pack(side=tk.LEFT, padx=5)
         ttk.Button(bottom, text="📁 新建文件夹", command=self.mkdir).pack(side=tk.LEFT, padx=5)
         ttk.Button(bottom, text="📦 解压", command=self.unzip_file).pack(side=tk.LEFT, padx=5)
@@ -293,6 +294,35 @@ class DesktopNasClient:
         if self.base_url:
             webbrowser.open(self.base_url)
 
+    def edit_file(self):
+        name, path = self.get_selected_file()
+        if not name: return
+        if self.tree.item(self.tree.selection()[0])['values'][2] == "文件夹": return
+        try:
+            res = requests.get(f"{self.base_url}/api/preview", params={"path": path}, auth=self.auth, timeout=10)
+            res.raise_for_status()
+            content = res.text
+        except Exception as e:
+            messagebox.showerror("读取失败", "文件过大或不是文本文件\n" + str(e))
+            return
+        edit_win = tk.Toplevel(self.root)
+        edit_win.title(f"编辑: {name}")
+        edit_win.geometry("700x500")
+        text_area = tk.Text(edit_win, wrap=tk.NONE, font=("Consolas", 11))
+        text_area.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        text_area.insert(tk.END, content)
+        def save():
+            new_content = text_area.get("1.0", tk.END)
+            try:
+                res = requests.post(f"{self.base_url}/api/save", data={"path": path, "content": new_content}, auth=self.auth, timeout=10)
+                res.raise_for_status()
+                messagebox.showinfo("成功", "保存成功")
+                edit_win.destroy()
+                self.load_files()
+            except Exception as e:
+                messagebox.showerror("保存失败", str(e))
+        ttk.Button(edit_win, text="保存文件", command=save).pack(pady=5)
+
     def mkdir(self):
         name = simpledialog.askstring("新建文件夹", "名称:")
         if not name: return
@@ -327,10 +357,23 @@ class DesktopNasClient:
         paths = filedialog.askopenfilenames(title="选择文件")
         if not paths: return
         def _ul():
-            files = [('file', (os.path.basename(p), open(p, 'rb'))) for p in paths]
-            requests.post(f"{self.base_url}/api/upload", files=files, data={"path": self.current_path}, auth=self.auth)
-            self.ui(self.load_files)
-            self.ui(messagebox.showinfo, "成功", f"上传了 {len(paths)} 个文件")
+            try:
+                files = [('file', (os.path.basename(p), open(p, 'rb'))) for p in paths]
+                total_size = sum(os.path.getsize(p) for p in paths)
+                self.ui(lambda: setattr(self.progress, 'maximum', total_size))
+                self.ui(lambda: self.progress.configure(value=0))
+                
+                res = requests.post(f"{self.base_url}/api/upload", files=files, data={"path": self.current_path}, auth=self.auth, timeout=120)
+                res.raise_for_status()
+                
+                for _, file_tuple in files: file_tuple[1].close()
+                
+                self.ui(lambda: self.progress.configure(value=total_size))
+                self.ui(lambda: self.progress.configure(value=0))
+                self.ui(self.load_files)
+                self.ui(messagebox.showinfo, "成功", f"上传了 {len(paths)} 个文件")
+            except Exception as e:
+                self.ui(messagebox.showerror, "上传失败", str(e))
         Thread(target=_ul).start()
 
     def format_size(self, size):

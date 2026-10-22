@@ -1,4 +1,6 @@
 import { ApiClient } from '../utils/ApiClient';
+import common from '@ohos.app.ability.common';
+import { Want } from '@ohos.app.ability.Want';
 
 @Entry
 @Component
@@ -33,8 +35,15 @@ struct Index {
       Row() {
         Button("Web控制台")
           .onClick(() => {
-             // 调用系统浏览器打开
-             // 实际项目中需使用 @ohos.app.ability.common 和 want 启动
+             let context = getContext(this) as common.UIAbilityContext;
+             let want: Want = {
+               action: "ohos.want.action.viewData",
+               entities: ["entity.system.browsable"],
+               uri: ApiClient.baseUrl
+             };
+             context.startAbility(want).catch((err) => {
+               console.error('拉起浏览器失败', JSON.stringify(err));
+             });
           })
           .margin({ right: 8 })
           
