@@ -39,6 +39,7 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
         SettingsManager.init(this);
         AuthManager.init(this);
+        RemoteDesktopManager.init(this);
         currentDir = new File(ROOT);
         pathView = (TextView) findViewById(R.id.pathView);
         statusView = (TextView) findViewById(R.id.statusView);
@@ -185,6 +186,8 @@ public class MainActivity extends Activity {
         menu.add(0, 4, 0, "运行日志");
         menu.add(0, 7, 0, "关于");
         menu.add(0, 8, 0, "高级保活 (Root/ADB)");
+        menu.add(0, 9, 0, "请求录屏授权");
+        menu.add(0, 10, 0, "开启无障碍触控");
         return true;
     }
 
@@ -217,6 +220,18 @@ public class MainActivity extends Activity {
         } else if (id == 4) {
             new AlertDialog.Builder(this).setTitle("最近日志").setMessage(LogManager.getAllLogs()).setPositiveButton("关闭", null).show();
             return true;
+        } else if (id == 10) {
+            try {
+                startActivity(new Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            } catch (Exception e) {
+                Toast.makeText(this, "无法打开无障碍设置", Toast.LENGTH_SHORT).show();
+            }
+            return true;
+        } else if (id == 9) {
+            android.media.projection.MediaProjectionManager pm = (android.media.projection.MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+            Intent intent = pm.createScreenCaptureIntent();
+            startActivityForResult(intent, 1001);
+            return true;
         } else if (id == 8) {
             showAdvancedKeepAlive();
             return true;
@@ -237,6 +252,19 @@ public class MainActivity extends Activity {
         } catch (Exception e) { return null; }
     }
 
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 1001) {
+            if (resultCode == RESULT_OK) {
+                RemoteDesktopManager.startStream(this, resultCode, data);
+                Toast.makeText(this, "推流已启动，请去网页端查看", Toast.LENGTH_LONG).show();
+            } else {
+                Toast.makeText(this, "录屏授权被拒绝", Toast.LENGTH_SHORT).show();
+            }
+        }
+    }
 
     private void showAdvancedKeepAlive() {
         // 为了防止没 Root 导致 su 卡住主线程，先把 UI 弹出来，并在后台检测
@@ -494,6 +522,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onResume() { super.onResume(); updateServiceStatus(); refresh(); }
+    @Override protected void onDestroy() { super.onDestroy(); RemoteDesktopManager.stopStream(); }
 
     private void updateServiceStatus() {
         boolean running = HttpServerService.isRunning();

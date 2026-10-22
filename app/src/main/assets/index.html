@@ -112,6 +112,7 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
 .media-preview { width: 100%; max-height: 60vh; border-radius: 8px; }
 .empty-state { text-align: center; padding: 40px; color: var(--on-surface-variant); }
 </style>
+    <script src="https://cdn.jsdelivr.net/npm/jmuxer@2.0.5/dist/jmuxer.min.js"></script>
 </head>
 <body>
 
@@ -143,6 +144,7 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
     <div class="sheet-handle"></div>
     <div class="sheet-item" onclick="showMkdir()">📁 新建文件夹</div>
     <div class="sheet-item" onclick="showClipboard()">📋 局域网剪贴板</div>
+    <div class="sheet-item" onclick="showRemote()">📱 远程控制 (Beta)</div>
     <div class="sheet-item" onclick="showTerminal()">🦅 Root 终端</div>
     <div class="sheet-item" onclick="showSettings()">⚙️ 系统设置</div>
     <div class="sheet-item" onclick="showAbout()">ℹ️ 关于</div>
@@ -200,6 +202,21 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
 </div>
 
 <!-- 终端 -->
+
+<!-- 远程桌面浮层 -->
+<div id="remoteModal" class="modal" onclick="closeModal('remoteModal')">
+  <div class="dialog" onclick="event.stopPropagation()" style="max-width: 500px; background: #000; padding: 0; overflow: hidden;">
+    <div style="position: relative; width: 100%; aspect-ratio: 9/16; background: #000;">
+        <video id="remoteVideo" style="width: 100%; height: 100%; object-fit: contain;" autoplay muted></video>
+    <img id="remoteScreenshot" style="width: 100%; height: 100%; object-fit: contain; display: none;" />
+        <div id="remoteStatus" style="position: absolute; top: 10px; left: 10px; color: #fff; background: rgba(0,0,0,0.5); padding: 4px 8px; border-radius: 4px; font-size: 12px;">连接中...</div>
+    </div>
+    <div style="padding: 12px; display: flex; justify-content: space-between;">
+        <button id="btnSwitchMode" class="btn-text" onclick="switchRemoteMode()" style="color:#D0BCFF;">切换到截图流</button>
+        <button class="btn-text" onclick="stopRemote(); closeModal('remoteModal');">断开连接</button>
+    </div>
+  </div>
+</div>
 <div id="termModal" class="modal" onclick="closeModal('termModal')">
   <div class="dialog" onclick="event.stopPropagation()" style="max-width: 600px;">
     <div class="dialog-title">🦅 Root Shell</div>
@@ -673,6 +690,117 @@ function finishSave() {
     toast("保存成功，服务重启中...");
     closeModal("settingsModal");
     setTimeout(() => { location.reload(); }, 2000);
+}
+
+
+var wsRemote = null;
+var isRemoteDown = false;
+var lastX = 0, lastY = 0;
+
+
+function switchRemoteMode() {
+    if (!wsRemote) return;
+    if (window.remoteMode === "h264") {
+        // 切到截图模式
+        window.remoteMode = "screenshot";
+        wsRemote.send("start_screenshot");
+        document.getElementById("btnSwitchMode").textContent = "切换到 H264";
+        document.getElementById("remoteVideo").style.display = "none";
+        document.getElementById("remoteScreenshot").style.display = "block";
+        document.getElementById("remoteStatus").textContent = "等待截图流...";
+    } else {
+        // 切到 H264 模式
+        window.remoteMode = "h264";
+        wsRemote.send("stop");
+        document.getElementById("btnSwitchMode").textContent = "切换到截图流";
+        document.getElementById("remoteScreenshot").style.display = "none";
+        document.getElementById("remoteVideo").style.display = "block";
+        document.getElementById("remoteStatus").textContent = "等待 H264 流 (需服务端点录屏授权)";
+    }
+}
+
+function showRemote() {
+    closeSheet("mainMenu");
+    showModal("remoteModal");
+    document.getElementById("remoteStatus").textContent = "连接中...";
+    
+    if (wsRemote == null) {
+        wsRemote = new WebSocket("ws://" + location.hostname + ":8082");
+        wsRemote.binaryType = "arraybuffer";
+        
+        window.jmuxer = new JMuxer({
+            node: 'remoteVideo',
+            mode: 'video',
+            flushingTime: 0,
+            fps: 30,
+            debug: false
+        });
+        
+        window.remoteMode = "h264"; // 默认 H264
+        
+        wsRemote.onopen = function() {
+            document.getElementById("remoteStatus").textContent = "已连接 (H264 视频流)";
+        };
+        
+        wsRemote.onmessage = function(event) {
+            if (window.remoteMode === "h264") {
+                // 播放 H264
+                document.getElementById("remoteStatus").textContent = "正在推流 (H264)";
+                window.jmuxer.feed({ video: new Uint8Array(event.data) });
+            } else {
+                // 播放 JPEG 截图
+                document.getElementById("remoteStatus").textContent = "正在推流 (Root 截图)";
+                var blob = new Blob([event.data], {type: 'image/jpeg'});
+                var url = URL.createObjectURL(blob);
+                var img = document.getElementById("remoteScreenshot");
+                img.onload = function() { URL.revokeObjectURL(url); };
+                img.src = url;
+                img.style.display = "block";
+                document.getElementById("remoteVideo").style.display = "none";
+            }
+        };
+        
+        wsRemote.onclose = function() {
+            document.getElementById("remoteStatus").textContent = "已断开";
+            if (window.jmuxer) window.jmuxer.destroy();
+        };
+    }
+    
+    var video = document.getElementById("remoteVideo");
+    
+    // 触控监听
+    video.onmousedown = function(e) {
+        isRemoteDown = true;
+        var rect = video.getBoundingClientRect();
+        lastX = Math.round((e.clientX - rect.left) / rect.width * 1080);
+        lastY = Math.round((e.clientY - rect.top) / rect.height * 1920);
+    };
+    
+    video.onmouseup = function(e) {
+        if (!isRemoteDown) return;
+        isRemoteDown = false;
+        var rect = video.getBoundingClientRect();
+        var x = Math.round((e.clientX - rect.left) / rect.width * 1080);
+        var y = Math.round((e.clientY - rect.top) / rect.height * 1920);
+        
+        if (wsRemote && wsRemote.readyState === WebSocket.OPEN) {
+            if (Math.abs(x - lastX) > 50 || Math.abs(y - lastY) > 50) {
+                // 滑动
+                wsRemote.send(`swipe,${lastX},${lastY},${x},${y}`);
+            } else {
+                // 点击
+                wsRemote.send(`tap,${x},${y}`);
+            }
+        }
+    };
+}
+
+function stopRemote() {
+    if (wsRemote) {
+        wsRemote.close();
+        wsRemote = null;
+    }
+    document.getElementById("remoteVideo").src = "";
 }
 
 function showAbout() {

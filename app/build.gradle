@@ -6,7 +6,7 @@ android {
 
     defaultConfig {
         applicationId "com.androidnas"
-        minSdkVersion 8
+        minSdkVersion 21
         targetSdkVersion 22
         versionCode 20100
         versionName "2.1.0"
@@ -26,6 +26,6 @@ android {
 
 dependencies {
     implementation 'org.nanohttpd:nanohttpd:2.2.0'
-    // #8/#51: 移除 zxing:core（无任何调用，纯死依赖）
     implementation 'com.jcraft:jsch:0.1.55'
+    implementation 'org.java-websocket:Java-WebSocket:1.5.3'
 }
