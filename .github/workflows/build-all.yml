@@ -184,23 +184,24 @@ jobs:
           mkdir -p release_files
           VERSION="${{ steps.check_tag.outputs.version }}"
           
-          # 安卓端：抓取所有 apk，重命名，带 || true 防止崩溃
-          cp ./all_artifacts/server-apk/*.apk release_files/AndroidNAS-Server-$VERSION.apk || true
-          cp ./all_artifacts/client-apk/*.apk release_files/AndroidNAS-Client-$VERSION.apk || true
-          cp ./all_artifacts/tv-apk/*.apk release_files/AndroidNAS-TV-$VERSION.apk || true
-          cp ./all_artifacts/watch-apk/*.apk release_files/AndroidNAS-Watch-$VERSION.apk || true
+          # 使用 find 严格只提取文件 (-type f)，防止误抓目录导致 Release 失败
+          # 安卓端
+          find ./all_artifacts/server-apk -type f -name "*.apk" -exec cp {} release_files/AndroidNAS-Server-$VERSION.apk \; || true
+          find ./all_artifacts/client-apk -type f -name "*.apk" -exec cp {} release_files/AndroidNAS-Client-$VERSION.apk \; || true
+          find ./all_artifacts/tv-apk -type f -name "*.apk" -exec cp {} release_files/AndroidNAS-TV-$VERSION.apk \; || true
+          find ./all_artifacts/watch-apk -type f -name "*.apk" -exec cp {} release_files/AndroidNAS-Watch-$VERSION.apk \; || true
           
           # PC端 Windows
-          cp ./all_artifacts/desktop-windows/*.exe release_files/AndroidNAS-Desktop-Windows-$VERSION.exe || true
-          cp ./all_artifacts/cli-windows/*.exe release_files/AndroidNAS-CLI-Windows-$VERSION.exe || true
+          find ./all_artifacts/desktop-windows -type f -name "*.exe" -exec cp {} release_files/AndroidNAS-Desktop-Windows-$VERSION.exe \; || true
+          find ./all_artifacts/cli-windows -type f -name "*.exe" -exec cp {} release_files/AndroidNAS-CLI-Windows-$VERSION.exe \; || true
           
-          # PC端 Linux
-          cp ./all_artifacts/desktop-linux/* release_files/AndroidNAS-Desktop-Linux-$VERSION || true
-          cp ./all_artifacts/cli-linux/* release_files/AndroidNAS-CLI-Linux-$VERSION || true
+          # PC端 Linux (不带后缀)
+          find ./all_artifacts/desktop-linux -type f -exec cp {} release_files/AndroidNAS-Desktop-Linux-$VERSION \; || true
+          find ./all_artifacts/cli-linux -type f -exec cp {} release_files/AndroidNAS-CLI-Linux-$VERSION \; || true
           
           # 额外生态
-          cp ./all_artifacts/browser-extension/*.zip release_files/Browser-Extension.zip || true
-          cp ./all_artifacts/wechat-miniprogram/*.zip release_files/WeChat-MiniProgram.zip || true
+          find ./all_artifacts/browser-extension -type f -name "*.zip" -exec cp {} release_files/Browser-Extension.zip \; || true
+          find ./all_artifacts/wechat-miniprogram -type f -name "*.zip" -exec cp {} release_files/WeChat-MiniProgram.zip \; || true
           
           echo "====== 即将发布的文件列表 ======"
           ls -la release_files/
