@@ -814,75 +814,74 @@ function showMonitor() {
 }
 function updateMonitor() {
     if(document.getElementById("monitorModal").style.display !== "flex") return;
-    fetch("/api/monitor").then(r => r.json()).then(d => {
+    fetch("/api/monitor").then(function(r) { return r.json(); }).then(function(d) {
         document.getElementById("cpuText").textContent = d.cpu + "%";
-        document.getElementById("memText").textContent = d.memUsed + " / " + d.memTotal + " MB";
-        document.getElementById("storeText").textContent = d.storageUsed + " / " + d.storageTotal + " GB";
-        document.getElementById("battText").textContent = d.battery + "%";
-        
         document.getElementById("barCpu").style.width = d.cpu + "%";
-        document.getElementById("barMem").style.width = (d.memUsed/d.memTotal*100) + "%";
-        document.getElementById("barStore").style.width = (d.storageUsed/d.storageTotal*100) + "%";
-        document.getElementById("barBatt").style.width = d.battery + "%";
-    });
+        document.getElementById("memText").textContent = d.memUsed + " / " + d.memTotal + " MB";
+        var memPct = Math.round((d.memUsed / d.memTotal) * 100) || 0;
+        document.getElementById("barMem").style.width = memPct + "%";
+        document.getElementById("storeText").textContent = d.storageUsed + " / " + d.storageTotal + " GB";
+        var storePct = Math.round((d.storageUsed / d.storageTotal) * 100) || 0;
+        document.getElementById("barStore").style.width = storePct + "%";
+        document.getElementById("battText").textContent = d.battery + "%";
+        document.getElementById("barBatt").style.width = (d.battery >= 0 ? d.battery : 0) + "%";
+    }).catch(function(e){ console.log(e); });
     setTimeout(updateMonitor, 3000);
 }
 
-// --- 用户管理 ---
 function showUsers() {
     closeSheet("mainMenu"); showModal("usersModal");
-    fetch("/api/users").then(r => r.json()).then(users => {
+    fetch("/api/users").then(function(r) { return r.json(); }).then(function(users) {
         var tbody = document.getElementById("userList");
         tbody.innerHTML = "";
-        users.forEach(u => {
-            tbody.innerHTML += `<tr><td>${u.user}</td><td>${u.role===1?'管理员':'普通用户'}</td><td>${u.root}</td></tr>`;
+        users.forEach(function(u) {
+            var tr = document.createElement("tr");
+            tr.innerHTML = "<td>" + u.user + "</td><td>" + (u.role === 1 ? "管理员" : "普通") + "</td><td>" + u.root + "</td>";
+            tbody.appendChild(tr);
         });
-    });
+    }).catch(function(e){ console.log(e); });
 }
 function addUser() {
     var fd = new FormData();
     fd.append("u", document.getElementById("newUser").value);
     fd.append("p", document.getElementById("newPass").value);
     fd.append("r", "/Users/" + document.getElementById("newUser").value);
-    fetch("/api/users", {method:"POST", body:fd}).then(() => showUsers());
+    fetch("/api/users", {method:"POST", body:fd}).then(function() { showUsers(); });
 }
 
-// --- 影视海报墙 ---
 function showMediaWall() {
     closeSheet("mainMenu");
     document.getElementById("path").textContent = "影视海报墙 (Mock 演示版)";
     var list = document.getElementById("list");
-    list.innerHTML = `
-        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:16px; padding:16px;">
-            <div class="media-card">
-                <img src="https://image.tmdb.org/t/p/w200/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg">
-                <div class="media-title">盗梦空间</div>
-            </div>
-            <div class="media-card">
-                <img src="https://image.tmdb.org/t/p/w200/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg">
-                <div class="media-title">赛博朋克：边缘行者</div>
-            </div>
-            <div class="media-card">
-                <img src="https://image.tmdb.org/t/p/w200/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg">
-                <div class="media-title">蜘蛛侠：纵横宇宙</div>
-            </div>
-        </div>
-    `;
-}
-
-// --- 流式打包下载 (将多选的文件打包发送) ---
-function downloadAsZip() {
-    var paths = Array.from(selectedPaths).join("|");
-    if(!paths) return alert("请先选择文件");
-    var fd = new FormData(); fd.append("paths", paths);
-    fetch("/api/download/zip", { method: "POST", body: fd })
-        .then(res => res.blob())
-        .then(blob => {
-            var a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = "bundle.zip";
-            a.click();
-        });
+    list.innerHTML = "";
+    var grid = document.createElement("div");
+    grid.style.display = "grid";
+    grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(140px, 1fr))";
+    grid.style.gap = "16px";
+    grid.style.padding = "16px";
+    
+    var mockData = [
+        { name: "盗梦空间", img: "https://image.tmdb.org/t/p/w200/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg" },
+        { name: "赛博朋克", img: "https://image.tmdb.org/t/p/w200/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg" }
+    ];
+    
+    mockData.forEach(function(m) {
+        var div = document.createElement("div");
+        div.style.textAlign = "center";
+        var img = document.createElement("img");
+        img.src = m.img;
+        img.style.width = "100%";
+        img.style.borderRadius = "12px";
+        var title = document.createElement("div");
+        title.textContent = m.name;
+        title.style.marginTop = "8px";
+        title.style.fontSize = "14px";
+        title.style.fontWeight = "bold";
+        div.appendChild(img);
+        div.appendChild(title);
+        grid.appendChild(div);
+    });
+    list.appendChild(grid);
 }
 
 function showRemote() {
