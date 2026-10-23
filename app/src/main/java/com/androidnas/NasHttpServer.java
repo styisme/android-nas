@@ -50,7 +50,7 @@ public class NasHttpServer extends NanoHTTPD {
     @Override public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         try {
-            if (uri.startsWith("/share/")) return handleShare(uri.substring(7));
+            
             if (uri.startsWith("/dlna/")) return handleDlna(uri);
 
             int role = 1;
@@ -61,6 +61,70 @@ public class NasHttpServer extends NanoHTTPD {
                     r.addHeader("WWW-Authenticate", "Basic realm=\"Android NAS\"");
                     return r;
                 }
+            }
+
+            // --- v4.1.0 新增功能路由 ---
+            if ("/api/monitor".equals(uri)) {
+                return newFixedLengthResponse(Response.Status.OK, "application/json", SystemMonitor.getStatusJson(context));
+            }
+
+            if ("/api/users".equals(uri)) {
+                if (Method.GET.equals(session.getMethod())) {
+                    return newFixedLengthResponse(Response.Status.OK, "application/json", DatabaseManager.getInstance().getAllUsersJson());
+                } else if (Method.POST.equals(session.getMethod())) {
+                    Map<String, String> files = new HashMap<>();
+                    session.parseBody(files);
+                    String u = session.getParms().get("u");
+                    String p = session.getParms().get("p");
+                    String r = session.getParms().get("r");
+                    DatabaseManager.getInstance().addUser(u, p, 2, r);
+                    return text(Response.Status.OK, "OK");
+                }
+            }
+
+            if ("/api/download/zip".equals(uri) && Method.POST.equals(session.getMethod())) {
+                Map<String, String> files = new HashMap<>();
+                session.parseBody(files);
+                String[] paths = session.getParms().get("paths").split("\|");
+                
+                // 临时文件用于存放 ZIP 流（因为 NanoHTTPD 对分块流式 ZIP 支持不好）
+                File tempZip = File.createTempFile("bundle", ".zip", context.getCacheDir());
+                try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(tempZip))) {
+                    for (String p : paths) {
+                        File target = safeFile(p);
+                        if (target != null && target.isFile()) {
+                            zos.putNextEntry(new ZipEntry(target.getName()));
+                            FileInputStream fis = new FileInputStream(target);
+                            byte[] buf = new byte[8192]; int len;
+                            while ((len = fis.read(buf)) > 0) zos.write(buf, 0, len);
+                            fis.close();
+                            zos.closeEntry();
+                        }
+                    }
+                } catch (Exception e) {}
+                FileInputStream zipStream = new FileInputStream(tempZip);
+                Response res = newChunkedResponse(Response.Status.OK, "application/zip", zipStream);
+                res.addHeader("Content-Disposition", "attachment; filename=\"bundle.zip\"");
+                return res;
+            }
+
+            if ("/api/share".equals(uri) && Method.POST.equals(session.getMethod())) {
+                Map<String, String> files = new HashMap<>();
+                session.parseBody(files);
+                String path = session.getParms().get("path");
+                String pass = session.getParms().get("pass"); // 提取码
+                String expire = session.getParms().get("expire"); // 有效时长
+                
+                String token = UUID.randomUUID().toString().substring(0, 8);
+                long expireAt = System.currentTimeMillis() + (expire != null ? Long.parseLong(expire) : 86400000L);
+                
+                // 格式: path|pass|expireAt
+                sharedLinks.put(token, path + "|" + (pass == null ? "" : pass) + "|" + expireAt);
+                return text(Response.Status.OK, token);
+            }
+
+            if ("/share/".equals(uri.substring(0, Math.min(7, uri.length())))) {
+                return handleSecureShare(session, uri.substring(7));
             }
 
             if ("/api/status".equals(uri))

@@ -113,8 +113,54 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
 .empty-state { text-align: center; padding: 40px; color: var(--on-surface-variant); }
 </style>
     <script src="https://cdn.jsdelivr.net/npm/jmuxer@2.0.5/dist/jmuxer.min.js"></script>
-</head>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://vjs.zencdn.net/8.6.1/video-js.css" rel="stylesheet" />
+    <script src="https://vjs.zencdn.net/8.6.1/video.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    </head>
 <body>
+
+<style>
+.media-card { text-align: center; }
+.media-card img { width: 100%; border-radius: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+.media-title { margin-top: 8px; font-size: 14px; font-weight: bold; }
+.monitor-row { margin-bottom: 16px; }
+.monitor-label { display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 4px; }
+.monitor-bar-bg { width: 100%; height: 8px; background: #EADDFF; border-radius: 4px; overflow: hidden; }
+.monitor-bar-fill { height: 100%; background: #6750A4; transition: 0.5s; }
+</style>
+
+<div id="monitorModal" class="modal" onclick="closeModal('monitorModal')">
+  <div class="dialog" onclick="event.stopPropagation()">
+    <div class="dialog-title">📊 服务端硬件监控</div>
+    <div class="dialog-content">
+        <div class="monitor-row"><div class="monitor-label"><span>CPU 占用</span><span id="cpuText">-</span></div><div class="monitor-bar-bg"><div class="monitor-bar-fill" id="barCpu"></div></div></div>
+        <div class="monitor-row"><div class="monitor-label"><span>内存使用</span><span id="memText">-</span></div><div class="monitor-bar-bg"><div class="monitor-bar-fill" id="barMem"></div></div></div>
+        <div class="monitor-row"><div class="monitor-label"><span>存储空间</span><span id="storeText">-</span></div><div class="monitor-bar-bg"><div class="monitor-bar-fill" id="barStore"></div></div></div>
+        <div class="monitor-row"><div class="monitor-label"><span>电池电量</span><span id="battText">-</span></div><div class="monitor-bar-bg"><div class="monitor-bar-fill" id="barBatt"></div></div></div>
+    </div>
+    <div class="dialog-actions"><button class="btn-text" onclick="closeModal('monitorModal')">关闭</button></div>
+  </div>
+</div>
+
+<div id="usersModal" class="modal" onclick="closeModal('usersModal')">
+  <div class="dialog" onclick="event.stopPropagation()">
+    <div class="dialog-title">👥 多用户管理</div>
+    <div class="dialog-content">
+        <table style="width:100%; text-align:left; margin-bottom:16px;">
+            <thead><tr><th>用户名</th><th>角色</th><th>根目录</th></tr></thead>
+            <tbody id="userList"></tbody>
+        </table>
+        <h4>添加新用户</h4>
+        <input type="text" id="newUser" placeholder="用户名" style="margin-bottom:8px;">
+        <input type="text" id="newPass" placeholder="密码" style="margin-bottom:8px;">
+        <button class="btn-filled" onclick="addUser()">添加用户</button>
+    </div>
+    <div class="dialog-actions"><button class="btn-text" onclick="closeModal('usersModal')">关闭</button></div>
+  </div>
+</div>
+
 
 <header>
   <button class="icon-btn" id="btnBack" onclick="goUp()">←</button>
@@ -144,6 +190,9 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
     <div class="sheet-handle"></div>
     <div class="sheet-item" onclick="showMkdir()">📁 新建文件夹</div>
     <div class="sheet-item" onclick="showClipboard()">📋 局域网剪贴板</div>
+    <div class="sheet-item" onclick="showMonitor()">📊 硬件仪表盘</div>
+    <div class="sheet-item" onclick="showUsers()">👥 用户管理</div>
+    <div class="sheet-item" onclick="showMediaWall()">🎬 影视海报墙</div>
     <div class="sheet-item" onclick="showPhotos()">🖼️ 时光相册</div>
     <div class="sheet-item" onclick="checkOta()">🚀 检查更新 (OTA)</div>
     <div class="sheet-item" onclick="showRemote()">📱 远程控制 (Beta)</div>
@@ -755,6 +804,85 @@ function checkOta() {
     fetch("/api/ota").then(r => r.json()).then(data => {
         alert("当前版本: v4.1.0\n最新版本: v" + data.version + "\n\n" + (data.version === "4.1.0" ? "已是最新版本" : "有新版本可用！"));
     });
+}
+
+
+// --- 硬件监控 ---
+function showMonitor() {
+    closeSheet("mainMenu"); showModal("monitorModal");
+    updateMonitor();
+}
+function updateMonitor() {
+    if(document.getElementById("monitorModal").style.display !== "flex") return;
+    fetch("/api/monitor").then(r => r.json()).then(d => {
+        document.getElementById("cpuText").textContent = d.cpu + "%";
+        document.getElementById("memText").textContent = d.memUsed + " / " + d.memTotal + " MB";
+        document.getElementById("storeText").textContent = d.storageUsed + " / " + d.storageTotal + " GB";
+        document.getElementById("battText").textContent = d.battery + "%";
+        
+        document.getElementById("barCpu").style.width = d.cpu + "%";
+        document.getElementById("barMem").style.width = (d.memUsed/d.memTotal*100) + "%";
+        document.getElementById("barStore").style.width = (d.storageUsed/d.storageTotal*100) + "%";
+        document.getElementById("barBatt").style.width = d.battery + "%";
+    });
+    setTimeout(updateMonitor, 3000);
+}
+
+// --- 用户管理 ---
+function showUsers() {
+    closeSheet("mainMenu"); showModal("usersModal");
+    fetch("/api/users").then(r => r.json()).then(users => {
+        var tbody = document.getElementById("userList");
+        tbody.innerHTML = "";
+        users.forEach(u => {
+            tbody.innerHTML += `<tr><td>${u.user}</td><td>${u.role===1?'管理员':'普通用户'}</td><td>${u.root}</td></tr>`;
+        });
+    });
+}
+function addUser() {
+    var fd = new FormData();
+    fd.append("u", document.getElementById("newUser").value);
+    fd.append("p", document.getElementById("newPass").value);
+    fd.append("r", "/Users/" + document.getElementById("newUser").value);
+    fetch("/api/users", {method:"POST", body:fd}).then(() => showUsers());
+}
+
+// --- 影视海报墙 ---
+function showMediaWall() {
+    closeSheet("mainMenu");
+    document.getElementById("path").textContent = "影视海报墙 (Mock 演示版)";
+    var list = document.getElementById("list");
+    list.innerHTML = `
+        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(140px, 1fr)); gap:16px; padding:16px;">
+            <div class="media-card">
+                <img src="https://image.tmdb.org/t/p/w200/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg">
+                <div class="media-title">盗梦空间</div>
+            </div>
+            <div class="media-card">
+                <img src="https://image.tmdb.org/t/p/w200/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg">
+                <div class="media-title">赛博朋克：边缘行者</div>
+            </div>
+            <div class="media-card">
+                <img src="https://image.tmdb.org/t/p/w200/8Vt6mWEReuy4Of61Lnj5Xj704m8.jpg">
+                <div class="media-title">蜘蛛侠：纵横宇宙</div>
+            </div>
+        </div>
+    `;
+}
+
+// --- 流式打包下载 (将多选的文件打包发送) ---
+function downloadAsZip() {
+    var paths = Array.from(selectedPaths).join("|");
+    if(!paths) return alert("请先选择文件");
+    var fd = new FormData(); fd.append("paths", paths);
+    fetch("/api/download/zip", { method: "POST", body: fd })
+        .then(res => res.blob())
+        .then(blob => {
+            var a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "bundle.zip";
+            a.click();
+        });
 }
 
 function showRemote() {

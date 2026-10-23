@@ -70,6 +70,30 @@ public class DatabaseManager extends SQLiteOpenHelper {
         return path;
     }
 
+    public boolean addUser(String user, String pass, int role, String root) {
+        try {
+            getWritableDatabase().execSQL("INSERT INTO users (username, password, role, root_dir) VALUES (?, ?, ?, ?)", new Object[]{user, pass, role, root});
+            return true;
+        } catch (Exception e) { return false; }
+    }
+
+    public String getAllUsersJson() {
+        Cursor c = getReadableDatabase().rawQuery("SELECT id, username, role, root_dir FROM users", null);
+        StringBuilder sb = new StringBuilder("[");
+        boolean first = true;
+        while (c.moveToNext()) {
+            if (!first) sb.append(",");
+            sb.append("{\"id\":").append(c.getInt(0))
+              .append(",\"user\":\"").append(c.getString(1)).append("\"")
+              .append(",\"role\":").append(c.getInt(2))
+              .append(",\"root\":\"").append(c.getString(3)).append("\"}");
+            first = false;
+        }
+        c.close();
+        sb.append("]");
+        return sb.toString();
+    }
+
     public static String md5(String input) {
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
