@@ -227,7 +227,7 @@ jobs:
           # 提取最新的更新日志部分（从最新的 ## [ 开始，到下一个 ## [ 结束）
           awk '/^## \[/{count++} count==1{print}' CHANGELOG.md | tail -n +2 > changelog_body.md
           
-          cat << 'EOF' > release_notes.md
+          cat << EOF > release_notes.md
           ## 👑 Android NAS v${VERSION} 正式发布！
           
           **十端生态矩阵：全平台私有云控制中枢**
@@ -239,7 +239,7 @@ jobs:
           
           cat changelog_body.md >> release_notes.md
           
-          cat << 'EOF' >> release_notes.md
+          cat << EOF >> release_notes.md
           
           ---
           
