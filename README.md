@@ -19,6 +19,7 @@
 
 为了让不同的技术栈发挥极致的性能，部分核心端已独立建仓维护，并与主项目保持 API 100% 互通：
 
+- 👉 **[android-nas-lite](https://github.com/styisme/android-nas-lite)**（极简轻量版）：剥离重型远控、Root 保活与多用户数据库，回归纯粹的文件服务器本心，适合低配设备或仅需基础局域网共享的场景。
 - 👉 **[android-nas-dotnet](https://github.com/styisme/android-nas-dotnet)**（高版本现代重构）：基于 .NET 10 (MAUI) 与 ASP.NET Core，彻底拥抱现代 Android 权限模型，提供跨平台原生 GUI 体验。
 - 👉 **[HarmonyNAS](https://github.com/styisme/HarmonyNAS)**（纯血鸿蒙原生）：基于纯正 ArkTS 重写，拒绝任何黑科技，利用系统级 `backgroundTaskManager` 合法保活，适配鸿蒙全家桶。
 
