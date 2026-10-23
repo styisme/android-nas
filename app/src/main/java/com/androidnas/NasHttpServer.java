@@ -1,5 +1,6 @@
 package com.androidnas;
 
+import android.content.Context;
 import android.os.Environment;
 import java.io.*;
 import java.util.*;
@@ -12,7 +13,11 @@ public class NasHttpServer extends NanoHTTPD {
     private Map<String, String> sharedLinks = new ConcurrentHashMap<>();
     private static volatile String clipboardContent = "";
 
-    public NasHttpServer(int port) { super(port); }
+    private Context context;
+    public NasHttpServer(int port, Context context) { 
+        super(port); 
+        this.context = context;
+    }
 
     private File safeFile(String path) throws IOException {
         if (path == null || path.trim().isEmpty()) path = "/";
