@@ -88,7 +88,12 @@ public class NasHttpServer extends NanoHTTPD {
                 File dir = safeFile("/");
                 List<File> photos = new ArrayList<>();
                 scanPhotos(dir, photos, 0);
-                photos.sort((a, b) -> Long.compare(b.lastModified(), a.lastModified())); // 时间降序
+                Collections.sort(photos, new Comparator<File>() {
+                    @Override
+                    public int compare(File a, File b) {
+                        return Long.compare(b.lastModified(), a.lastModified());
+                    }
+                });
                 
                 StringBuilder sb = new StringBuilder("[");
                 for (int i = 0; i < photos.size(); i++) {
@@ -204,10 +209,13 @@ public class NasHttpServer extends NanoHTTPD {
     private String buildJson(File dir, String path) {
         File[] files = dir.listFiles();
         if (files == null) files = new File[0];
-        Arrays.sort(files, (a, b) -> {
-            if (a.isDirectory() && !b.isDirectory()) return -1;
-            if (!a.isDirectory() && b.isDirectory()) return 1;
-            return a.getName().compareToIgnoreCase(b.getName());
+        Arrays.sort(files, new Comparator<File>() {
+            @Override
+            public int compare(File a, File b) {
+                if (a.isDirectory() && !b.isDirectory()) return -1;
+                if (!a.isDirectory() && b.isDirectory()) return 1;
+                return a.getName().compareToIgnoreCase(b.getName());
+            }
         });
         StringBuilder sb = new StringBuilder("{\"path\":\"" + esc(path) + "\",\"files\":[");
         for (int i = 0; i < files.length; i++) {
