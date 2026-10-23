@@ -12,8 +12,8 @@ public class NasHttpServer extends NanoHTTPD {
     private static final String ROOT = Environment.getExternalStorageDirectory().getAbsolutePath();
     private Map<String, String> sharedLinks = new ConcurrentHashMap<>();
     private static volatile String clipboardContent = "";
-
     private Context context;
+
     public NasHttpServer(int port, Context context) { 
         super(port); 
         this.context = context;
@@ -24,12 +24,10 @@ public class NasHttpServer extends NanoHTTPD {
         String user = AuthManager.getCurrentUser();
         String userRoot = DatabaseManager.getInstance().getUserRoot(user);
         
-        // 如果是 admin 且开了全盘，则用 /
         if (user.equals("admin") && SettingsManager.isGlobalMode()) {
             return new File(path);
         }
         
-        // 普通用户映射到自己的根目录
         File rootDir = new File(ROOT, userRoot);
         if (!rootDir.exists()) rootDir.mkdirs();
         
@@ -50,7 +48,7 @@ public class NasHttpServer extends NanoHTTPD {
     @Override public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         try {
-            
+            if (uri.startsWith("/share/")) return handleSecureShare(session, uri.substring(7));
             if (uri.startsWith("/dlna/")) return handleDlna(uri);
 
             int role = 1;
@@ -63,7 +61,6 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
-            // --- v4.1.0 新增功能路由 ---
             if ("/api/monitor".equals(uri)) {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", SystemMonitor.getStatusJson(context));
             }
@@ -85,9 +82,8 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/download/zip".equals(uri) && Method.POST.equals(session.getMethod())) {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
-                String[] paths = session.getParms().get("paths").split("\|");
+                String[] paths = session.getParms().get("paths").split("\\|");
                 
-                // 临时文件用于存放 ZIP 流（因为 NanoHTTPD 对分块流式 ZIP 支持不好）
                 File tempZip = File.createTempFile("bundle", ".zip", context.getCacheDir());
                 try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(tempZip))) {
                     for (String p : paths) {
@@ -112,36 +108,18 @@ public class NasHttpServer extends NanoHTTPD {
                 Map<String, String> files = new HashMap<>();
                 session.parseBody(files);
                 String path = session.getParms().get("path");
-                String pass = session.getParms().get("pass"); // 提取码
-                String expire = session.getParms().get("expire"); // 有效时长
+                String pass = session.getParms().get("pass");
+                String expire = session.getParms().get("expire");
                 
                 String token = UUID.randomUUID().toString().substring(0, 8);
                 long expireAt = System.currentTimeMillis() + (expire != null ? Long.parseLong(expire) : 86400000L);
-                
-                // 格式: path|pass|expireAt
                 sharedLinks.put(token, path + "|" + (pass == null ? "" : pass) + "|" + expireAt);
                 return text(Response.Status.OK, token);
             }
 
-            if ("/share/".equals(uri.substring(0, Math.min(7, uri.length())))) {
-                return handleSecureShare(session, uri.substring(7));
-            }
-
             if ("/api/status".equals(uri))
-                return newFixedLengthResponse(Response.Status.OK, "application/json",
-                    "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + "}");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + "}");
 
-            if ("/api/clipboard".equals(uri)) {
-                if (Method.POST.equals(session.getMethod())) {
-                    Map<String, String> files = new HashMap<>();
-                    session.parseBody(files);
-                    clipboardContent = session.getParms().get("content");
-                    return text(Response.Status.OK, "OK");
-                }
-                return text(Response.Status.OK, clipboardContent);
-            }
-
-            // 1. 缩略图接口
             if ("/api/thumb".equals(uri)) {
                 File img = safeFile(session.getParms().get("path"));
                 if (img != null && img.exists() && !img.isDirectory()) {
@@ -152,10 +130,9 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.NOT_FOUND, "Not found");
             }
 
-            // 2. 相册时间轴接口
             if ("/api/photos".equals(uri)) {
                 File dir = safeFile("/");
-                List<File> photos = new ArrayList<>();
+                List<File> photos = new ArrayList<File>();
                 scanPhotos(dir, photos, 0);
                 Collections.sort(photos, new Comparator<File>() {
                     @Override
@@ -174,35 +151,6 @@ public class NasHttpServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
             }
 
-            // 3. 秒传与断点续传接口
-            if ("/api/upload/check".equals(uri)) {
-                String hash = session.getParms().get("hash");
-                String path = DatabaseManager.getInstance().getPathByHash(hash);
-                if (path != null) return text(Response.Status.OK, "SECONDS_UPLOAD");
-                return text(Response.Status.OK, "NEED_UPLOAD");
-            }
-            if ("/api/upload/merge".equals(uri)) {
-                // 简易合并逻辑
-                String hash = session.getParms().get("hash");
-                String path = session.getParms().get("path");
-                File target = safeFile(path);
-                if (target != null) {
-                    DatabaseManager.getInstance().saveHash(hash, path);
-                    return text(Response.Status.OK, "OK");
-                }
-            }
-
-            // 4. 离线下载占位接口
-            if ("/api/download/add".equals(uri)) {
-                return text(Response.Status.OK, "Task Added (Mock)");
-            }
-
-            // 5. 系统 OTA 更新检查
-            if ("/api/ota".equals(uri)) {
-                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"version\":\"4.1.0\",\"url\":\"https://github.com\"}");
-            }
-
-            // 其它原有逻辑
             if ("/api/list".equals(uri)) {
                 String path = session.getParms().get("path");
                 if (path == null || path.isEmpty()) path = "/";
@@ -270,7 +218,36 @@ public class NasHttpServer extends NanoHTTPD {
         return text(Response.Status.OK, "OK");
     }
 
-    private Response handleShare(String token) { return text(Response.Status.NOT_FOUND, "Share expired"); }
+    private Response handleSecureShare(IHTTPSession session, String token) throws Exception {
+        String data = sharedLinks.get(token);
+        if (data == null) return text(Response.Status.NOT_FOUND, "分享已失效");
+        
+        String[] parts = data.split("\\|");
+        String path = parts[0];
+        String pass = parts.length > 1 ? parts[1] : "";
+        long expireAt = parts.length > 2 ? Long.parseLong(parts[2]) : 0;
+
+        if (expireAt > 0 && System.currentTimeMillis() > expireAt) {
+            return text(Response.Status.FORBIDDEN, "分享已过期");
+        }
+
+        if (!pass.isEmpty()) {
+            String reqPass = session.getParms().get("pass");
+            if (reqPass == null || !reqPass.equals(pass)) {
+                return text(Response.Status.UNAUTHORIZED, "请输入正确的提取码");
+            }
+        }
+
+        File f = safeFile(path);
+        if (f != null && f.exists() && !f.isDirectory()) {
+            FileInputStream fis = new FileInputStream(f);
+            Response r = newChunkedResponse(Response.Status.OK, "application/octet-stream", fis);
+            r.addHeader("Content-Disposition", "attachment; filename=\"" + f.getName() + "\"");
+            return r;
+        }
+        return text(Response.Status.NOT_FOUND, "文件已丢失");
+    }
+
     private Response handleDlna(String uri) { return text(Response.Status.NOT_FOUND, "Not found"); }
     private String mime(String n) { return n.endsWith(".mp4") ? "video/mp4" : "application/octet-stream"; }
     private Response text(Response.Status s, String m) { return newFixedLengthResponse(s, "text/plain; charset=utf-8", m); }

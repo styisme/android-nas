@@ -21,18 +21,14 @@ public class DatabaseManager extends SQLiteOpenHelper {
     private DatabaseManager(Context context) { super(context, DB_NAME, null, DB_VERSION); }
 
     @Override public void onCreate(SQLiteDatabase db) {
-        // 用户表
         db.execSQL("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, role INTEGER, root_dir TEXT)");
-        // 秒传记录表
         db.execSQL("CREATE TABLE file_hashes (hash TEXT PRIMARY KEY, path TEXT)");
-        // 默认管理员
         db.execSQL("INSERT INTO users (username, password, role, root_dir) VALUES ('admin', 'admin', 1, '/')");
         db.execSQL("INSERT INTO users (username, password, role, root_dir) VALUES ('guest', 'guest', 2, '/Public')");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {}
 
-    // 校验用户并返回角色 (0:失败, 1:Admin, 2:Guest/Normal)
     public int verifyUser(String user, String pass) {
         SQLiteDatabase db = getReadableDatabase();
         Cursor c = db.rawQuery("SELECT role FROM users WHERE username=? AND password=?", new String[]{user, pass});

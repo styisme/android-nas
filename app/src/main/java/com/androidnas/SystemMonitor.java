@@ -18,7 +18,6 @@ public class SystemMonitor {
             long totalStorage = (long)stat.getBlockSize() * (long)stat.getBlockCount();
 
             int battery = -1;
-            // 兼容守卫：BatteryManager.BATTERY_PROPERTY_CAPACITY 是 API 21 引入的
             if (Build.VERSION.SDK_INT >= 21) {
                 try {
                     BatteryManager bm = (BatteryManager) context.getSystemService(Context.BATTERY_SERVICE);
