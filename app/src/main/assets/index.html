@@ -144,6 +144,8 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
     <div class="sheet-handle"></div>
     <div class="sheet-item" onclick="showMkdir()">📁 新建文件夹</div>
     <div class="sheet-item" onclick="showClipboard()">📋 局域网剪贴板</div>
+    <div class="sheet-item" onclick="showPhotos()">🖼️ 时光相册</div>
+    <div class="sheet-item" onclick="checkOta()">🚀 检查更新 (OTA)</div>
     <div class="sheet-item" onclick="showRemote()">📱 远程控制 (Beta)</div>
     <div class="sheet-item" onclick="showTerminal()">🦅 Root 终端</div>
     <div class="sheet-item" onclick="showSettings()">⚙️ 系统设置</div>
@@ -717,6 +719,42 @@ function switchRemoteMode() {
         document.getElementById("remoteVideo").style.display = "block";
         document.getElementById("remoteStatus").textContent = "等待 H264 流 (需服务端点录屏授权)";
     }
+}
+
+
+function showPhotos() {
+    closeSheet("mainMenu");
+    document.getElementById("path").textContent = "时光相册 (按时间排序)";
+    fetch("/api/photos").then(r => r.json()).then(data => {
+        var list = document.getElementById("list");
+        list.innerHTML = "";
+        if(!data || data.length === 0) { list.innerHTML = "<p>空空如也</p>"; return; }
+        
+        var grid = document.createElement("div");
+        grid.style.display = "grid";
+        grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(100px, 1fr))";
+        grid.style.gap = "4px";
+        grid.style.padding = "10px";
+
+        data.forEach(f => {
+            var img = document.createElement("img");
+            img.src = "/api/thumb?path=" + encodeURIComponent(f.path);
+            img.style.width = "100%";
+            img.style.aspectRatio = "1";
+            img.style.objectFit = "cover";
+            img.style.borderRadius = "8px";
+            img.onclick = () => playMedia(f.path, f.name);
+            grid.appendChild(img);
+        });
+        list.appendChild(grid);
+    });
+}
+
+function checkOta() {
+    closeSheet("mainMenu");
+    fetch("/api/ota").then(r => r.json()).then(data => {
+        alert("当前版本: v4.1.0\n最新版本: v" + data.version + "\n\n" + (data.version === "4.1.0" ? "已是最新版本" : "有新版本可用！"));
+    });
 }
 
 function showRemote() {
