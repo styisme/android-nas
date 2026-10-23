@@ -1,7 +1,7 @@
 # Android NAS 开发者 API 接口规范
 
 本项目的所有端（Web、手机客户端、TV、Watch、CLI、鸿蒙、苹果、小程序）均通过统一的 HTTP JSON API 与局域网内的服务端通信。此外，为了支持多模态远程控制，另设有一套独立的 WebSocket 实时协议。
-以下是完整的接口规范说明。
+以下是完整的接口规范说明（基于 v4.1.0）。
 
 ---
 
@@ -12,20 +12,20 @@
   - 常规请求：`application/x-www-form-urlencoded` 或 `application/json`
   - 文件上传：`multipart/form-data` 或 `application/octet-stream`
 - **鉴权方式 (Auth)**：
-  - 若服务端在驾驶舱开启了“账号验证”，需要在 HTTP Header 中携带 Basic Auth。
+  - 若服务端开启了“账号验证”，需要在 HTTP Header 中携带 Basic Auth。
   - Header 格式：`Authorization: Basic Base64(账号:密码)` （默认 `admin:admin`）。
   - 鉴权失败将返回 `401 Unauthorized`。
+- **多用户隔离**：v4.1.0 引入 SQLite 多用户。普通用户的 `path` 参数会被底层自动映射并锁定在其专属沙盒目录内。
 - **响应格式**：除流媒体下载、纯文本预览和 WebSocket 外，所有响应均为 JSON 格式。
 
 ---
 
-## 📁 一、 文件管理接口
+## 📁 一、 文件与目录管理接口
 
 ### 1. 获取目录列表
 - **URL**: `/api/list`
 - **Method**: `GET`
-- **Params**:
-  - `path` (String, 必填) - 目标目录的绝对路径，如 `/` 或 `/Movies/`。
+- **Params**: `path` (String, 必填) - 目标目录的绝对路径，如 `/` 或 `/Movies/`。
 - **Response**: `200 OK`
 ```json
 {
@@ -34,86 +34,102 @@
     {
       "name": "Inception.mp4",
       "dir": false,
-      "size": 1024000,
-      "isTxt": false,
-      "isMedia": true,
-      "isZip": false
+      "size": 1024000
     }
   ]
 }
 ```
 
-### 2. 文件下载与流媒体分片
+### 2. 获取图片缩略图 (v4.1.0 新增)
+- **URL**: `/api/thumb`
+- **Method**: `GET`
+- **Params**: `path` (String, 必填) - 图片的原始路径。
+- **Response**: `200 OK`，直接返回 `image/jpeg` 的缩略图数据流（最大 300px）。如果缓存不存在，服务端会自动生成并缓存。
+
+### 3. 获取时光相册列表 (v4.1.0 新增)
+- **URL**: `/api/photos`
+- **Method**: `GET`
+- **Params**: 无。
+- **Response**: `200 OK`，返回当前用户根目录下所有图片的 JSON 数组，已按时间倒序排列。
+```json
+[
+  { "name": "IMG_001.jpg", "path": "/Photos/IMG_001.jpg" }
+]
+```
+
+### 4. 文件下载与流媒体分片
 - **URL**: `/api/download`
 - **Method**: `GET`
-- **Params**:
-  - `path` (String, 必填) - 文件的绝对路径。
-- **Headers**:
-  - 可携带 `Range: bytes=0-1024` 用于视频进度条拖动。
+- **Params**: `path` (String, 必填) - 文件的绝对路径。
+- **Headers**: 可携带 `Range: bytes=0-1024` 用于视频进度条拖动。
 - **Response**:
   - 若携带 Range，返回 `206 Partial Content`，并带有 `Content-Range` 头。
   - 若未携带，返回 `200 OK`，并带有 `Content-Disposition` 触发下载。
 
-### 3. 表单多文件上传 (Web端使用)
+### 5. 多选流式打包下载 (v4.1.0 新增)
+- **URL**: `/api/download/zip`
+- **Method**: `POST`
+- **Body**: `multipart/form-data` 或 `x-www-form-urlencoded`。
+  - 需包含 `paths` 字段，多个路径用 `|` 分隔（如 `/a.txt|/b.jpg`）。
+- **Response**: `200 OK`，服务端实时压缩并返回 `application/zip` 数据流。
+
+### 6. 表单多文件上传 (Web端使用)
 - **URL**: `/api/upload`
 - **Method**: `POST`
-- **Body**: `multipart/form-data` 格式。
-  - 需包含 `path` 字段（目标目录）。
-  - 一个或多个 `file` 字段。
+- **Body**: `multipart/form-data` 格式。需包含 `path` 字段（目标目录）与一个或多个 `file` 字段。
 - **Response**: `200 OK`，返回字符串 `OK: filename.ext`。
 
-### 4. 客户端流式 PUT 上传 (手机端/CLI端使用)
+### 7. 客户端流式 PUT 上传 (手机端/CLI端使用)
 - **URL**: `/*` (任意文件路径，如 `/Movies/new.mp4`)
 - **Method**: `PUT`
 - **Body**: 纯二进制流 (`application/octet-stream`)。
-- **注意**：客户端必须携带准确的 `Content-Length`。如果服务端写入异常（如无权限），会触发 Drain 机制并返回明确状态码。
+- **注意**：客户端必须携带准确的 `Content-Length`。如果服务端写入异常，会触发 Drain 机制并返回明确状态码。
 
-### 5. 获取文本预览
+### 8. 秒传校验与分片合并 (v4.1.0 预留接口)
+- **秒传校验**: `POST /api/upload/check`，Body: `hash=文件MD5`
+  - 返回 `SECONDS_UPLOAD`（秒传成功）或 `NEED_UPLOAD`（需要上传）。
+- **合并分片**: `POST /api/upload/merge`，Body: `hash=MD5&path=目标路径`
+
+### 9. 获取文本预览
 - **URL**: `/api/preview`
 - **Method**: `GET`
 - **Params**: `path` (String, 必填)
-- **Response**: `200 OK`，返回纯文本内容。限制 2MB 以内，超出返回 400。
+- **Response**: `200 OK`，返回纯文本内容。限制 2MB 以内。
 
-### 6. 新建文件夹
-- **URL**: `/api/mkdir`
-- **Method**: `POST`
-- **Body**: `path=/当前目录&name=新目录名`
-- **Response**: `200 OK`
+### 10. 新建文件夹 / 重命名 / 递归删除 / 在线保存
+- **新建文件夹**: `POST /api/mkdir`，Body: `path=/当前目录&name=新目录名`
+- **重命名**: `POST /api/rename`，Body: `path=/旧路径&newName=新名字`
+- **递归删除**: `POST /api/delete`，Body: `path=/目标路径`
+- **在线保存文本**: `POST /api/save`，Body: `path=/文件路径&content=新的内容`
 
-### 7. 重命名
-- **URL**: `/api/rename`
-- **Method**: `POST`
-- **Body**: `path=/旧路径&newName=新名字`
-- **Response**: `200 OK`
-
-### 8. 递归删除
-- **URL**: `/api/delete`
-- **Method**: `POST`
-- **Body**: `path=/目标路径` (服务端会自动递归删除目录下的所有内容)
-- **Response**: `200 OK`
-
-### 9. 在线保存文本
-- **URL**: `/api/save`
-- **Method**: `POST`
-- **Body**: `path=/文件路径&content=新的文件内容`
-- **Response**: `200 OK`
-
-### 10. 在线解压 ZIP
+### 11. 在线解压 ZIP
 - **URL**: `/api/unzip`
 - **Method**: `POST`
 - **Body**: `path=/目标zip文件路径.zip`
 - **Response**: `200 OK` (内置了路径穿越校验，解压安全)
 
-### 11. 生成免密分享链接
+---
+
+## 🔗 二、 分享接口
+
+### 1. 生成安全分享链接 (v4.1.0 升级)
 - **URL**: `/api/share`
 - **Method**: `POST`
-- **Body**: `path=/文件路径`
+- **Body**:
+  - `path`: 必填，文件路径。
+  - `pass`: 选填，提取码（如 `1234`）。
+  - `expire`: 选填，有效期毫秒数（如 `86400000` 表示 1 天）。
 - **Response**: `200 OK`，返回 8 位随机 Token (如 `abcd1234`)。
-- **访问分享**：外部用户通过 `GET /share/{token}` 即可免密直接下载该文件。
+
+### 2. 访问分享
+- **URL**: `/share/{token}`
+- **Method**: `GET`
+- **Params**: 如果有提取码，需携带 `?pass=1234`。
+- **Response**: 校验通过后，返回文件流。
 
 ---
 
-## 🔍 二、 搜索与工具接口
+## 🔍 三、 搜索与工具接口
 
 ### 1. 全局递归搜索
 - **URL**: `/api/search`
@@ -122,38 +138,49 @@
 - **Response**: `200 OK`，返回包含 `name`, `path`, `dir`, `size` 等属性的 JSON 数组。
 
 ### 2. 局域网剪贴板
-- **获取剪贴板**: `GET /api/clipboard` -> 返回纯文本内容。
-- **设置剪贴板**: `POST /api/clipboard`，Body: `content=要同步的文字`。
+- **获取**: `GET /api/clipboard` -> 返回纯文本内容。
+- **设置**: `POST /api/clipboard`，Body: `content=要同步的文字`。
 
 ---
 
-## ⚙️ 三、 系统与控制台接口
+## ⚙️ 四、 系统与控制台接口
 
-### 1. 获取服务端状态
-- **URL**: `/api/status`
+### 1. 硬件状态监控 (v4.1.0 新增)
+- **URL**: `/api/monitor`
 - **Method**: `GET`
-- **Response**:
+- **Response**: `200 OK`
 ```json
 {
-  "lowPower": false,
-  "clipboardEnabled": true,
-  "globalMode": false
+  "cpu": 12.5,
+  "memUsed": 256,
+  "memTotal": 4096,
+  "storageUsed": 64,
+  "storageTotal": 128,
+  "battery": 85
 }
 ```
 
-### 2. 获取/保存系统配置
+### 2. 多用户管理 (v4.1.0 新增)
+- **获取用户列表**: `GET /api/users` -> 返回用户信息 JSON 数组。
+- **添加新用户**: `POST /api/users`，Body: `u=用户名&p=密码&r=/Users/目录名`
+  - **注意**：仅 `admin` 账号有权调用。
+
+### 3. 系统 OTA 更新检查 (v4.1.0 新增)
+- **URL**: `/api/ota`
+- **Method**: `GET`
+- **Response**: `200 OK`，返回最新版本信息，供客户端比对。
+
+### 4. 获取/保存系统配置
 - **URL**: `/api/settings`
 - **Method**: `GET` / `POST`
 - **GET Response**: 返回包含 `alias`, `webPort`, `davPort`, `ftpPort`, `webdav`, `ftp`, `dlna`, `stream`, `clipboard`, `lowPower`, `globalMode` 的 JSON。
-- **POST Body**: 提交上述字段的键值对即可覆盖。
 
-### 3. 修改管理员密码
+### 5. 修改管理员密码
 - **URL**: `/api/password`
 - **Method**: `POST`
 - **Body**: `password=新密码`
-- **Response**: `200 OK`
 
-### 4. 执行 Root Shell 命令
+### 6. 执行 Root Shell 命令
 - **URL**: `/api/shell`
 - **Method**: `POST`
 - **Body**: `cmd=要执行的命令`
@@ -162,44 +189,37 @@
 
 ---
 
-## 🖥️ 四、 远程控制 WebSocket 协议 (8082端口)
+## 🖥️ 五、 远程控制 WebSocket 协议 (8082端口)
 
-为了实现极低延迟的屏幕推流与触控，本项目在 8082 端口独立运行了一套 WebSocket 服务。这不是 HTTP 协议，无需 Basic Auth 鉴权，但需保持长连接。
+为了实现极低延迟的屏幕推流与触控，本项目在 8082 端口独立运行了一套 WebSocket 服务。
 
 - **URL**: `ws://<ip>:8082`
 - **数据类型**：支持 Binary（视频/图像流）与 Text（控制指令）。
 
 ### 1. 服务端下发 (Server -> Client)
-- **H264 视频流**：当用户在服务端授权录屏后，服务端会自动通过 WebSocket 下发 H264 裸流（Binary 类型）。前端需使用 JMuxer 等库将其封装为 fMP4 格式播放。
-- **JPEG 截图流**：若前端触发了截图模式，服务端下发 JPEG 图像的二进制数据。
+- **H264 视频流**：当用户在服务端授权录屏后，下发 H264 裸流（Binary 类型）。
+- **JPEG 截图流**：若前端触发了截图模式，下发 JPEG 图像数据。
 
 ### 2. 客户端上报指令 (Client -> Server)
-前端通过 WebSocket 发送纯文本字符串指令（使用英文逗号分隔）：
-
-- **模拟点击**：`tap,x,y`
-  - 示例：`tap,500,800` （在坐标 500,800 处点击）
-- **模拟滑动**：`swipe,x1,y1,x2,y2`
-  - 示例：`swipe,500,800,500,200` （从 500,800 滑动到 500,200）
+前端发送纯文本字符串：
+- **模拟点击**：`tap,x,y` （如 `tap,500,800`）
+- **模拟滑动**：`swipe,x1,y1,x2,y2` （如 `swipe,500,800,500,200`）
 - **启动截图模式**：`start_screenshot`
 - **停止推流/控制**：`stop`
 
-*(服务端收到指令后，会根据环境自动选择通过无障碍服务或 Root input 进行触控注入)*
-
 ---
 
-## 📡 五、 跨端协同 UDP 协议 (8090端口)
-
-本项目的手机端与 TV 端/手表端通信依赖于 UDP 广播协议。
+## 📡 六、 跨端协同 UDP 协议 (8090端口)
 
 1. **发送方 (手机/手表)**：向局域网 `255.255.255.255:8090` 发送字符串：`DISCOVER_TV`。
 2. **接收方 (TV/手表)**：接收到该广播后，向发送方源 IP 单播回复：`TV_HERE`。
-3. **配置下发**：手机收到 IP 后，向 `http://<TV_IP>:8090/sync` 发送 HTTP POST，Body 格式为 `ip=xxx&user=xxx&pass=xxx`。
-4. **投屏下发**：手机向 `http://<TV_IP>:8090/play?<视频绝对URL>` 发送 GET 请求，TV 端立刻拉起播放器。
+3. **配置下发**：手机向 `http://<TV_IP>:8090/sync` 发送 HTTP POST，Body 为 `ip=xxx&user=xxx&pass=xxx`。
+4. **投屏下发**：手机向 `http://<TV_IP>:8090/play?<视频绝对URL>` 发送 GET 请求。
 
 ---
 
-## 📂 六、 其他协议端口分配
+## 📂 七、 其他协议端口分配
 
-- **WebDAV (8081端口)**：支持标准 WebDAV 协议，支持 `PROPFIND`, `MKCOL`, `PUT`, `DELETE` 等指令。在开启 Root 全盘模式下，可直接访问系统底层目录。
-- **FTP (2121端口)**：支持 PASV 被动模式，兼容 Windows 资源管理器，支持 `STOR`, `RETR`, `DELE`, `MKD`, `RMD`, `RNFR`, `RNTO` 等全套指令。
-- **LocalSend (53317端口)**：原生实现 LocalSend 接收协议，接收的文件自动落盘至 `/Download/LocalSend/` 目录。
+- **WebDAV (8081端口)**：支持标准 WebDAV 协议。在开启 Root 全盘模式下，可直接访问系统底层目录。
+- **FTP (2121端口)**：支持 PASV 被动模式，兼容 Windows 资源管理器。
+- **LocalSend (53317端口)**：原生实现接收协议，接收的文件自动落盘至 `/Download/LocalSend/` 目录。
