@@ -11,7 +11,16 @@
 > 
 > 原生内置 WebDAV、FTP、LocalSend、DLNA 四大主流局域网协议；支持跨端协同投屏与配置秒下发；手机端支持相册自动增量备份；全端支持局域网剪贴板同步；在 Root 特权加持下，更能解锁底层目录（`/data`, `/system`）访问、Web Shell 终端执行、以及基于 H264 硬件编码的多模态云端远控。
 >
-> **🔥 双核驱动 (Dual-Core Architecture)**：本项目除了主打极限兼容的 Java 主干外，还开启了基于 **.NET 10 (MAUI)** 的次世代高版本重构分支 👉 **[前往 android-nas-dotnet 仓库](https://github.com/styisme/android-nas-dotnet)**，彻底拥抱现代 Android 权限模型与跨平台原生 GUI。
+> **🔥 多核生态驱动 (Multi-Core Architecture)**：本项目除了主打极限兼容的 Java 主干外，还在生态上进行了深度扩展，独立孵化了 **.NET 10 (MAUI)** 次世代分支与纯血 **HarmonyOS (ArkTS)** 分支。详见下方链接。
+
+---
+
+## 🧬 子项目与生态矩阵联动
+
+为了让不同的技术栈发挥极致的性能，部分核心端已独立建仓维护，并与主项目保持 API 100% 互通：
+
+- 👉 **[android-nas-dotnet](https://github.com/styisme/android-nas-dotnet)**（高版本现代重构）：基于 .NET 10 (MAUI) 与 ASP.NET Core，彻底拥抱现代 Android 权限模型，提供跨平台原生 GUI 体验。
+- 👉 **[HarmonyNAS](https://github.com/styisme/HarmonyNAS)**（纯血鸿蒙原生）：基于纯正 ArkTS 重写，拒绝任何黑科技，利用系统级 `backgroundTaskManager` 合法保活，适配鸿蒙全家桶。
 
 ---
 
@@ -57,7 +66,7 @@
 2. **多协议制霸**：原生实现 WebDAV、FTP、LocalSend、DLNA。在开启 Root 全盘模式后，这些协议可直接穿透 Android 沙盒访问系统底层。
 3. **极客特权（Root/ADB）**：支持 OOM 免死注入、静音音频保活、Web Shell 终端。网页端甚至集成了 H264 远控引擎，鼠标点哪手机点哪。
 4. **极致兼容与美观并存**：服务端最低兼容十年前的 Android 2.2 (API 8)；手机端和网页端全面采用极致的 Material Design 3 规范。
-5. **双核架构进化**：保留了对上古设备极致兼容的 Java 主干，同时孵化基于 .NET 10 (MAUI) 的高版本分支。
+5. **多核架构进化**：保留了对上古设备极致兼容的 Java 主干，同时孵化 .NET 10 跨平台分支与 HarmonyOS 纯血原生分支。
 
 ---
 
@@ -98,9 +107,14 @@
 - **全指令支持**：支持 `ls`、`cd`、`get`、`put`、`find`、`unzip`、`share`。
 - **远程控制**：支持 `edit` 调起本地编辑器写回文件；支持 `exec` 直接调用服务端 Root 命令。
 
-### 🍎 苹果端 (SwiftUI) & 🟦 鸿蒙端 (ArkTS)
+### 🍎 苹果端 (SwiftUI)
 - 原生编写，极简设计。全端对齐了全局搜索、局域网剪贴板同步、系统级控制台唤起功能。
-- 支持 iOS 15+ / macOS 12+ 以及 OpenHarmony 4.0+。
+- 支持 iOS 15+ / macOS 12+ 以及原生控件风格。
+
+### 🟦 鸿蒙端 (ArkTS) - [独立仓库](https://github.com/styisme/HarmonyNAS)
+- **纯血原生**：采用 ArkUI 声明式开发，一套代码自适应手机、折叠屏、平板与 PC。
+- **拒绝黑科技保活**：依托官方长时任务 (`backgroundTaskManager`) 合法驻留后台。
+- **安全沙箱**：数据锁定应用沙盒，内置防路径穿越拦截器，绝对安全。
 
 ### 📺 TV & ⌚ 手表端
 - **TV 端**：Leanback 卡片流 4 列网格，遥控器焦点移动 1.1 倍放大动画，虚拟全键盘边打边搜。
@@ -118,17 +132,6 @@
 1. **一键下发配置**：手机端点击“发送配置到电视”，通过 UDP 发现电视并下发 NAS 密码，电视端自动完成登录。
 2. **手机/手表投屏**：在文件列表点击视频，发送 Play 指令，电视端瞬间拉起播放。
 3. **全端剪贴板同步**：手机复制文字，网页端、桌面端直接粘贴。
-
----
-
-## 🧬 次世代分支：.NET 10 (MAUI) 重构
-
-虽然现有的 Java 主干已经打磨得足够稳定，但我们为了拥抱更现代的系统特性，开启了全新的 **`android-nas-dotnet`** 项目。它并非简单的重写，而是一次架构级的升级：
-- **彻底摆脱旧版本兼容包袱**：抛弃 `targetSdk 22` 的历史包袱，完美适配 Android 11+ 最新的分区存储与所有文件访问权限。
-- **C/S 彻底分离**：服务端与客户端完全解耦，使用现代异步框架处理高并发请求。
-- **一套代码，原生跨端**：使用 C# + MAUI，用同一套代码库原生编译出 **Android 服务端、Android 客户端、Windows 桌面端、Linux 桌面端**。
-
-👉 **[前往 android-nas-dotnet 仓库查看详情与下载最新版](https://github.com/styisme/android-nas-dotnet)**
 
 ---
 
