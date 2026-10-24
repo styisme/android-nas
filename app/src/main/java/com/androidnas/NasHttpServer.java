@@ -11,7 +11,7 @@ import fi.iki.elonen.NanoHTTPD;
 
 public class NasHttpServer extends NanoHTTPD {
     private static final String ROOT = Environment.getExternalStorageDirectory().getAbsolutePath();
-    private Map<String, String> sharedLinks = new ConcurrentHashMap<>();
+    private Map<String, String> sharedLinks = new ConcurrentHashMap<String, String>();
     private static volatile String clipboardContent = "";
     private Context context;
 
@@ -39,18 +39,20 @@ public class NasHttpServer extends NanoHTTPD {
         return f;
     }
 
-    private boolean isSafeName(String n) {
-        if (n == null || n.isEmpty()) return false;
-        if (n.contains("/") || n.contains("\\")) return false;
-        if (n.equals(".") || n.equals("..")) return false;
-        return true;
-    }
-
     @Override public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         try {
             if (uri.startsWith("/share/")) return handleSecureShare(session, uri.substring(7));
-            if (uri.startsWith("/dlna/")) return handleDlna(uri);
+            
+            // PWA 静态资源 (不需要鉴权)
+            if ("/manifest.json".equals(uri)) {
+                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/manifest.json");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", is, -1);
+            }
+            if ("/sw.js".equals(uri)) {
+                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/sw.js");
+                return newFixedLengthResponse(Response.Status.OK, "application/javascript", is, -1);
+            }
 
             int role = 1;
             if (!Method.OPTIONS.equals(session.getMethod())) {
@@ -62,64 +64,128 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
-            if ("/api/monitor".equals(uri)) {
-                return newFixedLengthResponse(Response.Status.OK, "application/json", SystemMonitor.getStatusJson(context));
+            if ("/".equals(uri) || "/index.html".equals(uri)) {
+                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/index.html");
+                return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", is, -1);
             }
 
-            if ("/api/users".equals(uri)) {
-                if (Method.GET.equals(session.getMethod())) {
-                    return newFixedLengthResponse(Response.Status.OK, "application/json", DatabaseManager.getInstance().getAllUsersJson());
-                } else if (Method.POST.equals(session.getMethod())) {
-                    Map<String, String> files = new HashMap<>();
+            if (Method.POST.equals(session.getMethod())) {
+                if ("/api/upload/check".equals(uri)) {
+                    Map<String, String> files = new HashMap<String, String>();
                     session.parseBody(files);
-                    String u = session.getParms().get("u");
-                    String p = session.getParms().get("p");
-                    String r = session.getParms().get("r");
-                    DatabaseManager.getInstance().addUser(u, p, 2, r);
+                    String hash = session.getParms().get("hash");
+                    String existingPath = DatabaseManager.getInstance().getPathByHash(hash);
+                    if (existingPath != null && new File(existingPath).exists()) {
+                        return text(Response.Status.OK, "SECONDS_UPLOAD:" + existingPath);
+                    }
+                    return text(Response.Status.OK, "NEED_UPLOAD");
+                }
+                
+                if ("/api/upload/chunk".equals(uri)) {
+                    Map<String, String> files = new HashMap<String, String>();
+                    session.parseBody(files);
+                    String hash = session.getParms().get("hash");
+                    String indexStr = session.getParms().get("index");
+                    String totalStr = session.getParms().get("total");
+                    String fileName = session.getParms().get("name");
+                    String path = session.getParms().get("path");
+                    
+                    int index = Integer.parseInt(indexStr);
+                    int total = Integer.parseInt(totalStr);
+                    
+                    File targetDir = safeFile(path);
+                    if (targetDir == null || !targetDir.exists()) targetDir.mkdirs();
+                    
+                    File tempFile = new File(targetDir, fileName + ".part");
+                    File finalFile = new File(targetDir, fileName);
+                    
+                    InputStream is = session.getInputStream();
+                    FileOutputStream fos = new FileOutputStream(tempFile, true);
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
+                    fos.close();
+
+                    if (index == total - 1) {
+                        synchronized (NasHttpServer.class) {
+                            if (tempFile.length() > 0) {
+                                if (finalFile.exists()) finalFile.delete();
+                                tempFile.renameTo(finalFile);
+                                DatabaseManager.getInstance().saveHash(hash, finalFile.getAbsolutePath());
+                                WebhookManager.send("文件上传完成", finalFile.getName());
+                            }
+                        }
+                    }
+                    return text(Response.Status.OK, "CHUNK_OK");
+                }
+
+                if ("/api/upload".equals(uri)) {
+                    Map<String, String> files = new HashMap<String, String>();
+                    session.parseBody(files);
+                    String targetPath = "/";
+                    for (Map.Entry<String, String> e : files.entrySet()) {
+                        if ("path".equals(e.getKey()) && e.getValue() != null) targetPath = e.getValue();
+                    }
+                    File targetDir = safeFile(targetPath);
+                    if (targetDir == null || !targetDir.exists()) targetDir = safeFile("/");
+                    
+                    String tmpFilePath = null;
+                    String originalName = null;
+                    for (Map.Entry<String, String> e : files.entrySet()) {
+                        String val = e.getValue();
+                        if (val != null && new File(val).exists()) {
+                            tmpFilePath = val;
+                            originalName = e.getKey();
+                            break;
+                        }
+                    }
+                    if (tmpFilePath == null) return text(Response.Status.BAD_REQUEST, "No file uploaded");
+                    if (originalName == null || originalName.length() == 0 || "file".equals(originalName)) {
+                        originalName = new File(tmpFilePath).getName();
+                    }
+                    originalName = new File(originalName).getName();
+                    
+                    File dest = new File(targetDir, originalName);
+                    copy(new File(tmpFilePath), dest);
+                    new File(tmpFilePath).delete();
+                    WebhookManager.send("文件上传完成", dest.getName());
+                    return text(Response.Status.OK, "OK: " + originalName);
+                }
+                
+                if ("/api/webhook/test".equals(uri)) {
+                    WebhookManager.send("测试通知", "这是一条来自 Android NAS 的测试消息！");
                     return text(Response.Status.OK, "OK");
                 }
             }
 
-            if ("/api/download/zip".equals(uri) && Method.POST.equals(session.getMethod())) {
-                Map<String, String> files = new HashMap<>();
-                session.parseBody(files);
-                String[] paths = session.getParms().get("paths").split("\\|");
-                
-                File tempZip = File.createTempFile("bundle", ".zip", context.getCacheDir());
-                try (ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(tempZip))) {
-                    for (String p : paths) {
-                        File target = safeFile(p);
-                        if (target != null && target.isFile()) {
-                            zos.putNextEntry(new ZipEntry(target.getName()));
-                            FileInputStream fis = new FileInputStream(target);
-                            byte[] buf = new byte[8192]; int len;
-                            while ((len = fis.read(buf)) > 0) zos.write(buf, 0, len);
-                            fis.close();
-                            zos.closeEntry();
-                        }
+            if ("/api/media/wall".equals(uri)) {
+                File dir = safeFile("/");
+                List<File> videos = new ArrayList<File>();
+                scanVideos(dir, videos, 0);
+                StringBuilder sb = new StringBuilder("[");
+                boolean first = true;
+                for (int i = 0; i < videos.size(); i++) {
+                    File f = videos.get(i);
+                    JSONObject meta = MediaScraper.scrape(f.getName());
+                    if (meta == null) {
+                        meta = new JSONObject();
+                        meta.put("title", f.getName());
+                        meta.put("poster", "");
+                        meta.put("rating", "0.0");
+                        meta.put("overview", "暂无信息");
                     }
-                } catch (Exception e) {}
-                FileInputStream zipStream = new FileInputStream(tempZip);
-                Response res = newChunkedResponse(Response.Status.OK, "application/zip", zipStream);
-                res.addHeader("Content-Disposition", "attachment; filename=\"bundle.zip\"");
-                return res;
+                    if (!first) sb.append(",");
+                    sb.append("{\"name\":\"").append(esc(f.getName())).append("\",")
+                      .append("\"path\":\"").append(esc(f.getAbsolutePath().replace(ROOT, ""))).append("\",")
+                      .append("\"title\":\"").append(esc(meta.optString("title"))).append("\",")
+                      .append("\"poster\":\"").append(esc(meta.optString("poster"))).append("\",")
+                      .append("\"rating\":").append(meta.optDouble("rating", 0)).append(",")
+                      .append("\"overview\":\"").append(esc(meta.optString("overview").replace("\"", "'"))).append("\"}");
+                    first = false;
+                }
+                sb.append("]");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
             }
-
-            if ("/api/share".equals(uri) && Method.POST.equals(session.getMethod())) {
-                Map<String, String> files = new HashMap<>();
-                session.parseBody(files);
-                String path = session.getParms().get("path");
-                String pass = session.getParms().get("pass");
-                String expire = session.getParms().get("expire");
-                
-                String token = UUID.randomUUID().toString().substring(0, 8);
-                long expireAt = System.currentTimeMillis() + (expire != null ? Long.parseLong(expire) : 86400000L);
-                sharedLinks.put(token, path + "|" + (pass == null ? "" : pass) + "|" + expireAt);
-                return text(Response.Status.OK, token);
-            }
-
-            if ("/api/status".equals(uri))
-                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + "}");
 
             if ("/api/thumb".equals(uri)) {
                 File img = safeFile(session.getParms().get("path"));
@@ -135,18 +201,18 @@ public class NasHttpServer extends NanoHTTPD {
                 File dir = safeFile("/");
                 List<File> photos = new ArrayList<File>();
                 scanPhotos(dir, photos, 0);
+                final String root = ROOT;
                 Collections.sort(photos, new Comparator<File>() {
                     @Override
                     public int compare(File a, File b) {
                         return Long.compare(b.lastModified(), a.lastModified());
                     }
                 });
-                
                 StringBuilder sb = new StringBuilder("[");
                 for (int i = 0; i < photos.size(); i++) {
                     if (i > 0) sb.append(",");
                     File f = photos.get(i);
-                    sb.append("{\"name\":\"").append(esc(f.getName())).append("\",\"path\":\"").append(esc(f.getAbsolutePath().replace(ROOT, ""))).append("\"}");
+                    sb.append("{\"name\":\"").append(esc(f.getName())).append("\",\"path\":\"").append(esc(f.getAbsolutePath().replace(root, ""))).append("\"}");
                 }
                 sb.append("]");
                 return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
@@ -173,15 +239,26 @@ public class NasHttpServer extends NanoHTTPD {
                 return handlePut(session, role);
             }
 
-            if ("/".equals(uri) || "/index.html".equals(uri)) {
-                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/index.html");
-                return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", is, -1);
-            }
-
         } catch (Exception e) {
             return text(Response.Status.INTERNAL_ERROR, "Error: " + e.getMessage());
         }
         return text(Response.Status.NOT_FOUND, "Not found");
+    }
+
+    private void scanVideos(File dir, List<File> videos, int depth) {
+        if (dir == null || !dir.exists() || depth > 5) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                if (!f.getName().startsWith(".")) scanVideos(f, videos, depth + 1);
+            } else {
+                String name = f.getName().toLowerCase();
+                if (name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi")) {
+                    videos.add(f);
+                }
+            }
+        }
     }
 
     private void scanPhotos(File dir, List<File> photos, int depth) {
@@ -223,7 +300,6 @@ public class NasHttpServer extends NanoHTTPD {
     private Response handleSecureShare(IHTTPSession session, String token) throws Exception {
         String data = sharedLinks.get(token);
         if (data == null) return text(Response.Status.NOT_FOUND, "分享已失效");
-        
         String[] parts = data.split("\\|");
         String path = parts[0];
         String pass = parts.length > 1 ? parts[1] : "";
@@ -232,14 +308,12 @@ public class NasHttpServer extends NanoHTTPD {
         if (expireAt > 0 && System.currentTimeMillis() > expireAt) {
             return text(Response.Status.FORBIDDEN, "分享已过期");
         }
-
         if (!pass.isEmpty()) {
             String reqPass = session.getParms().get("pass");
             if (reqPass == null || !reqPass.equals(pass)) {
                 return text(Response.Status.UNAUTHORIZED, "请输入正确的提取码");
             }
         }
-
         File f = safeFile(path);
         if (f != null && f.exists() && !f.isDirectory()) {
             FileInputStream fis = new FileInputStream(f);
@@ -250,145 +324,13 @@ public class NasHttpServer extends NanoHTTPD {
         return text(Response.Status.NOT_FOUND, "文件已丢失");
     }
 
-
-            
-            if ("/manifest.json".equals(uri)) {
-                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/manifest.json");
-                return newFixedLengthResponse(Response.Status.OK, "application/json", is, -1);
-            }
-            if ("/sw.js".equals(uri)) {
-                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/sw.js");
-                return newFixedLengthResponse(Response.Status.OK, "application/javascript", is, -1);
-            }
-
-
-    
-
-            // --- 秒传校验 ---
-            
-
-            // --- 接收分片 ---
-            
-
-            
-
-
-            // --- 影视刮削 ---
-            if ("/api/media/wall".equals(uri)) {
-                File dir = safeFile("/");
-                List<File> videos = new ArrayList<File>();
-                scanVideos(dir, videos, 0);
-                StringBuilder sb = new StringBuilder("[");
-                boolean first = true;
-                for (int i = 0; i < videos.size(); i++) {
-                    File f = videos.get(i);
-                    JSONObject meta = MediaScraper.scrape(f.getName());
-                    if (meta == null) {
-                        meta = new JSONObject();
-                        meta.put("title", f.getName());
-                        meta.put("poster", "");
-                        meta.put("rating", "0.0");
-                        meta.put("overview", "暂无信息");
-                    }
-                    if (!first) sb.append(",");
-                    sb.append("{\"name\":\"").append(esc(f.getName())).append("\",")
-                      .append("\"path\":\"").append(esc(f.getAbsolutePath().replace(ROOT, ""))).append("\",")
-                      .append("\"title\":\"").append(esc(meta.optString("title"))).append("\",")
-                      .append("\"poster\":\"").append(esc(meta.optString("poster"))).append("\",")
-                      .append("\"rating\":").append(meta.optDouble("rating", 0)).append(",")
-                      .append("\"overview\":\"").append(esc(meta.optString("overview").replace("\"", "'"))).append("\"}");
-                    first = false;
-                }
-                sb.append("]");
-                return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
-            }
-
-            // --- 秒传校验 ---
-            if ("/api/upload/check".equals(uri) && Method.POST.equals(session.getMethod())) {
-                Map<String, String> files = new HashMap<>();
-                session.parseBody(files);
-                String hash = session.getParms().get("hash");
-                String existingPath = DatabaseManager.getInstance().getPathByHash(hash);
-                if (existingPath != null && new File(existingPath).exists()) {
-                    return text(Response.Status.OK, "SECONDS_UPLOAD:" + existingPath);
-                }
-                return text(Response.Status.OK, "NEED_UPLOAD");
-            }
-
-            // --- 接收分片 ---
-            if ("/api/upload/chunk".equals(uri) && Method.POST.equals(session.getMethod())) {
-                Map<String, String> files = new HashMap<>();
-                session.parseBody(files);
-                String hash = session.getParms().get("hash");
-                String indexStr = session.getParms().get("index");
-                String totalStr = session.getParms().get("total");
-                String fileName = session.getParms().get("name");
-                String path = session.getParms().get("path");
-                
-                int index = Integer.parseInt(indexStr);
-                int total = Integer.parseInt(totalStr);
-                
-                File targetDir = safeFile(path);
-                if (targetDir == null || !targetDir.exists()) targetDir.mkdirs();
-                
-                File tempFile = new File(targetDir, fileName + ".part");
-                File finalFile = new File(targetDir, fileName);
-                
-                InputStream is = session.getInputStream();
-                FileOutputStream fos = new FileOutputStream(tempFile, true);
-                byte[] buf = new byte[8192];
-                int len;
-                while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
-                fos.close();
-
-                if (index == total - 1) {
-                    synchronized (NasHttpServer.class) {
-                        if (tempFile.length() > 0) {
-                            if (finalFile.exists()) finalFile.delete();
-                            tempFile.renameTo(finalFile);
-                            DatabaseManager.getInstance().saveHash(hash, finalFile.getAbsolutePath());
-                            WebhookManager.send("文件上传完成", finalFile.getName());
-                        }
-                    }
-                }
-                return text(Response.Status.OK, "CHUNK_OK");
-            }
-
-            // --- Webhook 测试 ---
-            if ("/api/webhook/test".equals(uri) && Method.POST.equals(session.getMethod())) {
-                WebhookManager.send("测试通知", "这是一条来自 Android NAS 的测试消息！");
-                return text(Response.Status.OK, "OK");
-            }
-
-            // --- PWA 静态资源 ---
-            if ("/manifest.json".equals(uri)) {
-                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/manifest.json");
-                return newFixedLengthResponse(Response.Status.OK, "application/json", is, -1);
-            }
-            if ("/sw.js".equals(uri)) {
-                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/sw.js");
-                return newFixedLengthResponse(Response.Status.OK, "application/javascript", is, -1);
-            }
-
-
-    private void scanVideos(File dir, List<File> videos, int depth) {
-        if (dir == null || !dir.exists() || depth > 5) return;
-        File[] files = dir.listFiles();
-        if (files == null) return;
-        for (File f : files) {
-            if (f.isDirectory()) {
-                if (!f.getName().startsWith(".")) scanVideos(f, videos, depth + 1);
-            } else {
-                String name = f.getName().toLowerCase();
-                if (name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi")) {
-                    videos.add(f);
-                }
-            }
-        }
+    private String mime(String n) { 
+        if (n.endsWith(".mp4")) return "video/mp4"; 
+        if (n.endsWith(".jpg") || n.endsWith(".jpeg")) return "image/jpeg";
+        if (n.endsWith(".png")) return "image/png";
+        return "application/octet-stream"; 
     }
-
-    private Response handleDlna(String uri) { return text(Response.Status.NOT_FOUND, "Not found"); }
-    private String mime(String n) { return n.endsWith(".mp4") ? "video/mp4" : "application/octet-stream"; }
+    
     private Response text(Response.Status s, String m) { return newFixedLengthResponse(s, "text/plain; charset=utf-8", m); }
 
     private String buildJson(File dir, String path) {
@@ -412,5 +354,15 @@ public class NasHttpServer extends NanoHTTPD {
         sb.append("]}");
         return sb.toString();
     }
+    
+    private void copy(File src, File dst) throws IOException {
+        InputStream in = new FileInputStream(src);
+        FileOutputStream out = new FileOutputStream(dst);
+        byte[] buf = new byte[8192];
+        int len;
+        while ((len = in.read(buf)) > 0) out.write(buf, 0, len);
+        in.close(); out.close();
+    }
+
     private String esc(String s) { return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\""); }
 }
