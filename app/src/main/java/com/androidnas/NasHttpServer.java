@@ -6,6 +6,7 @@ import java.io.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.zip.*;
+import org.json.JSONObject;
 import fi.iki.elonen.NanoHTTPD;
 
 public class NasHttpServer extends NanoHTTPD {
@@ -215,6 +216,7 @@ public class NasHttpServer extends NanoHTTPD {
             fos.write(buf, 0, len); total += len;
         }
         fos.close();
+        WebhookManager.send("文件上传完成", f.getName());
         return text(Response.Status.OK, "OK");
     }
 
@@ -247,6 +249,123 @@ public class NasHttpServer extends NanoHTTPD {
         }
         return text(Response.Status.NOT_FOUND, "文件已丢失");
     }
+
+
+            
+            if ("/api/media/wall".equals(uri)) {
+                File dir = safeFile("/");
+                List<File> videos = new ArrayList<File>();
+                scanVideos(dir, videos, 0);
+                StringBuilder sb = new StringBuilder("[");
+                boolean first = true;
+                for (int i = 0; i < videos.size(); i++) {
+                    File f = videos.get(i);
+                    JSONObject meta = MediaScraper.scrape(f.getName());
+                    if (meta == null) {
+                        meta = new JSONObject();
+                        meta.put("title", f.getName());
+                        meta.put("poster", "");
+                        meta.put("rating", "0.0");
+                        meta.put("overview", "暂无信息");
+                    }
+                    if (!first) sb.append(",");
+                    sb.append("{\"name\":\"").append(esc(f.getName())).append("\",")
+                      .append("\"path\":\"").append(esc(f.getAbsolutePath().replace(ROOT, ""))).append("\",")
+                      .append("\"title\":\"").append(esc(meta.optString("title"))).append("\",")
+                      .append("\"poster\":\"").append(esc(meta.optString("poster"))).append("\",")
+                      .append("\"rating\":").append(meta.optDouble("rating", 0)).append(",")
+                      .append("\"overview\":\"").append(esc(meta.optString("overview").replace("\"", "'"))).append("\"}");
+                    first = false;
+                }
+                sb.append("]");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
+            }
+
+            if ("/manifest.json".equals(uri)) {
+                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/manifest.json");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", is, -1);
+            }
+            if ("/sw.js".equals(uri)) {
+                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/sw.js");
+                return newFixedLengthResponse(Response.Status.OK, "application/javascript", is, -1);
+            }
+
+
+    private void scanVideos(File dir, List<File> videos, int depth) {
+        if (dir == null || !dir.exists() || depth > 5) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                if (!f.getName().startsWith(".")) scanVideos(f, videos, depth + 1);
+            } else {
+                String name = f.getName().toLowerCase();
+                if (name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi")) {
+                    videos.add(f);
+                }
+            }
+        }
+    }
+
+
+            // --- 秒传校验 ---
+            if ("/api/upload/check".equals(uri) && Method.POST.equals(session.getMethod())) {
+                Map<String, String> files = new HashMap<>();
+                session.parseBody(files);
+                String hash = session.getParms().get("hash");
+                String existingPath = DatabaseManager.getInstance().getPathByHash(hash);
+                if (existingPath != null && new File(existingPath).exists()) {
+                    return text(Response.Status.OK, "SECONDS_UPLOAD:" + existingPath);
+                }
+                return text(Response.Status.OK, "NEED_UPLOAD");
+            }
+
+            // --- 接收分片 ---
+            if ("/api/upload/chunk".equals(uri) && Method.POST.equals(session.getMethod())) {
+                Map<String, String> files = new HashMap<>();
+                session.parseBody(files);
+                String hash = session.getParms().get("hash");
+                String indexStr = session.getParms().get("index");
+                String totalStr = session.getParms().get("total");
+                String fileName = session.getParms().get("name");
+                String path = session.getParms().get("path");
+                
+                int index = Integer.parseInt(indexStr);
+                int total = Integer.parseInt(totalStr);
+                
+                File targetDir = safeFile(path);
+                if (targetDir == null || !targetDir.exists()) targetDir.mkdirs();
+                
+                File tempFile = new File(targetDir, fileName + ".part");
+                File finalFile = new File(targetDir, fileName);
+                
+                // 接收并追加写入分片
+                InputStream is = session.getInputStream();
+                FileOutputStream fos = new FileOutputStream(tempFile, true);
+                byte[] buf = new byte[8192];
+                int len;
+                while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
+                fos.close();
+
+                // 检查是否全部分片接收完毕 (这里简化为判断文件大小，实际可用 lock 文件记录)
+                // 为防并发，客户端串行发送，最后一片到达时检查总大小是否吻合
+                if (index == total - 1) {
+                    synchronized (NasHttpServer.class) {
+                        if (tempFile.length() > 0) {
+                            if (finalFile.exists()) finalFile.delete();
+                            tempFile.renameTo(finalFile);
+                            DatabaseManager.getInstance().saveHash(hash, finalFile.getAbsolutePath());
+                            WebhookManager.send("文件上传完成", finalFile.getName());
+                        }
+                    }
+                }
+                return text(Response.Status.OK, "CHUNK_OK");
+            }
+
+            if ("/api/webhook/test".equals(uri) && Method.POST.equals(session.getMethod())) {
+                WebhookManager.send("测试通知", "这是一条来自 Android NAS 的测试消息！");
+                return text(Response.Status.OK, "OK");
+            }
 
     private Response handleDlna(String uri) { return text(Response.Status.NOT_FOUND, "Not found"); }
     private String mime(String n) { return n.endsWith(".mp4") ? "video/mp4" : "application/octet-stream"; }

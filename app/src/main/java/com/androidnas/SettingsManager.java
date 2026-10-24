@@ -9,7 +9,12 @@ public class SettingsManager {
 
     public static void init(Context context) {
         sp = context.getSharedPreferences("nas_settings", Context.MODE_PRIVATE);
-    }
+    
+    public static String getWebhookUrl() { return sp.getString("webhook_url", ""); }
+    public static void setWebhookUrl(String url) { sp.edit().putString("webhook_url", url).apply(); }
+    public static String getWebhookChatId() { return sp.getString("webhook_chat_id", ""); }
+    public static void setWebhookChatId(String id) { sp.edit().putString("webhook_chat_id", id).apply(); }
+}
 
     public static String getDeviceAlias() { return sp.getString("device_alias", "Android NAS"); }
     public static void setDeviceAlias(String alias) { sp.edit().putString("device_alias", alias).apply(); }

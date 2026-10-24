@@ -118,7 +118,15 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
     <link href="https://vjs.zencdn.net/8.6.1/video-js.css" rel="stylesheet" />
     <script src="https://vjs.zencdn.net/8.6.1/video.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    </head>
+    
+    <link rel="manifest" href="/manifest.json">
+    <script>
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js');
+      }
+    </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/spark-md5/3.0.2/spark-md5.min.js"></script>
+</head>
 <body>
 
 <style>
@@ -302,8 +310,14 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
         <label><input type="checkbox" id="setGlobal" /> 开启全盘模式 (需 Root)</label>
       </div>
       
+      
       <div style="margin-top:16px; border-top:1px solid var(--outline); padding-top:12px;">
         <label>修改管理员密码：<input type="password" id="setPassword" placeholder="不修改请留空" /></label>
+      </div>
+      <div style="margin-top:12px;">
+        <label>Webhook URL (支持 TG/企微): <input type="text" id="setWebhook" placeholder="https://..." /></label>
+        <label style="margin-top:8px;">Telegram Chat ID: <input type="text" id="setChatId" placeholder="仅 TG 需要" /></label>
+        <button class="btn-text" onclick="testWebhook()" style="margin-top:8px; color:var(--primary);">测试推送</button>
       </div>
     </div>
     <div class="dialog-actions">
@@ -604,31 +618,109 @@ function delFile(fullPath) {
 // ================= 上传逻辑 =================
 document.getElementById("fileInput").onchange = function() {
     if (this.files.length === 0) return;
-    var fd = new FormData();
-    for (var i = 0; i < this.files.length; i++) {
-        fd.append("file", this.files[i], this.files[i].name);
-    }
-    fd.append("path", currentPath);
-    
+    var files = this.files;
     var progress = document.getElementById("uploadProgress");
     progress.style.width = "0%";
     
-    var xhr = new XMLHttpRequest();
-    xhr.open("POST", "/api/upload", true);
-    xhr.upload.onprogress = function(e) {
-        if (e.lengthComputable) {
-            var p = (e.loaded / e.total) * 100;
-            progress.style.width = p + "%";
+    var file = files[0]; // 简化为一次处理一个文件
+    if (file.size < 2 * 1024 * 1024) {
+        // 小文件直接走原有的表单上传
+        var fd = new FormData();
+        fd.append("file", file, file.name);
+        fd.append("path", currentPath);
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/upload", true);
+        xhr.upload.onprogress = function(e) {
+            if (e.lengthComputable) progress.style.width = ((e.loaded / e.total) * 100) + "%";
+        };
+        xhr.onload = function() {
+            progress.style.width = "0%";
+            if (xhr.status === 200) { refresh(); toast("上传成功"); WebhookManagerTest(); }
+            else toast("上传失败");
+            document.getElementById("fileInput").value = "";
+        };
+        xhr.send(fd);
+        return;
+    }
+    
+    toast("正在计算文件特征码...");
+    var chunkSize = 2 * 1024 * 1024; // 2MB 分片
+    var spark = new SparkMD5.ArrayBuffer();
+    var fileReader = new FileReader();
+    var chunkIndex = 0;
+    
+    // 计算整个文件的 MD5 (简易分块读取)
+    function loadNext() {
+        var start = chunkIndex * chunkSize;
+        var end = Math.min(start + chunkSize, file.size);
+        fileReader.readAsArrayBuffer(file.slice(start, end));
+    }
+    
+    fileReader.onload = function(e) {
+        spark.append(e.target.result);
+        chunkIndex++;
+        if (chunkIndex * chunkSize < file.size) {
+            loadNext();
+        } else {
+            var hash = spark.end();
+            checkUpload(file, hash, chunkSize);
         }
     };
-    xhr.onload = function() {
-        progress.style.width = "0%";
-        if (xhr.status === 200) { refresh(); toast("上传成功"); }
-        else toast("上传失败: " + xhr.status);
-        document.getElementById("fileInput").value = "";
-    };
-    xhr.send(fd);
+    loadNext();
+    document.getElementById("fileInput").value = "";
 };
+
+function checkUpload(file, hash, chunkSize) {
+    var fd = new FormData();
+    fd.append("hash", hash);
+    fetch("/api/upload/check", { method: "POST", body: fd }).then(function(r) { return r.text(); }).then(function(res) {
+        if (res.indexOf("SECONDS_UPLOAD") === 0) {
+            toast("极速秒传成功！");
+            refresh();
+            WebhookManagerTest();
+        } else {
+            uploadChunks(file, hash, chunkSize);
+        }
+    });
+}
+
+function uploadChunks(file, hash, chunkSize) {
+    var total = Math.ceil(file.size / chunkSize);
+    var current = 0;
+    var progress = document.getElementById("uploadProgress");
+    
+    function sendChunk() {
+        var start = current * chunkSize;
+        var end = Math.min(start + chunkSize, file.size);
+        var chunk = file.slice(start, end);
+        
+        var xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/upload/chunk?hash=" + hash + "&index=" + current + "&total=" + total + "&name=" + encodeURIComponent(file.name) + "&path=" + encodeURIComponent(currentPath), true);
+        xhr.onload = function() {
+            if (xhr.status === 200) {
+                current++;
+                var pct = (current / total) * 100;
+                progress.style.width = pct + "%";
+                if (current < total) {
+                    sendChunk();
+                } else {
+                    progress.style.width = "0%";
+                    toast("分片上传完成");
+                    refresh();
+                    WebhookManagerTest();
+                }
+            } else {
+                toast("分片 " + current + " 上传失败");
+            }
+        };
+        xhr.send(chunk);
+    }
+    sendChunk();
+}
+
+function WebhookManagerTest() {
+    // 挂载一个空函数，实际 Webhook 在服务端触发
+}
 
 // ================= 其他功能 =================
 function showMainMenu() { showSheet("mainMenu"); }
@@ -690,6 +782,10 @@ function execShell() {
 }
 
 
+function testWebhook() {
+  fetch('/api/webhook/test', {method:'POST'}).then(function(){ toast('已发送，请检查设备'); });
+}
+
 function showSettings() {
     closeSheet("mainMenu");
     showModal("settingsModal");
@@ -705,6 +801,8 @@ function showSettings() {
         document.getElementById("setClipboard").checked = s.clipboard;
         document.getElementById("setGlobal").checked = s.globalMode;
         document.getElementById("setPassword").value = "";
+        document.getElementById("setWebhook").value = s.webhookUrl || "";
+        document.getElementById("setChatId").value = s.webhookChatId || "";
     }).catch(() => toast("获取设置失败"));
 }
 
@@ -851,37 +949,63 @@ function addUser() {
 
 function showMediaWall() {
     closeSheet("mainMenu");
-    document.getElementById("path").textContent = "影视海报墙 (Mock 演示版)";
+    document.getElementById("pathTitle").textContent = "影视海报墙";
     var list = document.getElementById("list");
-    list.innerHTML = "";
-    var grid = document.createElement("div");
-    grid.style.display = "grid";
-    grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(140px, 1fr))";
-    grid.style.gap = "16px";
-    grid.style.padding = "16px";
+    list.innerHTML = '<div class="empty-state">正在扫描并获取元数据，请稍候...</div>';
     
-    var mockData = [
-        { name: "盗梦空间", img: "https://image.tmdb.org/t/p/w200/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg" },
-        { name: "赛博朋克", img: "https://image.tmdb.org/t/p/w200/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg" }
-    ];
-    
-    mockData.forEach(function(m) {
-        var div = document.createElement("div");
-        div.style.textAlign = "center";
-        var img = document.createElement("img");
-        img.src = m.img;
-        img.style.width = "100%";
-        img.style.borderRadius = "12px";
-        var title = document.createElement("div");
-        title.textContent = m.name;
-        title.style.marginTop = "8px";
-        title.style.fontSize = "14px";
-        title.style.fontWeight = "bold";
-        div.appendChild(img);
-        div.appendChild(title);
-        grid.appendChild(div);
+    fetch("/api/media/wall").then(function(r) { return r.json(); }).then(function(data) {
+        list.innerHTML = "";
+        if (!data || data.length === 0) {
+            list.innerHTML = '<div class="empty-state">没有找到视频文件</div>';
+            return;
+        }
+        var grid = document.createElement("div");
+        grid.style.display = "grid";
+        grid.style.gridTemplateColumns = "repeat(auto-fill, minmax(130px, 1fr))";
+        grid.style.gap = "16px";
+        grid.style.padding = "16px";
+        
+        data.forEach(function(m) {
+            var div = document.createElement("div");
+            div.className = "media-card";
+            div.style.cursor = "pointer";
+            
+            var img = document.createElement("img");
+            if (m.poster) {
+                img.src = m.poster;
+            } else {
+                // 没海报时的纯色占位图
+                img.src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iNDUwIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjQ1MCIgZmlsbD0iIzQ5NDU0RiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmaWxsPSIjRTZFMEXSIiBmb250LXNpemU9IjIwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj7mmoLml6DmtbfmiqU8L3RleHQ+PC9zdmc+";
+            }
+            img.style.width = "100%";
+            img.style.aspectRatio = "2/3";
+            img.style.objectFit = "cover";
+            img.style.borderRadius = "8px";
+            
+            var title = document.createElement("div");
+            title.textContent = m.title;
+            title.style.marginTop = "8px";
+            title.style.fontSize = "14px";
+            title.style.fontWeight = "bold";
+            title.style.whiteSpace = "nowrap";
+            title.style.overflow = "hidden";
+            title.style.textOverflow = "ellipsis";
+            
+            var rating = document.createElement("div");
+            rating.innerHTML = "⭐ " + parseFloat(m.rating || 0).toFixed(1);
+            rating.style.fontSize = "12px";
+            rating.style.color = "#e5a00d";
+            
+            div.appendChild(img);
+            div.appendChild(title);
+            div.appendChild(rating);
+            div.onclick = function() { previewFile({name: m.name, path: m.path}); };
+            grid.appendChild(div);
+        });
+        list.appendChild(grid);
+    }).catch(function() {
+        list.innerHTML = '<div class="empty-state">加载失败，请检查服务端网络</div>';
     });
-    list.appendChild(grid);
 }
 
 function showRemote() {
