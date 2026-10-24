@@ -6,39 +6,44 @@
 
 ## AI 参与的具体部分
 
-- **服务端核心 (Server Core) - v4.3.0 升级**：
-  - `NasHttpServer.java`：NanoHTTPD 的路由设计、Range 分片视频流、ZIP 流式解压、剪贴板缓存、大文件分片上传与秒传合并逻辑、PWA 静态路由拦截，以及多用户路径拦截逻辑。
-  - `WebDavServer.java` / `FtpServer.java`：纯 Socket 实现的协议栈，支持突破全盘权限。
-  - `DatabaseManager.java`：SQLite 数据库引擎，实现多用户鉴权、独立根目录隔离、文件秒传哈希记录。
+- **服务端核心 (Server Core) - v4.4.0 升级**：
+  - `NasHttpServer.java`：NanoHTTPD 的路由设计、Range 分片视频流、ZIP 流式解压、剪贴板缓存、大文件分片上传与秒传合并逻辑、PWA 静态路由拦截、多用户路径拦截以及高危自毁接口。
+  - `WebDavServer.java` / `FtpServer.java`：纯 Socket 实现的协议栈，支持突破全盘权限与 IP 白名单拦截。
+  - `DatabaseManager.java`：SQLite 数据库引擎，实现多用户鉴权（SHA-256 加盐哈希）、独立根目录隔离、文件秒传哈希记录与紧急安全码存储。
+  - `AuthManager.java`：基于 `ThreadLocal` 的并发身份隔离，彻底解决高并发越权。
+  - `SecurityFilter.java`：防爆破（Fail2Ban）、IP 白名单校验与在线设备审计引擎。
+  - `CertificateUtils.java`：原生 HTTPS / WSS 自签证书动态生成器。
   - `MediaScraper.java`：免 Key 影视元数据刮削引擎，纯 Java 正则解析文件名并请求外部 API。
   - `WebhookManager.java`：轻量级 HTTP 推送中枢，支持适配 Telegram 与企业微信机器人。
   - `ThumbnailManager.java`：图片缩略图生成引擎，实现 300px 按需压缩与本地缓存。
   - `SystemMonitor.java`：硬件监控读取器，解析 `/proc/stat` 获取 CPU 占用，并加入 API 8 电池读取兼容守卫。
   - `RootManager.java` 与 `AdvancedKeepAliveManager.java`：全套 Root/ADB 保活注入、OOM 免死写入与系统级命令执行。
-  - `RemoteDesktopManager.java` / `NasAccessibilityService.java`：基于 `MediaCodec` 的 H264 硬件编码推流、WebSocket 服务端搭建，以及无障碍触控与 Root 指令注入双引擎。
-  - `index.html`：全套 MD3 CSS 变量系统、响应式 UI、Bottom Sheet 交互逻辑、SparkMD5 分片计算、基于 `JMuxer.js` 的 H264 实时解码，以及时光相册、影视海报墙与 PWA 注册代码。
+  - `RemoteDesktopManager.java` / `NasAccessibilityService.java`：基于 `MediaCodec` 的 H264 硬件编码推流、WebSocket 服务端搭建（Token 鉴权防注入），以及无障碍触控与 Root 指令注入双引擎。
+  - `index.html`：全套 MD3 CSS 变量系统、响应式 UI、Bottom Sheet 交互逻辑、SparkMD5 分片计算、基于 `JMuxer.js` 的 H264 实时解码，以及时光相册、影视海报墙、PWA 注册与自毁控制台。
 
 - **跨平台客户端 (Multi-Platform Clients)**：
-  - **手机端 (Android)**：相册自动备份逻辑（MediaStore + 增量比对）、多协议文件列表重写、局域网扫描与投屏、WebView 远控套壳与系统分享外链。
-  - **电视端 / 手表端**：全面改用 Leanback / RecyclerView 卡片流与焦点动画，动态 Padding 适配与快捷操作菜单。
-  - **桌面端 (Python) / CLI 端**：Tkinter 扁平化 UI 重写、全局搜索、剪贴板同步、基于 `cmd` 模块的交互式 Shell 与 Tab 补全。
+  - **手机端 (Android)**：相册自动备份逻辑（MediaStore + 增量比对）、多协议文件列表重写、局域网扫描与投屏、WebView 远控套壳与系统分享外链。新增 `MediaGridActivity` 承载影视墙与时光相册；新增基于系统锁屏验证的双重自毁机制。
+  - **电视端 / 手表端**：全面改用 Leanback / RecyclerView 卡片流与焦点动画，动态 Padding 适配与快捷操作菜单。TV 端新增影视墙与相册模式。
+  - **桌面端 (Python) / CLI 端**：Tkinter 扁平化 UI 重写、全局搜索、剪贴板同步、秒传与分片逻辑、基于 `pystray` 的系统托盘、基于 `cmd` 模块的交互式 Shell 与 Tab 补全。
   - **苹果端 (SwiftUI) / 鸿蒙端 (ArkTS)**：原生声明式 UI 编写，全端对齐搜索、剪贴板与系统级 Want/OpenURL 跳转。
   - **微信小程序端**：WXML/WXSS/JS 全量编写，免密分享短链生成与系统剪贴板调用。
 
 - **CI/CD 自动化 (DevOps)**：
   - 基于 GitHub Actions 的全量发版矩阵与平铺直传机制。
   - 基于 GitHub Secrets 的动态 Keystore 解码与 Release 签名注入。
-  - `sync_version.py` 版本自动注入脚本、`.debug` 包名后缀分流控制与 `paths-ignore` 路径隔离策略。
+  - `sync_version.py` 全端（包含 Apple/Harmony）版本自动注入脚本、`.debug` 包名后缀分流控制与 `paths-ignore` 路径隔离策略。
 
 ## 开发者（人类）负责的核心工作
 
-- **产品定义与需求决策**：决定项目要包含哪些端、用什么协议、UI 风格长什么样，以及决定多用户和媒体库的演进方向。
+- **产品定义与需求决策**：决定项目要包含哪些端、用什么协议、UI 风格长什么样，以及决定多用户、媒体库和自毁机制的演进方向。
 - **编译与执行**：在无电脑的纯 Android 环境下，使用 Pydroid 运行 AI 生成的 Python 覆盖脚本，使用 Mgit 提交代码并推送至 GitHub。
 - **真机测试与反馈**：把编译好的 APK 安装到废旧手机、电视盒子、手表上，测试远控、投屏、文件管理等功能是否正常，并将错误日志或闪退截图反馈给 AI，由 AI 输出修复补丁。
 - **兼容性与编译排雷**：
   - 发现并反馈因引入 Lambda 表达式导致 AGP 4.2.2 编译失败的问题。
   - 发现并反馈因 `BatteryManager` 导致 API 8 闪退的问题。
-  - 敏锐捕捉并反馈了 `targetSdkVersion 22` 在 Release 构建时触发的 `lintVitalRelease` 致命拦截，以及 Gradle 脚本中 `signingConfig` 被正则错误嵌套导致的 `Could not find method` 崩溃，促使 AI 给出修复补丁。
+  - 敏锐捕捉并反馈了 `targetSdkVersion 22` 在 Release 构建时触发的 `lintVitalRelease` 致命拦截。
+  - 发现并反馈了 Gradle 脚本中 `signingConfig` 被正则错误嵌套导致的 `Could not find method` 崩溃。
+  - 测试中发现并反馈了严重的安全隐患（如 ThreadLocal 未清理导致的越权、WebSocket 无鉴权、`parseBody` 吞流导致分片失败、FTP 绝对路径沙箱逃逸等），促使 AI 进行底层重构。
 - **问题排查**：解决因添加 Root 保活模块后，系统 PMS 被 Hook 导致第三方安装器提示“未卸载”的冲突问题。
 - **最终验收**：决定某个版本是否达到发布标准。
 

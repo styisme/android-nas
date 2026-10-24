@@ -14,7 +14,7 @@
 
 ---
 
-## 📂 十端深度项目结构解析 (v4.3.0 架构)
+## 📂 十端深度项目结构解析 (v4.4.0 架构)
 
 ```text
 android-nas/
@@ -28,8 +28,11 @@ android-nas/
 │   │   ├── DlnaServer.java              # DLNA 投屏发现 (SSDP)
 │   │   ├── LocalSendServer.java         # LocalSend 接收端
 │   │   ├── DatabaseManager.java         # SQLite 多用户与秒传记录引擎
-│   │   ├── MediaScraper.java            # 🆕 免 Key 影视刮削引擎 (纯 Java 正则)
-│   │   ├── WebhookManager.java          # 🆕 Webhook 事件推送引擎
+│   │   ├── AuthManager.java             # 基于 ThreadLocal 的并发身份隔离与鉴权
+│   │   ├── SecurityFilter.java          # 防爆破(Fail2Ban)与在线设备审计
+│   │   ├── CertificateUtils.java        # HTTPS / WSS 自签证书动态生成器
+│   │   ├── MediaScraper.java            # 免 Key 影视刮削引擎 (纯 Java 正则)
+│   │   ├── WebhookManager.java          # Webhook 事件推送引擎
 │   │   ├── ThumbnailManager.java        # 图片缩略图按需生成引擎
 │   │   ├── SystemMonitor.java           # CPU/内存/电池监控读取器
 │   │   ├── RootManager.java             # Root/ADB 底层命令执行器
@@ -38,13 +41,13 @@ android-nas/
 │   │   └── NasAccessibilityService.java # 无障碍触控注入双引擎
 │   └── src/main/assets/                 # MD3 网页前端与 PWA 文件
 │       ├── index.html                   # 网页前端源码 (集成 Video.js/Chart.js)
-│       ├── manifest.json                # 🆕 PWA 配置
-│       └── sw.js                        # 🆕 Service Worker 缓存
+│       ├── manifest.json                # PWA 配置
+│       └── sw.js                        # Service Worker 缓存
 │
 ├── client/                      # 🖥️ 手机客户端 (Java + MD3, Android 5.0+)
 ├── tv/                          # 📺 TV 端 (Leanback 卡片流, Android 4.4+)
 ├── watch/                       # ⌚ 手表端 (RecyclerView, Android 5.0+)
-├── desktop/                     # 💻 桌面端 GUI (Python + Tkinter)
+├── desktop/                     # 💻 桌面端 GUI (Python + Tkinter + pystray)
 ├── cli/                         # ⌨️ 命令行工具 (Python + cmd 模块)
 ├── apple/                       # 🍎 苹果端 (SwiftUI, iOS 15+ / macOS 12+)
 ├── harmony/                     # 🟦 鸿蒙端 (ArkTS, OpenHarmony 4.0+)
@@ -65,7 +68,7 @@ android-nas/
 |---|---|---|
 | **服务端** | JDK 8 + Gradle 6.7.1 + AGP 4.2.2 | `./gradlew assembleDebug` |
 | **安卓客户端** | JDK 11 + Gradle 7.5 + AGP 7.4.2 | `cd client && ./gradlew assembleDebug` |
-| **桌面端 / CLI** | Python 3.8+ (依赖 `requests`, `pyinstaller`) | `python desktop/nas_client.py` |
+| **桌面端 / CLI** | Python 3.8+ (依赖 `requests`, `pyinstaller`, `pystray`, `pillow`) | `python desktop/nas_client.py` |
 | **苹果端** | macOS 13+ / Xcode 15+ / XcodeGen | `cd apple && xcodegen generate` |
 | **鸿蒙端** | DevEco Studio 4.0+ / OpenHarmony SDK | 需在 DevEco 中打开工程 |
 
@@ -75,28 +78,30 @@ android-nas/
 
 项目高度依赖 HTTP 与 WebSocket，所有端的网络层必须严格遵守以下规范（完整细节请见 `docs/API_DOC.md`）。
 
-### 1. 统一鉴权与多用户沙箱隔离
-除 WebSocket 与分享链接外，所有 HTTP 请求必须携带 Header：
-`Authorization: Basic Base64(账号:密码)`。
-- **底层拦截**：`NasHttpServer.safeFile()` 会从 SQLite 中读取当前用户的 `root_dir`。
-- **普通用户**：路径被强制映射并锁定在其专属目录下（如 `/sdcard/Users/user1`）。
-- **全盘 Root**：仅 `admin` 账号在开启全盘模式后，可直接越权访问底层目录。
+### 1. 统一鉴权与多用户沙箱隔离 (v4.4.0 重构)
+除分享链接外，所有请求必须携带 Header：`Authorization: Basic Base64(账号:密码)`。
+- **并发隔离**：底层 `AuthManager` 引入了 `ThreadLocal`。在 HTTP、WebDAV、FTP 的请求线程结束时，**必须** 调用 `clearCurrentUser()` 清理状态，防止线程池复用导致的跨请求身份残留越权。
+- **沙箱映射**：`NasHttpServer.safeFile()` 会读取当前用户的 `root_dir`。普通用户路径被锁定在专属目录下；仅 `admin` 在全盘模式可越权。
+- **IP 白名单与防爆破**：`SecurityFilter` 会拦截在黑名单中的 IP。白名单开启时，优先校验 IP 合法性。
 
-### 2. 文件流式上传与大文件断点续传 (极重要)
-- **小文件 PUT 上传**：必须携带准确的 `Content-Length`。禁止使用 `Transfer-Encoding: chunked`，否则会导致 NanoHTTPD 底层无限阻塞卡死。
-- **大文件分片上传**：前端通过 `File.slice()` 按 2MB 切块，携带 `hash`、`index`、`total` 请求 `/api/upload/chunk`。服务端利用 `FileOutputStream(..., true)` 实现流式追加合并，并利用 `synchronized` 解决并发冲突。
+### 2. 文件流式上传与大文件断点续传
+- **小文件 PUT 上传**：必须携带准确的 `Content-Length`。禁止使用 `Transfer-Encoding: chunked`，否则会导致 NanoHTTPD 底层无限阻塞。
+- **大文件分片上传**：前端通过 `File.slice()` 按 2MB 切块，携带 `hash`、`index`、`total` 请求 `/api/upload/chunk`。服务端利用 `FileOutputStream(..., true)` 实现流式追加，临时文件名为 `fileName.hash.part` 以防并发覆盖。
 
 ### 3. 缩略图、影视刮削与打包下载
 - **缩略图**：前端请求 `/api/thumb?path=xxx`，服务端在 `.thumbnails` 目录生成 300px 缓存并返回。
-- **影视刮削**：前端请求 `/api/media/wall`，服务端 `MediaScraper` 纯正则解析文件名，请求第三方 API 获取海报，绝不使用重型 JSON 库或视频解析库。
-- **流式打包下载**：前端 POST 包含 `paths` 数组到 `/api/download/zip`，服务端利用 `ZipOutputStream` 实时压缩并返回，避免内存溢出。
+- **影视刮削**：前端请求 `/api/media/wall`，服务端 `MediaScraper` 纯正则解析文件名并请求开源 API 获取海报。
+- **流式打包**：前端 POST 包含 `paths` 数组到 `/api/download/zip`，服务端利用 `ZipOutputStream` 实时压缩返回。
 
 ### 4. WebSocket 远控协议 (8082端口)
-- **H264 推流**：服务端下发二进制 H264 裸流，前端必须使用 JMuxer 实时封装为 fMP4 并在 `<video>` 中播放。
-- **触控指令**：前端发送纯文本字符串，如 `tap,x,y` 或 `swipe,x1,y1,x2,y2`。服务端会自动路由至无障碍服务或 Root input 进行点击注入。
+- **鉴权**：**不再接受匿名连接**。前端必须通过 `ws://ip:8082/?token=<Base64(账号:密码)>` 连接，服务端严格 `URLDecoder` 解码并校验 Admin 角色。
+- **触控指令**：坐标必须 `parseFloat` 转换并限制范围，严禁直接拼接进 `su -c input` 引发 Shell 注入。
 
 ### 5. 跨端协同 UDP 协议 (8090端口)
 手机端与 TV 端通过 `255.255.255.255:8090` 发送 `DISCOVER_TV` 进行广播发现，实现配置下发与一键投屏。详见 `SyncHelper.java`。
+
+### 6. 高危自毁接口 (v4.4.0 新增)
+- 接口 `/api/system/wipe` 为核弹级操作。前端在调用前必须实现**多重验证**（NAS 密码输入 + 系统锁屏指纹验证）。后端接收到请求后会彻底删除物理文件，若带 Root 参数还会直接格式化并重启设备。测试该功能请务必使用废弃设备。
 
 ---
 
@@ -106,12 +111,12 @@ android-nas/
 
 本项目的发版过程是全自动化的，请严格遵守以下标准作业程序（SOP）：
 
-1. **修改更新日志**：在根目录 `CHANGELOG.md` 顶部，增加新版本号（例如 `## [4.3.0]`）及详细的更新内容。
+1. **修改更新日志**：在根目录 `CHANGELOG.md` 顶部，增加新版本号（例如 `## [4.4.0]`）及详细的更新内容。
 2. **推送代码**：Push 到 `main` 或 `master` 分支。
-3. **自动矩阵编译**：GitHub Actions 会检测到 `CHANGELOG.md` 的变更，触发 `build-all.yml` 矩阵。并行启动 Ubuntu、Windows、macOS 以及 OpenHarmony Docker 环境，全量编译 10 个端。
+3. **自动矩阵编译**：GitHub Actions 检测到 `CHANGELOG.md` 变更，触发 `build-all.yml` 矩阵。并行启动全量编译。
 4. **区分 Debug / Release**：独立日常构建触发 `assembleDebug`，包名带 `.debug` 后缀；`build-all` 触发 `assembleRelease`，使用 GitHub Secrets 注入正式 keystore 进行签名。
-5. **自动打 Tag**：CI 会解析 CHANGELOG 中的版本号，自动在 Git 中打上 `v4.3.0` 的标签。
-6. **平铺直传发布**：摒弃传统的单一 ZIP 打包方式。CI 脚本会使用 `find -type f` 提取所有产物并重命名，直接平铺展示在 GitHub Release 页面，供用户按需下载。
+5. **自动打 Tag**：CI 会解析版本号，自动打上 `v4.4.0` 标签。
+6. **平铺直传发布**：CI 脚本会使用 `find -type f` 提取所有产物并重命名，直接平铺展示在 Release 页面。
 
 *(日常修改代码如果未动 `CHANGELOG.md`，只会触发对应端的快速独立编译，不会发版)*
 
