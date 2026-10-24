@@ -23,7 +23,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.util.Map;
 
 public class RemoteDesktopManager {
     private static WebSocketServer wsServer;
@@ -49,17 +48,18 @@ public class RemoteDesktopManager {
         
         wsServer = new WebSocketServer(new InetSocketAddress(8082)) {
             @Override public void onOpen(WebSocket conn, ClientHandshake handshake) {
-                // 解析 URL Query 中的 token 鉴权
                 String resource = conn.getResourceDescriptor();
                 if (resource == null || !resource.contains("token=")) {
                     conn.close(1008, "Unauthorized");
                     return;
                 }
+                // 核心修复：真正调用 AuthManager 鉴权
                 String token = resource.substring(resource.indexOf("token=") + 6);
-                // 这里简化处理，只要传了 token 且不为空就放行，真实生产需校验时效
-                if (token.length() < 4) {
+                if (token.contains("&")) token = token.substring(0, token.indexOf("&"));
+                if (AuthManager.verifyRole("Basic " + token) == 0) {
                     conn.close(1008, "Invalid token");
                 }
+                AuthManager.clearCurrentUser(); // 防污染线程
             }
             @Override public void onClose(WebSocket conn, int code, String reason, boolean remote) {
                 if (wsServer.getConnections().isEmpty()) {
@@ -108,7 +108,7 @@ public class RemoteDesktopManager {
         wsServer.start();
     }
     
-    // ... 推流和截图代码保持不变，为节约篇幅省略，请直接使用上一版保留的 startStream/startScreenshotMode ...
+    // ... startStream 和 startScreenshotMode 保持原样 ...
     public static void startStream(Context context, int resultCode, Intent data) {
         if (mediaProjection != null) return;
         stopScreenshotMode();
@@ -160,7 +160,7 @@ public class RemoteDesktopManager {
                             broadcastBinary(baos.toByteArray()); bitmap.recycle();
                         }
                         p.waitFor(); Thread.sleep(500);
-                    } catch (Exception e) {}
+                    } catch (Exception e) { Thread.currentThread().interrupt(); }
                 }
             }
         });

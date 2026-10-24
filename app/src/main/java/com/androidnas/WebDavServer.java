@@ -100,7 +100,7 @@ public class WebDavServer extends Thread {
                     if (deleteRec(target)) out.write("HTTP/1.1 204 No Content\r\n\r\n".getBytes()); else out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
                 } else out.write("HTTP/1.1 405 Method Not Allowed\r\n\r\n".getBytes());
             } catch (Exception ignored) {
-            } finally { try { if (out != null) out.flush(); } catch (Exception ignored) {} try { if (in != null) in.close(); } catch (Exception ignored) {} try { socket.close(); } catch (Exception ignored) {} }
+            } finally { try { if (out != null) out.flush(); } catch (Exception ignored) {} try { if (in != null) in.close(); } catch (Exception ignored) {} try { socket.close(); } catch (Exception ignored) {} AuthManager.clearCurrentUser(); }
         }
     }
 

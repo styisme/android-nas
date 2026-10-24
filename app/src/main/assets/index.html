@@ -369,14 +369,17 @@ window.fetch = function(url, options) {
     
     return window.originalFetch(url, options).then(res => {
         if (res.status === 401) {
-            if (window._authPrompting) return res;
+                        if (window._authPrompting) return res;
             window._authPrompting = true;
-            var user = prompt("请输入 NAS 账号:");
-            var pass = prompt("请输入密码:");
-            
+            var user = prompt("请输入 NAS 账号:", "admin");
+            if (user === null) { window._authPrompting = false; return res; }
+            var pass = prompt("请输入密码:", "admin");
+            if (pass === null) { window._authPrompting = false; return res; }
             localStorage.setItem("nas_auth", "Basic " + btoa(user + ":" + pass));
-            window._authPrompting = false;
-            return window.fetch(url, options);
+            
+            return window.fetch(url, options).finally(function() {
+                window._authPrompting = false;
+            });
         }
         return res;
     });

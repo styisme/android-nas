@@ -59,10 +59,17 @@ public class DatabaseManager extends SQLiteOpenHelper {
         getWritableDatabase().insertWithOnConflict("file_hashes", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
     }
 
-    public String getPathByHash(String hash) {
+    public String getPathByHash(String hash, String userRoot) {
         if (hash == null) return null;
         SQLiteDatabase db = getReadableDatabase();
-        Cursor c = db.rawQuery("SELECT path FROM file_hashes WHERE hash=?", new String[]{hash});
+        // 核心修复：只查询当前用户沙箱内的 hash 文件
+        String query = "SELECT path FROM file_hashes WHERE hash=?";
+        String[] args = new String[]{hash};
+        if (userRoot != null && !userRoot.isEmpty()) {
+            query += " AND path LIKE ?";
+            args = new String[]{hash, "%/" + userRoot + "/%"};
+        }
+        Cursor c = db.rawQuery(query, args);
         String path = null;
         if (c.moveToFirst()) path = c.getString(0);
         c.close();

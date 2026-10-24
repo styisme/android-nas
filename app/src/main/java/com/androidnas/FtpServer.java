@@ -101,7 +101,7 @@ public class FtpServer extends Thread {
                     else reply("502 Not implemented");
                 }
             } catch (Exception ignored) {
-            } finally { try { controlSocket.close(); } catch (Exception ignored) {} closeDataConnection(); }
+            } finally { try { controlSocket.close(); } catch (Exception ignored) {} closeDataConnection(); AuthManager.clearCurrentUser(); }
         }
 
         private void reply(String msg) { writer.print(msg + "\r\n"); writer.flush(); }
