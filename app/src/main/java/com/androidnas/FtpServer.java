@@ -63,11 +63,6 @@ public class FtpServer extends Thread {
                 reader = new BufferedReader(new InputStreamReader(controlSocket.getInputStream(), "UTF-8"));
                 writer = new PrintWriter(new OutputStreamWriter(controlSocket.getOutputStream(), "UTF-8"), true);
                 reply("220 Ready");
-                if (rule.equals(clientIp)) { allowed = true; break; }
-                                }
-                            }
-                            if (!allowed) { reply("421 IP Blocked by Whitelist"); break; }
-                        }
                 String line;
                 while ((line = reader.readLine()) != null) {
                     String[] parts = line.split(" ", 2);
