@@ -7,6 +7,30 @@ import java.net.URLEncoder;
 
 public class WebhookManager {
     
+    public static void sendTest() {
+        final String url = SettingsManager.getWebhookUrl();
+        if (url == null || url.trim().isEmpty()) return;
+        new Thread(new Runnable() {
+            @Override public void run() {
+                try {
+                    String payload = SettingsManager.getWebhookTemplate();
+                    if (payload == null || payload.isEmpty()) {
+                        payload = "{\"msgtype\":\"text\",\"text\":{\"content\":\"【NAS通知】测试消息\"}}";
+                    }
+                    URL u = new URL(url);
+                    HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                    conn.setRequestMethod("POST");
+                    conn.setDoOutput(true);
+                    conn.setRequestProperty("Content-Type", "application/json");
+                    OutputStream os = conn.getOutputStream();
+                    os.write(payload.getBytes("UTF-8"));
+                    os.close();
+                    conn.getResponseCode();
+                } catch (Exception ignored) {}
+            }
+        }).start();
+    }
+    
     public static void send(final String event, final String detail) {
         final String url = SettingsManager.getWebhookUrl();
         if (url == null || url.trim().isEmpty()) return;

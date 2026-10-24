@@ -10,6 +10,8 @@ import requests
 from threading import Thread
 import queue
 import webbrowser
+import pystray
+from PIL import Image, ImageDraw
 
 CONFIG_FILE = os.path.expanduser("~/.android-nas-config.json")
 
@@ -31,6 +33,8 @@ class DesktopNasClient:
         self.config = self.load_config()
         self.ui_queue = queue.Queue()
         
+
+        self.tray_icon = None
         self.setup_styles()
         self.setup_ui()
         self.poll_ui_queue()
@@ -50,6 +54,28 @@ class DesktopNasClient:
 
     def ui(self, fn, *args):
         self.ui_queue.put((fn, args))
+
+
+    def hide_to_tray(self):
+        self.root.withdraw()
+        image = Image.new('RGB', (64, 64), color = '#6750A4')
+        d = ImageDraw.Draw(image)
+        d.text((20, 20), "NAS", fill=(255,255,255))
+        menu = pystray.Menu(
+            pystray.MenuItem('显示主界面', self.show_window, default=True),
+            pystray.MenuItem('退出', self.quit_app)
+        )
+        self.tray_icon = pystray.Icon("nas", image, "Android NAS", menu)
+        import threading
+        threading.Thread(target=self.tray_icon.run, daemon=True).start()
+
+    def show_window(self, icon, item):
+        self.tray_icon.stop()
+        self.root.after(0, self.root.deiconify)
+
+    def quit_app(self, icon, item):
+        self.tray_icon.stop()
+        self.root.quit()
 
     def poll_ui_queue(self):
         try:

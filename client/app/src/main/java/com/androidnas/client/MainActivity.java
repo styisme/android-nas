@@ -60,6 +60,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int MENU_CLIPBOARD = 105;
     private static final int MENU_SETTINGS = 106;
     private static final int MENU_ABOUT = 107;
+    private static final int MENU_PHOTOS = 108;
+    private static final int MENU_WALL = 109;
 
     private ActivityResultLauncher<ScanOptions> barcodeLauncher = registerForActivityResult(new ScanContract(), result -> {
         if (result.getContents() != null) {
@@ -176,6 +178,8 @@ public class MainActivity extends AppCompatActivity {
         menu.add(0, MENU_SCAN, 0, "局域网扫描").setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM);
         menu.add(0, MENU_BACKUP, 0, "相册自动备份");
         menu.add(0, MENU_WEB, 0, "Web 远程管理");
+        menu.add(0, MENU_PHOTOS, 0, "时光相册");
+        menu.add(0, MENU_WALL, 0, "影视墙");
         menu.add(0, MENU_SEND_TV, 0, "发送配置到电视");
         menu.add(0, MENU_CLIPBOARD, 0, "局域网剪贴板");
         menu.add(0, MENU_SETTINGS, 0, "设置");
@@ -207,6 +211,15 @@ public class MainActivity extends AppCompatActivity {
             Intent i = new Intent(MainActivity.this, WebViewActivity.class);
             i.putExtra("url", devices.get(0).getBaseUrl());
             i.putExtra("title", "Web 控制台");
+            startActivity(i);
+            return true;
+        }
+        if (id == MENU_PHOTOS || id == MENU_WALL) {
+            Intent i = new Intent(MainActivity.this, MediaGridActivity.class);
+            i.putExtra("url", devices.get(0).getBaseUrl());
+            i.putExtra("type", id == MENU_PHOTOS ? "photos" : "wall");
+            i.putExtra("username", devices.get(0).username);
+            i.putExtra("password", devices.get(0).password);
             startActivity(i);
             return true;
         }

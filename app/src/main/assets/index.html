@@ -327,6 +327,7 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
         <label>Webhook URL (支持 TG/企微): <input type="text" id="setWebhook" placeholder="https://..." /></label>
         <label style="margin-top:8px;">Telegram Chat ID: <input type="text" id="setChatId" placeholder="仅 TG 需要" /></label>
         <button class="btn-text" onclick="testWebhook()" style="margin-top:8px; color:var(--primary);">测试推送</button>
+        <textarea id="setWebhookTemplate" placeholder='自定义 JSON 模板 (留空默认企微格式)' style="margin-top:8px; height:80px;"></textarea>
       </div>
     </div>
     <div class="dialog-actions">
@@ -866,6 +867,7 @@ function showSettings() {
         window._pinRequired = s.pinRequired;
         document.getElementById("setPassword").value = "";
         document.getElementById("setWebhook").value = s.webhookUrl || "";
+        document.getElementById("setWebhookTemplate").value = s.webhookTemplate || "";
         document.getElementById("setChatId").value = s.webhookChatId || "";
     }).catch(() => toast("获取设置失败"));
 }
@@ -901,6 +903,7 @@ function saveSettings() {
     fd.append("ipWhitelist", document.getElementById("setIpWhitelist").value);
     fd.append("pinRequired", document.getElementById("setPinRequired").checked);
     fd.append("webhookUrl", document.getElementById("setWebhook").value);
+    fd.append("webhookTemplate", document.getElementById("setWebhookTemplate").value);
     fd.append("webhookChatId", document.getElementById("setChatId").value);
     fd.append("pin", pin);
     

@@ -86,6 +86,7 @@ public class HttpServerService extends Service {
         } catch (Exception e) { lastError += "FTP: " + e.getMessage() + "\n"; ok = false; }
         
         running = ok || startedServices.contains("Web(HTTP)") || startedServices.contains("Web(HTTPS)");
+        startCleanupTask();
     }
 
     private void goForeground() {
@@ -115,6 +116,37 @@ public class HttpServerService extends Service {
             }
             startForeground(NOTIFICATION_ID, n);
         } catch (Throwable t) { t.printStackTrace(); }
+    }
+
+
+    private void startCleanupTask() {
+        new Thread(new Runnable() {
+            @Override public void run() {
+                while (true) {
+                    try {
+                        Thread.sleep(6 * 60 * 60 * 1000L); // 每 6 小时清理一次
+                        File root = Environment.getExternalStorageDirectory();
+                        cleanOldParts(root, 0);
+                    } catch (Exception ignored) {}
+                }
+            }
+        }).start();
+    }
+
+    private void cleanOldParts(File dir, int depth) {
+        if (dir == null || !dir.exists() || depth > 5) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        long now = System.currentTimeMillis();
+        for (File f : files) {
+            if (f.isDirectory()) {
+                if (!f.getName().startsWith(".")) cleanOldParts(f, depth + 1);
+            } else if (f.getName().endsWith(".part")) {
+                if (now - f.lastModified() > 24 * 60 * 60 * 1000L) {
+                    f.delete();
+                }
+            }
+        }
     }
 
     @Override public int onStartCommand(Intent i, int f, int s) { return START_STICKY; }

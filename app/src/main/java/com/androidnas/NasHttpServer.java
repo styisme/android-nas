@@ -358,7 +358,12 @@ public class NasHttpServer extends NanoHTTPD {
                 if ("/api/save".equals(uri)) {
                     File f = safeFile(session.getParms().get("path"));
                     String content = session.getParms().get("content");
-                    if (f != null && f.isFile() && content != null && content.length() < 5 * 1024 * 1024) {
+                    if (f != null && content != null && content.length() < 5 * 1024 * 1024) {
+                        if (f.exists()) {
+                            java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyyMMddHHmmss", java.util.Locale.US);
+                            File bak = new File(f.getParentFile(), f.getName() + ".bak_" + sdf.format(new java.util.Date()));
+                            f.renameTo(bak);
+                        }
                         FileWriter fw = new FileWriter(f); fw.write(content); fw.close(); return text(Response.Status.OK, "OK");
                     }
                     return text(Response.Status.INTERNAL_ERROR, "Failed");
@@ -450,7 +455,7 @@ public class NasHttpServer extends NanoHTTPD {
                     return text(Response.Status.INTERNAL_ERROR, "Failed");
                 }
                 if ("/api/webhook/test".equals(uri)) {
-                    WebhookManager.send("测试通知", "这是一条测试消息！");
+                    WebhookManager.sendTest();
                     return text(Response.Status.OK, "OK");
                 }
                 if ("/api/shell".equals(uri)) {
