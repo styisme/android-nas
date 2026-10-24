@@ -14,7 +14,7 @@
 
 ---
 
-## 📂 十端深度项目结构解析 (v4.1.0 架构)
+## 📂 十端深度项目结构解析 (v4.2.0 架构)
 
 ```text
 android-nas/
@@ -27,14 +27,19 @@ android-nas/
 │   │   ├── FtpServer.java               # 纯 Socket 实现的 FTP 协议栈
 │   │   ├── DlnaServer.java              # DLNA 投屏发现 (SSDP)
 │   │   ├── LocalSendServer.java         # LocalSend 接收端
-│   │   ├── DatabaseManager.java         # 🆕 SQLite 多用户与秒传记录引擎
-│   │   ├── ThumbnailManager.java        # 🆕 图片缩略图按需生成引擎
-│   │   ├── SystemMonitor.java           # 🆕 CPU/内存/电池监控读取器
+│   │   ├── DatabaseManager.java         # SQLite 多用户与秒传记录引擎
+│   │   ├── MediaScraper.java            # 🆕 免 Key 影视刮削引擎 (纯 Java 正则)
+│   │   ├── WebhookManager.java          # 🆕 Webhook 事件推送引擎
+│   │   ├── ThumbnailManager.java        # 图片缩略图按需生成引擎
+│   │   ├── SystemMonitor.java           # CPU/内存/电池监控读取器
 │   │   ├── RootManager.java             # Root/ADB 底层命令执行器
 │   │   ├── AdvancedKeepAliveManager.java# 极客级系统保活注入 (OOM 免死)
 │   │   ├── RemoteDesktopManager.java    # H264 推流与 WebSocket 远控中枢
 │   │   └── NasAccessibilityService.java # 无障碍触控注入双引擎
-│   └── src/main/assets/index.html       # MD3 网页前端源码 (集成 Video.js/Chart.js)
+│   └── src/main/assets/                 # MD3 网页前端与 PWA 文件
+│       ├── index.html                   # 网页前端源码 (集成 Video.js/Chart.js)
+│       ├── manifest.json                # 🆕 PWA 配置
+│       └── sw.js                        # 🆕 Service Worker 缓存
 │
 ├── client/                      # 🖥️ 手机客户端 (Java + MD3, Android 5.0+)
 ├── tv/                          # 📺 TV 端 (Leanback 卡片流, Android 4.4+)
@@ -77,12 +82,14 @@ android-nas/
 - **普通用户**：路径被强制映射并锁定在其专属目录下（如 `/sdcard/Users/user1`）。
 - **全盘 Root**：仅 `admin` 账号在开启全盘模式后，可直接越权访问底层目录。
 
-### 2. 文件流式上传 (极重要)
-手机端与 CLI 端使用 `PUT` 方法上传文件时，**必须在 HTTP Header 中携带准确的 `Content-Length`**。禁止使用 `Transfer-Encoding: chunked`，否则会导致 NanoHTTPD 底层无限阻塞卡死。
+### 2. 文件流式上传与大文件断点续传 (极重要)
+- **小文件 PUT 上传**：必须携带准确的 `Content-Length`。禁止使用 `Transfer-Encoding: chunked`，否则会导致 NanoHTTPD 底层无限阻塞卡死。
+- **大文件分片上传**：前端通过 `File.slice()` 按 2MB 切块，携带 `hash`、`index`、`total` 请求 `/api/upload/chunk`。服务端利用 `FileOutputStream(..., true)` 实现流式追加合并，并利用 `synchronized` 解决并发冲突。
 
-### 3. 缩略图与打包下载
+### 3. 缩略图、影视刮削与打包下载
 - **缩略图**：前端请求 `/api/thumb?path=xxx`，服务端在 `.thumbnails` 目录生成 300px 缓存并返回。
-- **流式打包下载**：前端 POST 包含 `paths` 数组到 `/api/download/zip`，服务端利用 `ZipOutputStream` 实时将多个文件压缩成临时 ZIP 并返回，避免内存溢出。
+- **影视刮削**：前端请求 `/api/media/wall`，服务端 `MediaScraper` 纯正则解析文件名，请求第三方 API 获取海报，绝不使用重型 JSON 库或视频解析库。
+- **流式打包下载**：前端 POST 包含 `paths` 数组到 `/api/download/zip`，服务端利用 `ZipOutputStream` 实时压缩并返回，避免内存溢出。
 
 ### 4. WebSocket 远控协议 (8082端口)
 - **H264 推流**：服务端下发二进制 H264 裸流，前端必须使用 JMuxer 实时封装为 fMP4 并在 `<video>` 中播放。
@@ -99,11 +106,12 @@ android-nas/
 
 本项目的发版过程是全自动化的，请严格遵守以下标准作业程序（SOP）：
 
-1. **修改更新日志**：在根目录 `CHANGELOG.md` 顶部，增加新版本号（例如 `## [4.1.0]`）及详细的更新内容。
+1. **修改更新日志**：在根目录 `CHANGELOG.md` 顶部，增加新版本号（例如 `## [4.2.0]`）及详细的更新内容。
 2. **推送代码**：Push 到 `main` 或 `master` 分支。
 3. **自动矩阵编译**：GitHub Actions 会检测到 `CHANGELOG.md` 的变更，触发 `build-all.yml` 矩阵。并行启动 Ubuntu、Windows、macOS 以及 OpenHarmony Docker 环境，全量编译 10 个端。
-4. **自动打 Tag**：CI 会解析 CHANGELOG 中的版本号，自动在 Git 中打上 `v4.1.0` 的标签。
-5. **平铺直传发布**：摒弃传统的单一 ZIP 打包方式。CI 脚本会使用 `find -type f` 提取所有产物并重命名，直接平铺展示在 GitHub Release 页面，供用户按需下载。
+4. **区分 Debug / Release**：独立日常构建触发 `assembleDebug`，包名带 `.debug` 后缀；`build-all` 触发 `assembleRelease`，使用 GitHub Secrets 注入正式 keystore 进行签名。
+5. **自动打 Tag**：CI 会解析 CHANGELOG 中的版本号，自动在 Git 中打上 `v4.2.0` 的标签。
+6. **平铺直传发布**：摒弃传统的单一 ZIP 打包方式。CI 脚本会使用 `find -type f` 提取所有产物并重命名，直接平铺展示在 GitHub Release 页面，供用户按需下载。
 
 *(日常修改代码如果未动 `CHANGELOG.md`，只会触发对应端的快速独立编译，不会发版)*
 

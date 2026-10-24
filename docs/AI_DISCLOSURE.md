@@ -6,15 +6,17 @@
 
 ## AI 参与的具体部分
 
-- **服务端核心 (Server Core) - v4.1.0 升级**：
-  - `NasHttpServer.java`：NanoHTTPD 的路由设计、Range 分片视频流、ZIP 流式解压、剪贴板缓存、全量控制台 API，以及多用户路径拦截逻辑。
+- **服务端核心 (Server Core) - v4.2.0 升级**：
+  - `NasHttpServer.java`：NanoHTTPD 的路由设计、Range 分片视频流、ZIP 流式解压、剪贴板缓存、大文件分片上传与秒传合并逻辑、PWA 静态路由拦截，以及多用户路径拦截逻辑。
   - `WebDavServer.java` / `FtpServer.java`：纯 Socket 实现的协议栈，支持突破全盘权限。
   - `DatabaseManager.java`：SQLite 数据库引擎，实现多用户鉴权、独立根目录隔离、文件秒传哈希记录。
+  - `MediaScraper.java`：免 Key 影视元数据刮削引擎，纯 Java 正则解析文件名并请求外部 API。
+  - `WebhookManager.java`：轻量级 HTTP 推送中枢，支持适配 Telegram 与企业微信机器人。
   - `ThumbnailManager.java`：图片缩略图生成引擎，实现 300px 按需压缩与本地缓存。
   - `SystemMonitor.java`：硬件监控读取器，解析 `/proc/stat` 获取 CPU 占用，并加入 API 8 电池读取兼容守卫。
   - `RootManager.java` 与 `AdvancedKeepAliveManager.java`：全套 Root/ADB 保活注入、OOM 免死写入与系统级命令执行。
   - `RemoteDesktopManager.java` / `NasAccessibilityService.java`：基于 `MediaCodec` 的 H264 硬件编码推流、WebSocket 服务端搭建，以及无障碍触控与 Root 指令注入双引擎。
-  - `index.html`：全套 MD3 CSS 变量系统、响应式 UI、Bottom Sheet 交互逻辑、基于 `JMuxer.js` 的 H264 实时解码，以及新增的时光相册、硬件仪表盘与多用户管理面板。
+  - `index.html`：全套 MD3 CSS 变量系统、响应式 UI、Bottom Sheet 交互逻辑、SparkMD5 分片计算、基于 `JMuxer.js` 的 H264 实时解码，以及时光相册、影视海报墙与 PWA 注册代码。
 
 - **跨平台客户端 (Multi-Platform Clients)**：
   - **手机端 (Android)**：相册自动备份逻辑（MediaStore + 增量比对）、多协议文件列表重写、局域网扫描与投屏、WebView 远控套壳与系统分享外链。
@@ -25,15 +27,18 @@
 
 - **CI/CD 自动化 (DevOps)**：
   - 基于 GitHub Actions 的全量发版矩阵与平铺直传机制。
-  - 多环境构建策略（macOS 编译苹果、OpenHarmony Docker 编译鸿蒙）。
-  - `sync_version.py` 版本自动注入脚本与 `paths-ignore` 路径隔离策略。
+  - 基于 GitHub Secrets 的动态 Keystore 解码与 Release 签名注入。
+  - `sync_version.py` 版本自动注入脚本、`.debug` 包名后缀分流控制与 `paths-ignore` 路径隔离策略。
 
 ## 开发者（人类）负责的核心工作
 
 - **产品定义与需求决策**：决定项目要包含哪些端、用什么协议、UI 风格长什么样，以及决定多用户和媒体库的演进方向。
-- **编译与执行**：在 Android Termux 环境中运行 AI 生成的 Python 覆盖脚本，使用 Mgit 提交代码并推送至 GitHub。
+- **编译与执行**：在无电脑的纯 Android 环境下，使用 Pydroid 运行 AI 生成的 Python 覆盖脚本，使用 Mgit 提交代码并推送至 GitHub。
 - **真机测试与反馈**：把编译好的 APK 安装到废旧手机、电视盒子、手表上，测试远控、投屏、文件管理等功能是否正常，并将错误日志或闪退截图反馈给 AI，由 AI 输出修复补丁。
-- **兼容性与编译排雷**：发现并反馈因引入 Lambda 表达式导致 AGP 4.2.2 编译失败的问题；发现并反馈因 `BatteryManager` 导致 API 8 闪退的问题，由 AI 降级为纯 Java 7 语法与传统兼容守卫。
+- **兼容性与编译排雷**：
+  - 发现并反馈因引入 Lambda 表达式导致 AGP 4.2.2 编译失败的问题。
+  - 发现并反馈因 `BatteryManager` 导致 API 8 闪退的问题。
+  - 敏锐捕捉并反馈了 `targetSdkVersion 22` 在 Release 构建时触发的 `lintVitalRelease` 致命拦截，以及 Gradle 脚本中 `signingConfig` 被正则错误嵌套导致的 `Could not find method` 崩溃，促使 AI 给出修复补丁。
 - **问题排查**：解决因添加 Root 保活模块后，系统 PMS 被 Hook 导致第三方安装器提示“未卸载”的冲突问题。
 - **最终验收**：决定某个版本是否达到发布标准。
 

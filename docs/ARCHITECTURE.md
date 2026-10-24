@@ -1,4 +1,4 @@
-# Android NAS 底层架构深度解析 (v4.1.0)
+# Android NAS 底层架构深度解析 (v4.2.0)
 
 本项目之所以能在极低兼容性（API 8）下实现极高的性能，并且横跨十个完全不同的平台与操作系统，源于底层大量抛弃了第三方重型框架，采用了**纯手写 Socket、原生硬件调用、SQLite 数据库引擎与极简设计**。
 
@@ -9,7 +9,7 @@
 ## 一、 核心容器调度与拦截器 (HttpServerService)
 
 服务端以 `Foreground Service`（前台服务）的形式常驻内存，在内部开启了多个独立的线程池并发监听不同端口，互不干扰：
-- **8080 (HTTP JSON API)**：基于 NanoHTTPD 二次封装。在路由分发前，底层加入了**多用户权限拦截器**与**路径沙箱映射器**，处理前端鉴权、流媒体请求与数据操作。
+- **8080 (HTTP JSON API)**：基于 NanoHTTPD 二次封装。在路由分发前，底层加入了**多用户权限拦截器**与**路径沙箱映射器**，处理前端鉴权、流媒体请求、PWA 静态资源分发（`manifest.json`, `sw.js`）与数据操作。
 - **8081 (WebDAV)**：**纯 Socket 手写实现**。直接解析 HTTP 报文，处理 `PROPFIND` 的 XML 拼装、`PUT` 的流式二进制写入。
 - **2121 (FTP)**：**纯 Socket 手写实现**。处理 FTP 控制连接，支持 `PASV` 被动模式，管理数据通道。
 - **53317 (LocalSend)**：实现 UDP 组播发现协议，并接管 HTTP 的文件流式写入。
@@ -18,9 +18,9 @@
 
 ---
 
-## 二、 多用户隔离与 SQLite 架构 (v4.1.0 核心升级)
+## 二、 多用户隔离与 SQLite 架构
 
-在 v4.1.0 中，系统从“单机玩具”蜕变为“家庭私有云”，核心在于引入了 `DatabaseManager`。
+系统的核心在于 `DatabaseManager`，它让 NAS 从“单机玩具”蜕变为“家庭私有云”。
 
 ### 1. 数据库设计
 服务端首次启动时，会自动在应用沙盒内生成 `nas_core.db`，包含两张核心表：
@@ -36,22 +36,26 @@
 
 ---
 
-## 三、 多媒体视界与文件处理引擎 (v4.1.0 新增)
+## 三、 多媒体与文件处理引擎 (v4.2.0 升级)
 
-为了告别枯燥的文件列表，底层新增了多项重型处理引擎。
+为了告别枯燥的文件列表，底层新增并优化了多项重型处理引擎。
 
-### 1. 缩略图引擎 (ThumbnailManager)
-- **原理**：当 Web 端请求 `/api/thumb` 时，底层利用 `BitmapFactory` 进行 `inSampleSize` 降采样，将原图压缩为 300px 的 JPEG。
-- **缓存机制**：生成的缩略图会静默保存在原目录的 `.thumbnails` 隐藏文件夹中。下次请求直接读取缓存，极大降低了 CPU 负载与网络带宽。
-- **时光相册**：基于此引擎，`/api/photos` 接口遍历全盘，提取照片的时间戳并倒序排列，实现了瞬间加载的瀑布流视图。
+### 1. 影视元数据刮削引擎 (MediaScraper)
+- **极简原理**：为了避免引入庞大的视频解析库，底层采用纯 Java 正则表达式（Regex）对文件名进行切片（如 `Inception.2010.1080p.mp4`），精准提取片名与年份。
+- **网络请求**：利用 `HttpURLConnection` 请求免 Key 的公开聚合 API，提取海报 URL、评分与简介，实现零配置的海报墙展示。
 
-### 2. 流式打包引擎 (Streaming ZIP)
-- **痛点**：传统多文件下载会占用大量临时存储空间。
-- **原理**：底层利用 `ZipOutputStream`，将用户选中的多个文件通过 `FileInputStream` 分块读取并直接写入 HTTP 响应流。这实现了“边压边传”，完全不占用手机本地物理空间。
+### 2. 大文件秒传与分片断点续传
+- **秒传机制**：前端计算文件 MD5 后请求 `/api/upload/check`。服务端通过查询 SQLite 的 `file_hashes` 表，若已存在则直接返回 `SECONDS_UPLOAD`，实现 0 秒极速上传。
+- **分片合并**：前端将大文件切为 2MB 分片。服务端通过 `FileOutputStream(file, true)` 将分片流式追加至 `.part` 临时文件。
+- **线程安全**：在最后一片到达触发合并重命名时，使用 `synchronized (NasHttpServer.class)` 加锁，防止并发写入导致文件损坏。
 
-### 3. 硬件监控与安全分享
-- **监控引擎**：直接读取 Linux 底层 `/proc/stat` 计算 CPU 占用率；通过带有 `Build.VERSION.SDK_INT >= 21` 守卫的 `BatteryManager` 获取电量，确保老设备不闪退。
-- **分享引擎**：分享 Token 不再只是单纯的路径映射，而是以 `path|passcode|expire_time` 格式存入内存。请求时强制校验时间戳与提取码。
+### 3. 影视缩略图与流式打包
+- **缩略图引擎**：利用 `BitmapFactory.Options.inSampleSize` 降采样，将原图压缩为 300px 的 JPEG，并静默缓存至原目录的 `.thumbnails` 隐藏文件夹。
+- **流式打包引擎**：底层利用 `ZipOutputStream`，将多选文件分块读取并直接写入 HTTP 响应流，实现“边压边传”，杜绝本地临时空间占用。
+
+### 4. Webhook 事件通知中枢 (WebhookManager)
+- **轻量化实现**：放弃第三方 HTTP 库，使用 `HttpURLConnection` 异步发送 JSON 格式的事件通知。
+- **协议适配**：底层内置对 Telegram (Form 表单) 与企业微信 (JSON 文本) 的格式适配，在上传完成、异常触发时实时推送到用户终端。
 
 ---
 
@@ -95,14 +99,15 @@
 
 ## 八、 自动化构建与全量发版矩阵 (CI/CD)
 
-`sync_version.py` 是整个 DevOps 流程的核心枢纽。它通过正则解析 `CHANGELOG.md`，自动将提取的版本号（如 4.1.0）换算为 `versionCode`（如 40100），并动态注入到 10 个不同端的工程配置中。
+`sync_version.py` 是整个 DevOps 流程的核心枢纽。它通过正则解析 `CHANGELOG.md`，自动将提取的版本号（如 4.2.0）换算为 `versionCode`（如 40200），并动态注入到 10 个不同端的工程配置中。
 
-### 1. 双轨制与高容错
-- **日常提交**：只触发对应端的独立编译。
-- **全量发版**：修改 `CHANGELOG.md` 触发矩阵。脚本使用 `find -type f` 和 `|| true` 提取产物，即使某端（如手表）编译失败，也不影响其他 9 个端发布。
+### 1. 双轨制构建与签名机制
+- **日常调试**：只触发对应端的独立编译（`assembleDebug`），包名自动追加 `.debug` 后缀，防止覆盖正式版。
+- **全量发版**：修改 `CHANGELOG.md` 触发矩阵（`assembleRelease`）。通过 GitHub Secrets 注入 `release.keystore` 完成正式签名。
 
-### 2. 云端全平台覆盖
-接入 `macos-latest` 编译苹果应用（SwiftUI），使用 OpenHarmony Docker 编译鸿蒙 HAP（ArkTS），使用 Linux/Windows 编译 Java、Python 与 C# (MAUI) 客户端。
+### 2. 高容错与平铺直传
+- 脚本使用 `find -type f` 和 `|| true` 提取产物，即使某端（如手表）编译失败，也不影响其他 9 个端发布。
+- 所有产物按 `Name-vVersion` 规范重命名，直接平铺展示在 GitHub Release 页面，供用户自由下载。
 
-### 3. 平铺直传
-所有产物按 `Name-vVersion` 规范重命名，直接平铺展示在 GitHub Release 页面，供用户自由下载。
+### 3. 应用标识统一
+自 v4.2.0 起，所有 Android 端包名统一迁移至 `com.androidnas.all.*`（如 `com.androidnas.all.server`），以构建更清晰的生态隔离。
