@@ -172,6 +172,9 @@ class DesktopNasClient:
                     if data.get("lowPower"): status_txt += " | 极寒"
                     if data.get("globalMode"): status_txt += " | 全盘"
                     self.ui(lambda: self.status_var.set(status_txt))
+                    if data.get("isDefaultPwd"):
+                        self.ui(lambda: self.status_var.set("⚠️ 默认密码！"))
+                        self.ui(lambda: messagebox.showwarning("安全警告", "正在使用默认密码，请立即前往网页端修改！"))
             except Exception:
                 self.ui(lambda: self.status_var.set("离线"))
         Thread(target=_check).start()
@@ -223,16 +226,40 @@ class DesktopNasClient:
     def share_link(self):
         name, path = self.get_selected_file()
         if not name: return
-        try:
-            res = requests.post(f"{self.base_url}/api/share", data={"path": path}, auth=self.auth, timeout=5)
-            res.raise_for_status()
-            token = res.text.strip()
-            link = f"{self.base_url}/share/{token}"
-            self.root.clipboard_clear()
-            self.root.clipboard_append(link)
-            messagebox.showinfo("成功", f"免密链接已复制到剪贴板:\n{link}")
-        except Exception as e:
-            messagebox.showerror("失败", str(e))
+        
+        win = tk.Toplevel(self.root)
+        win.title("分享文件")
+        win.geometry("300x250")
+        win.configure(bg=self.bg_color)
+        win.transient(self.root)
+        win.grab_set()
+        
+        ttk.Label(win, text="提取码 (留空为免密):").pack(pady=(10,0))
+        pass_var = tk.StringVar()
+        ttk.Entry(win, textvariable=pass_var).pack()
+        
+        ttk.Label(win, text="有效期:").pack(pady=(10,0))
+        expire_var = tk.StringVar(value="86400000")
+        ttk.Combobox(win, textvariable=expire_var, values=["3600000", "86400000", "604800000", "0"]).pack()
+        
+        def do_share():
+            try:
+                data = {"path": path}
+                if pass_var.get(): data["pass"] = pass_var.get()
+                if expire_var.get() != "0": data["expire"] = expire_var.get()
+                res = requests.post(f"{self.base_url}/api/share", data=data, auth=self.auth, timeout=5)
+                res.raise_for_status()
+                token = res.text.strip()
+                link = f"{self.base_url}/share/{token}"
+                if pass_var.get(): link += f"\n提取码: {pass_var.get()}"
+                self.root.clipboard_clear()
+                self.root.clipboard_append(link)
+                messagebox.showinfo("成功", f"链接已复制:\n{link}")
+                win.destroy()
+            except Exception as e:
+                messagebox.showerror("失败", str(e))
+                
+        ttk.Button(win, text="生成链接", command=do_share).pack(pady=20)
 
     # 其他方法 (mkdir, delete, unzip, download, upload) 保持原样
 
@@ -354,26 +381,45 @@ class DesktopNasClient:
         Thread(target=_dl).start()
 
     def upload_files(self):
+        import hashlib
         paths = filedialog.askopenfilenames(title="选择文件")
         if not paths: return
         def _ul():
             try:
-                files = [('file', (os.path.basename(p), open(p, 'rb'))) for p in paths]
-                total_size = sum(os.path.getsize(p) for p in paths)
-                self.ui(lambda: setattr(self.progress, 'maximum', total_size))
-                self.ui(lambda: self.progress.configure(value=0))
-                
-                res = requests.post(f"{self.base_url}/api/upload", files=files, data={"path": self.current_path}, auth=self.auth, timeout=120)
-                res.raise_for_status()
-                
-                for _, file_tuple in files: file_tuple[1].close()
-                
-                self.ui(lambda: self.progress.configure(value=total_size))
+                for p in paths:
+                    fname = os.path.basename(p)
+                    fsize = os.path.getsize(p)
+                    
+                    # 计算 MD5
+                    md5 = hashlib.md5()
+                    with open(p, 'rb') as f:
+                        for chunk in iter(lambda: f.read(8192), b""):
+                            md5.update(chunk)
+                    fhash = md5.hexdigest()
+                    
+                    # 请求秒传
+                    r = requests.post(f"{self.base_url}/api/upload/check?hash={fhash}", auth=self.auth, timeout=5)
+                    if r.text == "SECONDS_UPLOAD":
+                        self.ui(messagebox.showinfo, "秒传", f"{fname} 已秒传成功！")
+                        continue
+                    
+                    # 分片上传
+                    chunk_size = 2 * 1024 * 1024
+                    total_chunks = (fsize + chunk_size - 1) // chunk_size
+                    self.ui(lambda: self.progress.configure(maximum=total_chunks, value=0))
+                    
+                    with open(p, 'rb') as f:
+                        for i in range(total_chunks):
+                            chunk_data = f.read(chunk_size)
+                            url = f"{self.base_url}/api/upload/chunk?hash={fhash}&index={i}&total={total_chunks}&name={fname}&path={self.current_path}"
+                            requests.post(url, data=chunk_data, auth=self.auth, timeout=30)
+                            self.ui(lambda v=i+1: self.progress.configure(value=v))
+                            
                 self.ui(lambda: self.progress.configure(value=0))
                 self.ui(self.load_files)
-                self.ui(messagebox.showinfo, "成功", f"上传了 {len(paths)} 个文件")
+                self.ui(messagebox.showinfo, "成功", f"文件处理完毕")
             except Exception as e:
-                self.ui(messagebox.showerror, "上传失败", str(e))
+                self.ui(messagebox.showerror, "上传异常", str(e))
         Thread(target=_ul).start()
 
     def format_size(self, size):

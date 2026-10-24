@@ -57,6 +57,18 @@ public class WebDavServer extends Thread {
 
                 if (!"OPTIONS".equalsIgnoreCase(method)) {
                     String clientIp = socket.getInetAddress().getHostAddress();
+                    if (SettingsManager.isIpWhitelistEnabled()) {
+                        String list = SettingsManager.getIpWhitelist();
+                        boolean allowed = false;
+                        if (list != null) {
+                            for (String rule : list.split(",")) {
+                                rule = rule.trim();
+                                if (rule.endsWith("*") && clientIp.startsWith(rule.substring(0, rule.length() - 1))) { allowed = true; break; }
+                                if (rule.equals(clientIp)) { allowed = true; break; }
+                            }
+                        }
+                        if (!allowed) { out.write("HTTP/1.1 403 Forbidden\r\n\r\n".getBytes()); return; }
+                    }
                     if (SettingsManager.isFail2BanEnabled() && SecurityFilter.isBlocked(clientIp)) { out.write("HTTP/1.1 429 Too Many Requests\r\n\r\n".getBytes()); return; }
                     String auth = headers.get("authorization");
                     if (AuthManager.verifyRole(auth) == 0) {

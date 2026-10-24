@@ -3,17 +3,33 @@ package com.androidnas.client;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
+import android.widget.LinearLayout;
 import android.widget.RadioGroup;
+import android.widget.TextView;
+import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
 import com.google.android.material.appbar.MaterialToolbar;
+import com.google.android.material.button.MaterialButton;
 import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.textfield.TextInputEditText;
+import com.google.android.material.textfield.TextInputLayout;
+import org.json.JSONObject;
+import okhttp3.Credentials;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 public class SettingsActivity extends AppCompatActivity {
     private SharedPreferences sp;
-    private TextInputEditText etPort, etTimeout;
-    private MaterialSwitch switchAutoScan;
+    private TextInputEditText etPort, etTimeout, etAlias, etWebhook, etPin;
+    private MaterialSwitch switchAutoScan, switchPin, switchAudit;
+    private OkHttpClient client = new OkHttpClient();
+    private Handler handler = new Handler(Looper.getMainLooper());
+    private String baseUrl, authHeader;
 
     @Override protected void onCreate(Bundle b) {
         super.onCreate(b);
@@ -22,11 +38,11 @@ public class SettingsActivity extends AppCompatActivity {
         MaterialToolbar toolbar = findViewById(R.id.toolbar); setSupportActionBar(toolbar);
         if (getSupportActionBar() != null) getSupportActionBar().setDisplayHomeAsUpEnabled(true);
         toolbar.setNavigationOnClickListener(v -> finish());
+
+        // 1. 基础设置 (读取本地)
         RadioGroup g = findViewById(R.id.themeGroup);
         int t = sp.getInt("theme", 0);
-        if (t == 1) g.check(R.id.radioLight);
-        else if (t == 2) g.check(R.id.radioDark);
-        else g.check(R.id.radioSystem);
+        if (t == 1) g.check(R.id.radioLight); else if (t == 2) g.check(R.id.radioDark); else g.check(R.id.radioSystem);
         g.setOnCheckedChangeListener((gg, id) -> {
             int m = 0;
             if (id == R.id.radioLight) { m = 1; AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO); }
@@ -42,6 +58,109 @@ public class SettingsActivity extends AppCompatActivity {
             switchAutoScan.setChecked(sp.getBoolean("auto_scan", true));
             switchAutoScan.setOnCheckedChangeListener((v, c) -> sp.edit().putBoolean("auto_scan", c).apply());
         }
+
+        // 2. 动态获取服务端设置 (如果存在设备)
+        SharedPreferences nasSp = getSharedPreferences("nas", Context.MODE_PRIVATE);
+        String devJson = nasSp.getString("devices", "");
+        if (!devJson.isEmpty()) {
+            try {
+                org.json.JSONArray arr = new org.json.JSONArray(devJson);
+                JSONObject d = arr.getJSONObject(0);
+                baseUrl = d.getString("url");
+                if (!baseUrl.startsWith("http")) baseUrl = "http://" + baseUrl;
+                authHeader = Credentials.basic(d.getString("username"), d.getString("password"));
+                loadServerSettings();
+            } catch (Exception ignored) {}
+        }
+    }
+    
+    private void loadServerSettings() {
+        new Thread(() -> {
+            try {
+                Request req = new Request.Builder().url(baseUrl + "/api/settings").header("Authorization", authHeader).build();
+                Response resp = client.newCall(req).execute();
+                if (resp.isSuccessful() && resp.body() != null) {
+                    JSONObject s = new JSONObject(resp.body().string());
+                    handler.post(() -> injectServerUI(s));
+                }
+            } catch (Exception ignored) {}
+        }).start();
+    }
+
+    private void injectServerUI(JSONObject s) {
+        LinearLayout layout = findViewById(R.id.main_settings_container);
+        if (layout == null) return;
+        
+        TextView title = new TextView(this);
+        title.setText("服务端深层控制");
+        title.setTextSize(18);
+        title.setPadding(0, 32, 0, 16);
+        layout.addView(title);
+
+        TextInputLayout tilAlias = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilAlias.setHint("设备名称");
+        etAlias = new TextInputEditText(this); tilAlias.addView(etAlias);
+        try { etAlias.setText(s.optString("alias")); } catch (Exception ignored) {}
+        layout.addView(tilAlias);
+
+        switchPin = new MaterialSwitch(this);
+        switchPin.setText("🚨 敏感操作需要安全码");
+        try { switchPin.setChecked(s.optBoolean("pinRequired")); } catch (Exception ignored) {}
+        layout.addView(switchPin);
+        
+        switchAudit = new MaterialSwitch(this);
+        switchAudit.setText("📝 开启安全审计日志");
+        try { switchAudit.setChecked(s.optBoolean("auditEnabled")); } catch (Exception ignored) {}
+        layout.addView(switchAudit);
+
+        TextInputLayout tilWebhook = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilWebhook.setHint("Webhook 地址");
+        etWebhook = new TextInputEditText(this); tilWebhook.addView(etWebhook);
+        try { etWebhook.setText(s.optString("webhookUrl")); } catch (Exception ignored) {}
+        layout.addView(tilWebhook);
+
+        TextInputLayout tilPin = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilPin.setHint("输入安全码以保存修改");
+        etPin = new TextInputEditText(this); tilPin.addView(etPin);
+        layout.addView(tilPin);
+
+        MaterialButton btnSave = new MaterialButton(this);
+        btnSave.setText("保存服务端配置");
+        btnSave.setOnClickListener(v -> saveServerSettings());
+        layout.addView(btnSave);
+    }
+
+    private void saveServerSettings() {
+        String pin = etPin.getText() != null ? etPin.getText().toString() : "";
+        if (switchPin.isChecked() && pin.isEmpty()) {
+            Toast.makeText(this, "请输入安全码", Toast.LENGTH_SHORT).show(); return;
+        }
+        
+        new Thread(() -> {
+            try {
+                okhttp3.FormBody.Builder b = new okhttp3.FormBody.Builder()
+                        .add("alias", etAlias.getText() != null ? etAlias.getText().toString() : "")
+                        .add("webhookUrl", etWebhook.getText() != null ? etWebhook.getText().toString() : "")
+                        .add("pinRequired", String.valueOf(switchPin.isChecked()))
+                        .add("auditEnabled", String.valueOf(switchAudit.isChecked()))
+                        .add("pin", pin)
+                        // 补齐必填字段以免服务端报错
+                        .add("webPort", "8080").add("davPort", "8081").add("ftpPort", "2121")
+                        .add("webdav", "true").add("ftp", "true").add("dlna", "true").add("stream", "true")
+                        .add("clipboard", "true").add("lowPower", "false").add("globalMode", "false")
+                        .add("fail2ban", "true").add("ipWhitelistEnabled", "false").add("ipWhitelist", "");
+                        
+                Request req = new Request.Builder().url(baseUrl + "/api/settings")
+                        .post(b.build()).header("Authorization", authHeader).build();
+                Response resp = client.newCall(req).execute();
+                handler.post(() -> {
+                    if (resp.isSuccessful()) Toast.makeText(this, "服务端配置已保存", Toast.LENGTH_SHORT).show();
+                    else Toast.makeText(this, "保存失败，安全码可能错误", Toast.LENGTH_SHORT).show();
+                });
+            } catch (Exception e) {
+                handler.post(() -> Toast.makeText(this, "网络异常", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
     }
 
     @Override protected void onPause() {

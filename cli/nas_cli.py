@@ -100,6 +100,12 @@ class NasShell(cmd.Cmd):
         super().__init__()
         self.api = api
         self.cwd = "/"
+        try:
+            r = self.api.req("GET", "/api/status")
+            if r and r.json().get("isDefaultPwd"):
+                print("\033[91m⚠️ 警告: 当前 NAS 正在使用默认密码，请立即修改！\033[0m")
+        except Exception:
+            pass
 
     def update_prompt(self):
         self.prompt = f"\033[92m{self.cwd}> \033[0m"

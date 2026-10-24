@@ -365,6 +365,24 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
   </div>
 </div>
 
+<div id="shareModal" class="sheet-modal" onclick="closeSheet('shareModal')">
+  <div class="sheet" onclick="event.stopPropagation()">
+    <div class="sheet-handle"></div>
+    <div style="padding: 0 24px 16px;">
+      <h3 style="margin-bottom:16px;">🔗 分享文件</h3>
+      <label>提取码 (留空则无): <input type="text" id="sharePass" placeholder="如 1234"></label>
+      <label style="margin-top:12px; display:block;">有效期: 
+        <select id="shareExpire" style="margin-top:8px; padding:8px; width:100%; border-radius:8px; border:1px solid var(--outline);">
+          <option value="3600000">1 小时</option>
+          <option value="86400000" selected>1 天</option>
+          <option value="604800000">7 天</option>
+          <option value="0">永久</option>
+        </select>
+      </label>
+      <button class="btn-filled" style="width:100%; margin-top:24px;" onclick="doShare()">生成链接</button>
+    </div>
+  </div>
+</div>
 <div id="toast"></div>
 <div id="uploadProgress"></div>
 
@@ -625,13 +643,8 @@ function unzipFile(fullPath) {
 }
 
 function shareFile(fullPath) {
-    var fd = new FormData();
-    fd.append("path", fullPath);
-    fetch("/api/share", { method: "POST", body: fd })
-        .then(r => r.text())
-        .then(token => {
-            prompt("分享链接已生成 (免密访问):", location.origin + "/share/" + token);
-        });
+    showSheet("shareModal");
+    window._sharePath = fullPath;
 }
 
 function renameFile(f, fullPath) {
@@ -858,6 +871,12 @@ function showSettings() {
 }
 
 function saveSettings() {
+    var ipEnabled = document.getElementById("setIpWhitelistEnabled").checked;
+    if (ipEnabled) {
+        if (!confirm("⚠️ 你正在开启 IP 白名单！\n请确保你当前的 IP 已经在白名单列表中，否则你将无法再访问 NAS！\n\n当前白名单: " + document.getElementById("setIpWhitelist").value + "\n\n确定要保存吗？")) {
+            return;
+        }
+    }
     var pin = "";
     if (window._pinRequired) {
         pin = prompt("请输入紧急安全码:");

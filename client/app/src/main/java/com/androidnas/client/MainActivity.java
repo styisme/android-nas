@@ -98,6 +98,30 @@ public class MainActivity extends AppCompatActivity {
             if (l != null) devices.addAll(l);
         } catch (Exception ignored) {}
         adapter.notifyDataSetChanged();
+        checkDefaultPassword();
+    }
+
+    private void checkDefaultPassword() {
+        if (devices.isEmpty()) return;
+        final NasDevice d = devices.get(0);
+        if (d.type != NasDevice.TYPE_ANDROID) return;
+        new Thread(() -> {
+            try {
+                OkHttpClient client = new OkHttpClient();
+                Request req = new Request.Builder().url(d.getBaseUrl() + "/api/status")
+                    .header("Authorization", Credentials.basic(d.username, d.password)).build();
+                Response resp = client.newCall(req).execute();
+                if (resp.isSuccessful() && resp.body() != null) {
+                    org.json.JSONObject obj = new org.json.JSONObject(resp.body().string());
+                    if (obj.optBoolean("isDefaultPwd", false)) {
+                        mainHandler.post(() -> new MaterialAlertDialogBuilder(MainActivity.this)
+                            .setTitle("⚠️ 安全警告")
+                            .setMessage("当前 NAS 正在使用默认密码，极易被攻击。请立即前往网页端【系统设置】修改密码！")
+                            .setPositiveButton("知道了", null).show());
+                    }
+                }
+            } catch (Exception ignored) {}
+        }).start();
     }
 
     private void saveDevices() {

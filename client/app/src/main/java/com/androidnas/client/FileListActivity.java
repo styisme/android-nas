@@ -644,14 +644,33 @@ public class FileListActivity extends AppCompatActivity {
 
     private void shareLink(FileItem f) {
         if (type != NasDevice.TYPE_ANDROID) return;
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(48, 32, 48, 16);
+        
+        TextInputLayout tilPass = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        tilPass.setHint("提取码 (留空则免密)");
+        TextInputEditText etPass = new TextInputEditText(this); tilPass.addView(etPass);
+        layout.addView(tilPass);
+
+        new MaterialAlertDialogBuilder(this).setTitle("分享文件").setView(layout)
+            .setPositiveButton("生成链接", (d, w) -> {
+                String pass = etPass.getText() != null ? etPass.getText().toString() : "";
+                doShare(f, pass);
+            }).setNegativeButton("取消", null).show();
+    }
+
+    private void doShare(FileItem f, String pass) {
         new Thread(() -> {
             try {
-                RequestBody body = new okhttp3.FormBody.Builder().add("path", f.path).build();
+                okhttp3.FormBody.Builder builder = new okhttp3.FormBody.Builder().add("path", f.path);
+                if (!pass.isEmpty()) builder.add("pass", pass);
+                RequestBody body = builder.build();
                 Request req = new Request.Builder().url(baseUrl + "/api/share").post(body).header("Authorization", authHeader).build();
                 Response res = client.newCall(req).execute();
                 if (res.isSuccessful() && res.body() != null) {
                     String token = res.body().string();
-                    String link = baseUrl + "/share/" + token;
+                    String link = baseUrl + "/share/" + token + (pass.isEmpty() ? "" : "\n提取码: " + pass);
                     runOnUiThread(() -> {
                         Intent sendIntent = new Intent(Intent.ACTION_SEND);
                         sendIntent.putExtra(Intent.EXTRA_TEXT, "分享文件: " + f.name + "\n下载链接: " + link);
