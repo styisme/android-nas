@@ -161,7 +161,7 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/preview".equals(uri)) {
                 File f = safeFile(session.getParms().get("path"));
                 if (f != null && f.exists() && !f.isDirectory()) {
-                    if (f.length() > 2 * 1024 * 1024) return text(Response.Status.REQUEST_ENTITY_TOO_LARGE, "Too Large");
+                    if (f.length() > 2 * 1024 * 1024) return text(Response.Status.BAD_REQUEST, "Too Large");
                     return newChunkedResponse(Response.Status.OK, "text/plain; charset=utf-8", new FileInputStream(f));
                 }
                 return text(Response.Status.NOT_FOUND, "Not found");
