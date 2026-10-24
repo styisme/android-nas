@@ -308,6 +308,7 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
         <label><input type="checkbox" id="setStream" /> 开启网页流媒体</label><br>
         <label><input type="checkbox" id="setClipboard" /> 开启局域网剪贴板</label><br>
         <label><input type="checkbox" id="setGlobal" /> 开启全盘模式 (需 Root)</label>
+        <label><input type="checkbox" id="setLowPower" /> 开启极寒省电模式</label>
       </div>
       
       
@@ -377,9 +378,9 @@ window.fetch = function(url, options) {
             if (pass === null) { window._authPrompting = false; return res; }
             localStorage.setItem("nas_auth", "Basic " + btoa(user + ":" + pass));
             
-            return window.fetch(url, options).finally(function() {
-                window._authPrompting = false;
-            });
+            var ret = window.fetch(url, options);
+            ret.then(function(){ window._authPrompting = false; }, function(){ window._authPrompting = false; });
+            return ret;
         }
         return res;
     });
@@ -821,6 +822,7 @@ function showSettings() {
         document.getElementById("setStream").checked = s.stream;
         document.getElementById("setClipboard").checked = s.clipboard;
         document.getElementById("setGlobal").checked = s.globalMode;
+        document.getElementById("setLowPower").checked = s.lowPower;
         document.getElementById("setPassword").value = "";
         document.getElementById("setWebhook").value = s.webhookUrl || "";
         document.getElementById("setChatId").value = s.webhookChatId || "";
@@ -839,6 +841,7 @@ function saveSettings() {
     fd.append("stream", document.getElementById("setStream").checked);
     fd.append("clipboard", document.getElementById("setClipboard").checked);
     fd.append("globalMode", document.getElementById("setGlobal").checked);
+    fd.append("lowPower", document.getElementById("setLowPower").checked);
     fd.append("webhookUrl", document.getElementById("setWebhook").value);
     fd.append("webhookChatId", document.getElementById("setChatId").value);
     

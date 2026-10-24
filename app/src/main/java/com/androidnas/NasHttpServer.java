@@ -83,8 +83,23 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/settings".equals(uri)) {
                 if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
                 if (Method.GET.equals(session.getMethod())) {
-                    String json = "{\"alias\":\"" + SettingsManager.getDeviceAlias() + "\",\"webPort\":" + SettingsManager.getWebPort() + ",\"davPort\":" + SettingsManager.getWebDavPort() + ",\"ftpPort\":" + SettingsManager.getFtpPort() + ",\"webdav\":" + SettingsManager.isWebDavEnabled() + ",\"ftp\":" + SettingsManager.isFtpEnabled() + ",\"dlna\":" + SettingsManager.isDlnaEnabled() + ",\"stream\":" + SettingsManager.isStreamEnabled() + ",\"clipboard\":" + SettingsManager.isClipboardEnabled() + ",\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"webhookUrl\":\"" + SettingsManager.getWebhookUrl() + "\",\"webhookChatId\":\"" + SettingsManager.getWebhookChatId() + "\"}";
-                    return newFixedLengthResponse(Response.Status.OK, "application/json", json);
+                    JSONObject obj = new JSONObject();
+                    try {
+                        obj.put("alias", SettingsManager.getDeviceAlias());
+                        obj.put("webPort", SettingsManager.getWebPort());
+                        obj.put("davPort", SettingsManager.getWebDavPort());
+                        obj.put("ftpPort", SettingsManager.getFtpPort());
+                        obj.put("webdav", SettingsManager.isWebDavEnabled());
+                        obj.put("ftp", SettingsManager.isFtpEnabled());
+                        obj.put("dlna", SettingsManager.isDlnaEnabled());
+                        obj.put("stream", SettingsManager.isStreamEnabled());
+                        obj.put("clipboard", SettingsManager.isClipboardEnabled());
+                        obj.put("lowPower", SettingsManager.isLowPowerMode());
+                        obj.put("globalMode", SettingsManager.isGlobalMode());
+                        obj.put("webhookUrl", SettingsManager.getWebhookUrl());
+                        obj.put("webhookChatId", SettingsManager.getWebhookChatId());
+                    } catch (Exception ignored) {}
+                    return newFixedLengthResponse(Response.Status.OK, "application/json", obj.toString());
                 }
             }
             
@@ -159,6 +174,7 @@ public class NasHttpServer extends NanoHTTPD {
             }
             if ("/api/search".equals(uri)) {
                 String q = session.getParms().get("q");
+                if (q == null || q.trim().isEmpty()) return newFixedLengthResponse(Response.Status.OK, "application/json", "[]");
                 File dir = safeFile("/");
                 if (dir == null) return text(Response.Status.FORBIDDEN, "No access");
                 List<File> results = new ArrayList<File>();
@@ -181,16 +197,24 @@ public class NasHttpServer extends NanoHTTPD {
                 String range = session.getHeaders().get("range");
                 if (range != null && range.startsWith("bytes=")) {
                     String[] parts = range.substring(6).split("-");
-                    long start = Long.parseLong(parts[0]);
-                    long end = parts.length > 1 && !parts[1].isEmpty() ? Long.parseLong(parts[1]) : file.length() - 1;
-                    if (start < 0) start = 0;
+                    long start = 0;
+                    long end = file.length() - 1;
+                    try {
+                        if (parts.length > 0 && !parts[0].isEmpty()) start = Long.parseLong(parts[0]);
+                        if (parts.length > 1 && !parts[1].isEmpty()) end = Long.parseLong(parts[1]);
+                    } catch (Exception ignored) {}
+                    
+                    if (start < 0) start = file.length() - 1; // 后缀范围
                     if (end >= file.length()) end = file.length() - 1;
                     if (start > end) return text(Response.Status.BAD_REQUEST, "Bad Range");
                     long len = end - start + 1;
                     
-                    RandomAccessFile raf = new RandomAccessFile(file, "r");
-                    raf.seek(start);
-                    Response res = newFixedLengthResponse(Response.Status.PARTIAL_CONTENT, mime(file.getName()), new FileInputStream(raf.getFD()), len);
+                    // 核心修复：使用独立流，防止句柄泄漏
+                    FileInputStream fis = new FileInputStream(file);
+                    fis.skip(start);
+                    InputStream limited = new LimitedInputStream(fis, len);
+                    
+                    Response res = newFixedLengthResponse(Response.Status.PARTIAL_CONTENT, mime(file.getName()), limited, len);
                     res.addHeader("Content-Range", "bytes " + start + "-" + end + "/" + file.length());
                     res.addHeader("Accept-Ranges", "bytes");
                     return res;
@@ -204,7 +228,8 @@ public class NasHttpServer extends NanoHTTPD {
             if (Method.POST.equals(session.getMethod())) {
                 if ("/api/upload/chunk".equals(uri)) {
                     String fileName = getSafeName(session.getParms().get("name"));
-                    if (fileName == null) return text(Response.Status.BAD_REQUEST, "Bad Name");
+                    String hash = session.getParms().get("hash");
+                    if (fileName == null || hash == null) return text(Response.Status.BAD_REQUEST, "Bad params");
                     File targetDir = safeFile(session.getParms().get("path"));
                     if (targetDir == null) return text(Response.Status.FORBIDDEN, "Access denied");
                     if (!targetDir.exists()) targetDir.mkdirs();
@@ -213,7 +238,8 @@ public class NasHttpServer extends NanoHTTPD {
                     int total = Integer.parseInt(session.getParms().get("total"));
                     if (total <= 0 || total > 100000 || index < 0 || index >= total) return text(Response.Status.BAD_REQUEST, "Bad Range");
 
-                    File tempFile = new File(targetDir, fileName + ".part");
+                    // 核心修复：分片带 hash，防止并发污染
+                    File tempFile = new File(targetDir, fileName + "." + hash + ".part");
                     FileOutputStream fos = new FileOutputStream(tempFile, true);
                     InputStream is = session.getInputStream();
                     byte[] buf = new byte[8192]; int len;
@@ -224,7 +250,7 @@ public class NasHttpServer extends NanoHTTPD {
                         File finalFile = new File(targetDir, fileName);
                         if (finalFile.exists()) finalFile.delete();
                         tempFile.renameTo(finalFile);
-                        DatabaseManager.getInstance().saveHash(session.getParms().get("hash"), finalFile.getAbsolutePath());
+                        DatabaseManager.getInstance().saveHash(hash, finalFile.getAbsolutePath());
                         WebhookManager.send("文件上传完成", finalFile.getName());
                     }
                     return text(Response.Status.OK, "OK");
@@ -293,24 +319,39 @@ public class NasHttpServer extends NanoHTTPD {
                 
                 if ("/api/settings".equals(uri)) {
                     if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
-                    SettingsManager.setDeviceAlias(session.getParms().get("alias"));
-                    SettingsManager.setWebPort(Integer.parseInt(session.getParms().get("webPort")));
-                    SettingsManager.setWebDavPort(Integer.parseInt(session.getParms().get("davPort")));
-                    SettingsManager.setFtpPort(Integer.parseInt(session.getParms().get("ftpPort")));
-                    SettingsManager.setWebDavEnabled("true".equals(session.getParms().get("webdav")));
-                    SettingsManager.setFtpEnabled("true".equals(session.getParms().get("ftp")));
-                    SettingsManager.setDlnaEnabled("true".equals(session.getParms().get("dlna")));
-                    SettingsManager.setStreamEnabled("true".equals(session.getParms().get("stream")));
-                    SettingsManager.setClipboardEnabled("true".equals(session.getParms().get("clipboard")));
-                    SettingsManager.setLowPowerMode("true".equals(session.getParms().get("lowPower")));
-                    SettingsManager.setGlobalMode("true".equals(session.getParms().get("globalMode")));
-                    SettingsManager.setWebhookUrl(session.getParms().get("webhookUrl"));
-                    SettingsManager.setWebhookChatId(session.getParms().get("webhookChatId"));
-                    return text(Response.Status.OK, "OK");
+                    try {
+                        if (session.getParms().get("alias") != null) SettingsManager.setDeviceAlias(session.getParms().get("alias"));
+                        if (session.getParms().get("webPort") != null) SettingsManager.setWebPort(Integer.parseInt(session.getParms().get("webPort")));
+                        if (session.getParms().get("davPort") != null) SettingsManager.setWebDavPort(Integer.parseInt(session.getParms().get("davPort")));
+                        if (session.getParms().get("ftpPort") != null) SettingsManager.setFtpPort(Integer.parseInt(session.getParms().get("ftpPort")));
+                        SettingsManager.setWebDavEnabled("true".equals(session.getParms().get("webdav")));
+                        SettingsManager.setFtpEnabled("true".equals(session.getParms().get("ftp")));
+                        SettingsManager.setDlnaEnabled("true".equals(session.getParms().get("dlna")));
+                        SettingsManager.setStreamEnabled("true".equals(session.getParms().get("stream")));
+                        SettingsManager.setClipboardEnabled("true".equals(session.getParms().get("clipboard")));
+                        SettingsManager.setLowPowerMode("true".equals(session.getParms().get("lowPower")));
+                        SettingsManager.setGlobalMode("true".equals(session.getParms().get("globalMode")));
+                        if (session.getParms().get("webhookUrl") != null) SettingsManager.setWebhookUrl(session.getParms().get("webhookUrl"));
+                        if (session.getParms().get("webhookChatId") != null) SettingsManager.setWebhookChatId(session.getParms().get("webhookChatId"));
+                        
+                        // 核心修复：重启服务（异步延迟触发）
+                        new Thread(new Runnable() {
+                            @Override public void run() {
+                                try { Thread.sleep(1000); } catch (Exception ignored) {}
+                                System.exit(0);
+                            }
+                        }).start();
+                        
+                        return text(Response.Status.OK, "OK");
+                    } catch (Exception e) { return text(Response.Status.BAD_REQUEST, "Invalid params"); }
                 }
                 if ("/api/password".equals(uri)) {
-                    DatabaseManager.getInstance().changePassword(AuthManager.getCurrentUser(), session.getParms().get("password"));
-                    return text(Response.Status.OK, "OK");
+                    String pwd = session.getParms().get("password");
+                    if (pwd != null && pwd.length() > 0) {
+                        DatabaseManager.getInstance().changePassword(AuthManager.getCurrentUser(), pwd);
+                        return text(Response.Status.OK, "OK");
+                    }
+                    return text(Response.Status.BAD_REQUEST, "Empty password");
                 }
                 if ("/api/users".equals(uri)) {
                     if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
@@ -319,6 +360,7 @@ public class NasHttpServer extends NanoHTTPD {
                 }
                 if ("/api/share".equals(uri)) {
                     String path = session.getParms().get("path");
+                    if (safeFile(path) == null) return text(Response.Status.FORBIDDEN, "No access");
                     String token = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
                     ShareInfo info = new ShareInfo();
                     info.owner = AuthManager.getCurrentUser();
@@ -365,7 +407,7 @@ public class NasHttpServer extends NanoHTTPD {
         } catch (Exception e) {
             return text(Response.Status.INTERNAL_ERROR, "Error: " + e.getMessage());
         } finally {
-            AuthManager.clearCurrentUser(); // 核心修复：防越权残留
+            AuthManager.clearCurrentUser();
         }
         return text(Response.Status.NOT_FOUND, "Not found");
     }
@@ -378,8 +420,7 @@ public class NasHttpServer extends NanoHTTPD {
             return text(Response.Status.FORBIDDEN, "已过期");
         }
         
-        // 核心修复：还原 owner 身份进行路径解析
-        AuthManager.currentUser.set(info.owner);
+        AuthManager.setCurrentUser(info.owner);
         try {
             File f = safeFile(info.path);
             if (f != null && f.exists() && !f.isDirectory()) {
@@ -392,7 +433,7 @@ public class NasHttpServer extends NanoHTTPD {
         }
         return text(Response.Status.NOT_FOUND, "丢失");
     }
-    // ... scanMedia, searchFiles, unzip, mime, text, buildJson, copy, esc 保持原样 ...
+
     private void scanMedia(File dir, List<File> list, int depth, String type) {
         if (dir == null || !dir.exists() || depth > 4) return;
         File[] files = dir.listFiles();
@@ -472,5 +513,31 @@ public class NasHttpServer extends NanoHTTPD {
         byte[] buf = new byte[8192]; int len; while ((len = in.read(buf)) > 0) out.write(buf, 0, len);
         in.close(); out.close();
     }
-    private String esc(String s) { return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\""); }
+    
+    // 增强转义，防 JSON 崩溃
+    private String esc(String s) { 
+        if (s == null) return "";
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
+    }
+    
+    // 限制读取长度的输入流
+    private static class LimitedInputStream extends FilterInputStream {
+        private long limit;
+        protected LimitedInputStream(InputStream in, long limit) { super(in); this.limit = limit; }
+        @Override public int read() throws IOException {
+            if (limit <= 0) return -1;
+            int res = super.read(); if (res != -1) limit--; return res;
+        }
+        @Override public int read(byte[] b, int off, int len) throws IOException {
+            if (limit <= 0) return -1;
+            int toRead = (int) Math.min(len, limit);
+            int res = super.read(b, off, toRead);
+            if (res != -1) limit -= res;
+            return res;
+        }
+    }
 }

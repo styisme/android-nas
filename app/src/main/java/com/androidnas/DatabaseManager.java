@@ -62,10 +62,15 @@ public class DatabaseManager extends SQLiteOpenHelper {
     public String getPathByHash(String hash, String userRoot) {
         if (hash == null) return null;
         SQLiteDatabase db = getReadableDatabase();
-        // 核心修复：只查询当前用户沙箱内的 hash 文件
         String query = "SELECT path FROM file_hashes WHERE hash=?";
-        String[] args = new String[]{hash};
-        if (userRoot != null && !userRoot.isEmpty()) {
+        String[] args;
+        // 核心修复：admin (userRoot="") 也要限定在自己的根目录下(通常是/)，不能随意跨用户秒传
+        if (userRoot == null || userRoot.isEmpty()) {
+            // admin 的路径通常以 / 开头且不包含特定 User 目录，为了防止匹配到 guest，
+            // 这里简单处理：要求路径不以 /Public/ 开头。
+            query += " AND path NOT LIKE '/Public/%'";
+            args = new String[]{hash};
+        } else {
             query += " AND path LIKE ?";
             args = new String[]{hash, "%/" + userRoot + "/%"};
         }

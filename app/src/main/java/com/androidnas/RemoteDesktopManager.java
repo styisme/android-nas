@@ -22,6 +22,7 @@ import org.java_websocket.server.WebSocketServer;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.net.InetSocketAddress;
+import java.net.URLDecoder;
 import java.nio.ByteBuffer;
 
 public class RemoteDesktopManager {
@@ -50,25 +51,35 @@ public class RemoteDesktopManager {
             @Override public void onOpen(WebSocket conn, ClientHandshake handshake) {
                 String resource = conn.getResourceDescriptor();
                 if (resource == null || !resource.contains("token=")) {
-                    conn.close(1008, "Unauthorized");
-                    return;
+                    conn.close(1008, "Unauthorized"); return;
                 }
-                // 核心修复：真正调用 AuthManager 鉴权
-                String token = resource.substring(resource.indexOf("token=") + 6);
-                if (token.contains("&")) token = token.substring(0, token.indexOf("&"));
-                if (AuthManager.verifyRole("Basic " + token) == 0) {
-                    conn.close(1008, "Invalid token");
+                try {
+                    String token = resource.substring(resource.indexOf("token=") + 6);
+                    if (token.contains("&")) token = token.substring(0, token.indexOf("&"));
+                    // 核心修复：前端 encodeURIComponent 了，后端必须解码
+                    token = URLDecoder.decode(token, "UTF-8");
+                    
+                    // 核心修复：必须 role == 1 (admin)，Guest 禁止远控
+                    if (AuthManager.verifyRole("Basic " + token) != 1) {
+                        conn.close(1008, "Admin only"); return;
+                    }
+                    conn.setAttachment("authorized");
+                } catch (Exception e) {
+                    conn.close(1008, "Auth error");
+                } finally {
+                    AuthManager.clearCurrentUser();
                 }
-                AuthManager.clearCurrentUser(); // 防污染线程
             }
             @Override public void onClose(WebSocket conn, int code, String reason, boolean remote) {
                 if (wsServer.getConnections().isEmpty()) {
-                    stopStream();
-                    stopScreenshotMode();
+                    stopStream(); stopScreenshotMode();
                 }
             }
             
             @Override public void onMessage(WebSocket conn, String message) {
+                // 二次校验连接状态
+                if (conn.getAttachment() == null) return;
+                
                 try {
                     String[] parts = message.split(",");
                     String action = parts[0];
@@ -108,7 +119,6 @@ public class RemoteDesktopManager {
         wsServer.start();
     }
     
-    // ... startStream 和 startScreenshotMode 保持原样 ...
     public static void startStream(Context context, int resultCode, Intent data) {
         if (mediaProjection != null) return;
         stopScreenshotMode();
@@ -160,7 +170,13 @@ public class RemoteDesktopManager {
                             broadcastBinary(baos.toByteArray()); bitmap.recycle();
                         }
                         p.waitFor(); Thread.sleep(500);
-                    } catch (Exception e) { Thread.currentThread().interrupt(); }
+                    } catch (InterruptedException ie) { 
+                        // 核心修复：只有真正的 interrupt 才跳出
+                        Thread.currentThread().interrupt(); 
+                        break;
+                    } catch (Exception e) {
+                        // 其他异常继续循环
+                    }
                 }
             }
         });
