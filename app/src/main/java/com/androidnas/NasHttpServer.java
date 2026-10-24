@@ -94,7 +94,7 @@ public class NasHttpServer extends NanoHTTPD {
             }
             
             if (SettingsManager.isFail2BanEnabled() && SecurityFilter.isBlocked(clientIp)) {
-                return text(Response.Status.SERVICE_UNAVAILABLE, "Too many attempts. IP Blocked (HTTP 429).");
+                return text(Response.Status.FORBIDDEN, "Too many failed attempts. IP temporarily blocked.");
             }
 
             int role = 1;
