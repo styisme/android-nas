@@ -29,7 +29,22 @@ jobs:
         with: { distribution: temurin, java-version: '8' }
       - uses: actions/setup-python@v5
         with: { python-version: '3.x' }
+      - name: Decode Release Keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.NAS_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/release.keystore"
+            echo "OK: Release keystore decoded"
+          else
+            echo "WARN: NAS_KEYSTORE_BASE64 not set, fallback to debug signing"
+          fi
       - name: Sync Version & Build
+        env:
+          NAS_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+          NAS_KEYSTORE_PASSWORD: ${{ secrets.NAS_KEYSTORE_PASSWORD }}
+          NAS_KEY_ALIAS: ${{ secrets.NAS_KEY_ALIAS }}
+          NAS_KEY_PASSWORD: ${{ secrets.NAS_KEY_PASSWORD }}
         shell: bash
         run: |
           python sync_version.py
@@ -48,7 +63,22 @@ jobs:
         with: { distribution: temurin, java-version: '11' }
       - uses: actions/setup-python@v5
         with: { python-version: '3.x' }
+      - name: Decode Release Keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.NAS_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/release.keystore"
+            echo "OK: Release keystore decoded"
+          else
+            echo "WARN: NAS_KEYSTORE_BASE64 not set, fallback to debug signing"
+          fi
       - name: Build
+        env:
+          NAS_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+          NAS_KEYSTORE_PASSWORD: ${{ secrets.NAS_KEYSTORE_PASSWORD }}
+          NAS_KEY_ALIAS: ${{ secrets.NAS_KEY_ALIAS }}
+          NAS_KEY_PASSWORD: ${{ secrets.NAS_KEY_PASSWORD }}
         shell: bash
         run: |
           python sync_version.py
@@ -66,7 +96,22 @@ jobs:
         with: { distribution: temurin, java-version: '11' }
       - uses: actions/setup-python@v5
         with: { python-version: '3.x' }
+      - name: Decode Release Keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.NAS_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/release.keystore"
+            echo "OK: Release keystore decoded"
+          else
+            echo "WARN: NAS_KEYSTORE_BASE64 not set, fallback to debug signing"
+          fi
       - name: Build
+        env:
+          NAS_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+          NAS_KEYSTORE_PASSWORD: ${{ secrets.NAS_KEYSTORE_PASSWORD }}
+          NAS_KEY_ALIAS: ${{ secrets.NAS_KEY_ALIAS }}
+          NAS_KEY_PASSWORD: ${{ secrets.NAS_KEY_PASSWORD }}
         shell: bash
         run: |
           python sync_version.py
@@ -84,7 +129,22 @@ jobs:
         with: { distribution: temurin, java-version: '11' }
       - uses: actions/setup-python@v5
         with: { python-version: '3.x' }
+      - name: Decode Release Keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.NAS_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/release.keystore"
+            echo "OK: Release keystore decoded"
+          else
+            echo "WARN: NAS_KEYSTORE_BASE64 not set, fallback to debug signing"
+          fi
       - name: Build
+        env:
+          NAS_KEYSTORE_PATH: ${{ github.workspace }}/release.keystore
+          NAS_KEYSTORE_PASSWORD: ${{ secrets.NAS_KEYSTORE_PASSWORD }}
+          NAS_KEY_ALIAS: ${{ secrets.NAS_KEY_ALIAS }}
+          NAS_KEY_PASSWORD: ${{ secrets.NAS_KEY_PASSWORD }}
         shell: bash
         run: |
           python sync_version.py

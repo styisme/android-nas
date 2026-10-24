@@ -14,12 +14,27 @@ android {
         versionName "1.0.0"
     }
 
+    signingConfigs {
+        release {
+            if (System.getenv("NAS_KEYSTORE_PATH")) {
+                signingConfig signingConfigs.release
+            } else {
+                signingConfig signingConfigs.debug
+            }
+            def ksPath = System.getenv("NAS_KEYSTORE_PATH")
+            if (ksPath) {
+                storeFile file(ksPath)
+                storePassword System.getenv("NAS_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("NAS_KEY_ALIAS")
+                keyPassword System.getenv("NAS_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
         }
         release {
-        signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

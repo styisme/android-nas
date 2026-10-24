@@ -35,10 +35,10 @@ jobs:
           python sync_version.py
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
-          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-server-v${VERSION}.apk
+          ./gradlew assembleRelease --no-daemon
+          mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/android-nas-server-v${VERSION}.apk
       - uses: actions/upload-artifact@v4
-        with: { name: server-apk, path: app/build/outputs/apk/debug/*.apk }
+        with: { name: server-apk, path: app/build/outputs/apk/release/*.apk }
 
   build-client:
     runs-on: ubuntu-latest
@@ -53,10 +53,10 @@ jobs:
         run: |
           python sync_version.py
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
-          cd client && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
-          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-client-v${VERSION}.apk
+          cd client && chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+          mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/android-nas-client-v${VERSION}.apk
       - uses: actions/upload-artifact@v4
-        with: { name: client-apk, path: client/app/build/outputs/apk/debug/*.apk }
+        with: { name: client-apk, path: client/app/build/outputs/apk/release/*.apk }
 
   build-tv:
     runs-on: ubuntu-latest
@@ -71,10 +71,10 @@ jobs:
         run: |
           python sync_version.py
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
-          cd tv && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
-          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-tv-v${VERSION}.apk
+          cd tv && chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+          mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/android-nas-tv-v${VERSION}.apk
       - uses: actions/upload-artifact@v4
-        with: { name: tv-apk, path: tv/app/build/outputs/apk/debug/*.apk }
+        with: { name: tv-apk, path: tv/app/build/outputs/apk/release/*.apk }
 
   build-watch:
     runs-on: ubuntu-latest
@@ -89,10 +89,10 @@ jobs:
         run: |
           python sync_version.py
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
-          cd watch && chmod +x gradlew && ./gradlew assembleDebug --no-daemon
-          mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/android-nas-watch-v${VERSION}.apk
+          cd watch && chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+          mv app/build/outputs/apk/release/app-release.apk app/build/outputs/apk/release/android-nas-watch-v${VERSION}.apk
       - uses: actions/upload-artifact@v4
-        with: { name: watch-apk, path: watch/app/build/outputs/apk/debug/*.apk }
+        with: { name: watch-apk, path: watch/app/build/outputs/apk/release/*.apk }
 
   build-pc:
     runs-on: ${{ matrix.os }}
