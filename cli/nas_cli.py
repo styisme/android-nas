@@ -84,12 +84,37 @@ class NasAPI:
         return True
 
     def upload(self, local, remote_dir):
+        import hashlib
         filename = os.path.basename(local)
+        fsize = os.path.getsize(local)
+        
+        # 计算 MD5
+        md5 = hashlib.md5()
         with open(local, 'rb') as f:
-            files = {'file': (filename, f)}
-            data = {'path': remote_dir}
-            r = self.req("POST", "/api/upload", files=files, data=data)
-            if r: print(f"\033[92m[+] 上传成功: {filename}\033[0m")
+            for chunk in iter(lambda: f.read(8192), b""):
+                md5.update(chunk)
+        fhash = md5.hexdigest()
+        
+        # 秒传
+        r = self.req("POST", f"/api/upload/check?hash={fhash}", data={})
+        if r and "SECONDS_UPLOAD" in r.text:
+            print(f"\033[92m[+] 秒传成功: {filename}\033[0m")
+            return
+
+        # 分片上传
+        chunk_size = 2 * 1024 * 1024
+        total_chunks = (fsize + chunk_size - 1) // chunk_size
+        print(f"开始分片上传: {filename} ({fsize/1024/1024:.2f} MB)")
+        
+        with open(local, 'rb') as f:
+            for i in range(total_chunks):
+                chunk_data = f.read(chunk_size)
+                url = f"/api/upload/chunk?hash={fhash}&index={i}&total={total_chunks}&name={filename}&path={remote_dir}"
+                self.req("POST", url, data=chunk_data)
+                pct = int((i + 1) / total_chunks * 100)
+                sys.stdout.write(f"\r\033[92m上传进度: {pct}%\033[0m")
+                sys.stdout.flush()
+        print(f"\n\033[92m[+] 上传成功: {filename}\033[0m")
 
 # ================= 交互式 Shell =================
 class NasShell(cmd.Cmd):
@@ -238,14 +263,21 @@ class NasShell(cmd.Cmd):
         if res: print("\033[92m[+] 解压成功\033[0m")
 
     def do_share(self, arg):
-        """生成免密下载链接"""
-        if not arg: return
-        path = arg if arg.startswith("/") else f"{self.cwd.rstrip('/')}/{arg}"
-        res = self.api.req("POST", "/api/share", data={"path": path})
+        """生成分享链接 (用法: share 文件名 [提取码])"""
+        args = shlex.split(arg)
+        if not args: return
+        path = args[0] if args[0].startswith("/") else f"{self.cwd.rstrip('/')}/{args[0]}"
+        data = {"path": path}
+        if len(args) > 1:
+            data["pass"] = args[1]
+            
+        res = self.api.req("POST", "/api/share", data=data)
         if res:
             token = res.text
             link = f"{self.api.base_url}/share/{token}"
-            print(f"\033[92m[+] 免密分享链接: \033[4m{link}\033[0m")
+            print(f"\033[92m[+] 分享链接: \033[4m{link}\033[0m")
+            if len(args) > 1:
+                print(f"\033[93m[+] 提取码: {args[1]}\033[0m")
 
     def do_cat(self, arg):
         """查看文本文件内容"""

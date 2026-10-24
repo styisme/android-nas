@@ -329,14 +329,17 @@ public class FileListActivity extends AppCompatActivity {
             }
         } catch (Exception ignored) {}
         final long fsize = tmpSize;
+
         LinearProgressIndicator prog = new LinearProgressIndicator(this);
         prog.setIndeterminate(fsize <= 0); prog.setMax(100);
         androidx.appcompat.app.AlertDialog dlg = new MaterialAlertDialogBuilder(this).setTitle("上传中").setView(prog).setCancelable(false).show();
+
         new Thread(() -> {
             File cache = null;
             try {
                 InputStream is = getContentResolver().openInputStream(uri);
                 if (is == null) throw new Exception("无法打开文件");
+                
                 if (fsize <= 0) {
                     File cd = new File(getCacheDir(), "upload_cache"); if (!cd.exists()) cd.mkdirs();
                     cache = new File(cd, "tmp_" + System.currentTimeMillis());
@@ -346,33 +349,83 @@ public class FileListActivity extends AppCompatActivity {
                     is.close(); is = new java.io.FileInputStream(cache);
                 }
                 final long realSize = cache != null ? cache.length() : fsize;
-                ProgressRequestBody.ProgressListener l = (w, t) -> {
-                    if (t > 0) { int pct = (int)(w * 100 / t); runOnUiThread(() -> prog.setProgressCompat(pct, true)); }
-                };
-                if (type == NasDevice.TYPE_ANDROID) {
-                    String enc = URLEncoder.encode(fname, "UTF-8").replace("+", "%20");
-                    String encodedFileName = java.net.URLEncoder.encode(fname, "UTF-8").replace("+", "%20");
-                    String encodedPath = java.net.URLEncoder.encode(currentPath, "UTF-8").replace("+", "%20");
-                    String url = baseUrl + (encodedPath.endsWith("/") ? encodedPath : encodedPath + "/") + encodedFileName;
-                    ProgressRequestBody body = new ProgressRequestBody(MediaType.parse("application/octet-stream"), is, realSize, l);
-                    Request req = new Request.Builder().url(url).put(body).header("Authorization", authHeader).build();
-                    Response r = client.newCall(req).execute();
-                    if (!r.isSuccessful()) throw new Exception("HTTP " + r.code());
-                } else if (type == NasDevice.TYPE_WEBDAV) {
-                    String url = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + fname;
-                    ProgressRequestBody body = new ProgressRequestBody(MediaType.parse("application/octet-stream"), is, realSize, l);
-                    Request req = new Request.Builder().url(url).put(body).header("Authorization", authHeader).build();
-                    Response r = client.newCall(req).execute();
-                    if (!r.isSuccessful()) throw new Exception("HTTP " + r.code());
-                } else if (type == NasDevice.TYPE_FTP) {
-                    FTPClient ftp = connectFtp();
-                    try { ftp.storeFile((currentPath.endsWith("/") ? currentPath : currentPath + "/") + fname, is); }
-                    finally { try { ftp.logout(); } catch (Exception ignored) {} try { ftp.disconnect(); } catch (Exception ignored) {} }
+
+                // 核心补齐：大于 2MB 走分片秒传
+                if (realSize > 2 * 1024 * 1024 && type == NasDevice.TYPE_ANDROID) {
+                    String hash = calcMD5(is);
+                    is.close();
+                    
+                    // 秒传校验
+                    String checkUrl = baseUrl + "/api/upload/check?hash=" + hash;
+                    Request checkReq = new Request.Builder().url(checkUrl).post(new okhttp3.FormBody.Builder().build()).header("Authorization", authHeader).build();
+                    Response checkResp = client.newCall(checkReq).execute();
+                    if (checkResp.isSuccessful() && checkResp.body() != null) {
+                        String res = checkResp.body().string();
+                        if (res.contains("SECONDS_UPLOAD")) {
+                            mainHandler.post(() -> { dlg.dismiss(); Toast.makeText(FileListActivity.this, "极速秒传成功！", Toast.LENGTH_SHORT).show(); loadFiles(); });
+                            if (cache != null) cache.delete();
+                            return;
+                        }
+                    }
+                    
+                    // 分片上传
+                    is = new java.io.FileInputStream(cache != null ? cache : new File(uri.getPath())); // 如果是 content:// 需要重新打开
+                    if (cache == null) {
+                        is.close();
+                        is = getContentResolver().openInputStream(uri);
+                    }
+                    
+                    int chunkSize = 2 * 1024 * 1024;
+                    int totalChunks = (int) Math.ceil((double) realSize / chunkSize);
+                    byte[] buffer = new byte[chunkSize];
+                    
+                    for (int i = 0; i < totalChunks; i++) {
+                        int read = 0;
+                        while (read < chunkSize) {
+                            int r = is.read(buffer, read, chunkSize - read);
+                            if (r == -1) break;
+                            read += r;
+                        }
+                        final int pct = (int) (((i + 1.0) / totalChunks) * 100);
+                        mainHandler.post(() -> prog.setProgressCompat(pct, true));
+                        
+                        String url = baseUrl + "/api/upload/chunk?hash=" + hash + "&index=" + i + "&total=" + totalChunks + "&name=" + java.net.URLEncoder.encode(fname, "UTF-8") + "&path=" + java.net.URLEncoder.encode(currentPath, "UTF-8");
+                        RequestBody chunkBody = RequestBody.create(buffer, MediaType.parse("application/octet-stream"));
+                        Request req = new Request.Builder().url(url).post(chunkBody).header("Authorization", authHeader).build();
+                        client.newCall(req).execute().close();
+                    }
+                    is.close();
+                    mainHandler.post(() -> { dlg.dismiss(); Toast.makeText(FileListActivity.this, "分片上传完成", Toast.LENGTH_SHORT).show(); loadFiles(); });
+                    
+                } else {
+                    // 走原有小文件 PUT 逻辑
+                    ProgressRequestBody.ProgressListener l = (w, t) -> {
+                        if (t > 0) { int pct = (int)(w * 100 / t); runOnUiThread(() -> prog.setProgressCompat(pct, true)); }
+                    };
+                    if (type == NasDevice.TYPE_ANDROID) {
+                        String enc = URLEncoder.encode(fname, "UTF-8").replace("+", "%20");
+                        String encPath = URLEncoder.encode(currentPath, "UTF-8").replace("+", "%20");
+                        String url = baseUrl + "/api/upload?path=" + encPath + "&name=" + enc;
+                        ProgressRequestBody body = new ProgressRequestBody(MediaType.parse("application/octet-stream"), is, realSize, l);
+                        Request req = new Request.Builder().url(url).put(body).header("Authorization", authHeader).build();
+                        Response r = client.newCall(req).execute();
+                        if (!r.isSuccessful()) throw new Exception("HTTP " + r.code());
+                    } else if (type == NasDevice.TYPE_WEBDAV) {
+                        String url = baseUrl + (currentPath.endsWith("/") ? currentPath : currentPath + "/") + fname;
+                        ProgressRequestBody body = new ProgressRequestBody(MediaType.parse("application/octet-stream"), is, realSize, l);
+                        Request req = new Request.Builder().url(url).put(body).header("Authorization", authHeader).build();
+                        Response r = client.newCall(req).execute();
+                        if (!r.isSuccessful()) throw new Exception("HTTP " + r.code());
+                    } else if (type == NasDevice.TYPE_FTP) {
+                        FTPClient ftp = connectFtp();
+                        try { ftp.storeFile((currentPath.endsWith("/") ? currentPath : currentPath + "/") + fname, is); }
+                        finally { try { ftp.logout(); } catch (Exception ignored) {} try { ftp.disconnect(); } catch (Exception ignored) {} }
+                    }
+                    try { is.close(); } catch (Exception ignored) {}
+                    final File fc = cache;
+                    mainHandler.post(() -> { if (isFinishing() || isDestroyed()) return; dlg.dismiss();
+                        if (fc != null) fc.delete(); loadFiles(); });
                 }
-                try { is.close(); } catch (Exception ignored) {}
-                final File fc = cache;
-                mainHandler.post(() -> { if (isFinishing() || isDestroyed()) return; dlg.dismiss();
-                    if (fc != null) fc.delete(); loadFiles(); });
             } catch (Exception e) {
                 if (cache != null) cache.delete();
                 final String m = e.getMessage();
@@ -380,6 +433,18 @@ public class FileListActivity extends AppCompatActivity {
                     Toast.makeText(FileListActivity.this, "上传失败: " + m, Toast.LENGTH_SHORT).show(); });
             }
         }).start();
+    }
+
+    private String calcMD5(InputStream is) {
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("MD5");
+            byte[] buf = new byte[8192]; int len;
+            while ((len = is.read(buf)) > 0) md.update(buf, 0, len);
+            byte[] digest = md.digest();
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) { return ""; }
     }
 
     private String getFileName(Uri uri) {
