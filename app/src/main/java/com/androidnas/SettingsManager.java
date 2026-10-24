@@ -9,7 +9,10 @@ public class SettingsManager {
 
     public static void init(Context context) {
         sp = context.getSharedPreferences("nas_settings", Context.MODE_PRIVATE);
-    }
+    
+    public static String getWebhookTemplate() { return sp.getString("webhook_template", ""); }
+    public static void setWebhookTemplate(String template) { sp.edit().putString("webhook_template", template).apply(); }
+}
 
     public static String getDeviceAlias() { return sp.getString("device_alias", "Android NAS"); }
     public static void setDeviceAlias(String alias) { sp.edit().putString("device_alias", alias).apply(); }
