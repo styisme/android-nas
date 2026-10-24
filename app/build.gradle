@@ -34,7 +34,7 @@ android {
             applicationIdSuffix ".debug"
         }
         release {
-            if (System.getenv("NAS_KEYSTORE_PATH")) {
+            if (System.getenv("NAS_KEYSTORE_PATH") && file(System.getenv("NAS_KEYSTORE_PATH")).exists()) {
                 signingConfig signingConfigs.release
             } else {
                 signingConfig signingConfigs.debug

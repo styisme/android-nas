@@ -47,18 +47,31 @@ public class RemoteDesktopManager {
         if (wsServer != null) return;
         
         wsServer = new WebSocketServer(new InetSocketAddress(8082)) {
-            @Override public void onOpen(WebSocket conn, ClientHandshake handshake) {}
+            @Override public void onOpen(WebSocket conn, ClientHandshake handshake) {
+                // 基础鉴权：校验 URL 中的 token 或 Basic Header
+                String auth = handshake.getFieldValue("Authorization");
+                if (auth == null || !AuthManager.verify(auth)) {
+                    conn.close(1008, "Unauthorized");
+                }
+            }
             @Override public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-                stopStream();
-                stopScreenshotMode();
+                // 多客户端兼容：仅在没有客户端连接时停止流
+                if (wsServer.getConnections().isEmpty()) {
+                    stopStream();
+                    stopScreenshotMode();
+                }
             }
             
             @Override public void onMessage(WebSocket conn, String message) {
+                // 防止未授权指令（二次校验）
+                if (!AuthManager.verify(conn.getResourceDescriptor().contains("token=") ? "Basic " + conn.getResourceDescriptor().split("token=")[1] : null)) {
+                     return; 
+                }
+                
                 try {
                     String[] parts = message.split(",");
                     String action = parts[0];
 
-                    // 1. 控制指令
                     if (action.equals("start_screenshot")) {
                         startScreenshotMode();
                         return;
@@ -68,23 +81,34 @@ public class RemoteDesktopManager {
                         return;
                     }
 
-                    // 2. 触控指令
-                    if (NasAccessibilityService.instance != null && Build.VERSION.SDK_INT >= 24) {
-                        if (action.equals("tap")) {
-                            NasAccessibilityService.instance.dispatchTap(Float.parseFloat(parts[1]), Float.parseFloat(parts[2]));
-                            return;
-                        } else if (action.equals("swipe")) {
-                            NasAccessibilityService.instance.dispatchSwipe(Float.parseFloat(parts[1]), Float.parseFloat(parts[2]), Float.parseFloat(parts[3]), Float.parseFloat(parts[4]));
+                    // 严格校验坐标，防止 Shell 注入
+                    if (action.equals("tap") && parts.length == 3) {
+                        float x = Float.parseFloat(parts[1]);
+                        float y = Float.parseFloat(parts[2]);
+                        if (x < 0 || x > screenWidth || y < 0 || y > screenHeight) return;
+                        
+                        if (NasAccessibilityService.instance != null && Build.VERSION.SDK_INT >= 24) {
+                            NasAccessibilityService.instance.dispatchTap(x, y);
                             return;
                         }
-                    }
-
-                    String cmd = "";
-                    if (action.equals("tap")) cmd = "input tap " + parts[1] + " " + parts[2];
-                    else if (action.equals("swipe")) cmd = "input swipe " + parts[1] + " " + parts[2] + " " + parts[3] + " " + parts[4];
-                    
-                    if (!cmd.isEmpty() && AdvancedKeepAliveManager.hasRoot()) {
-                        RootManager.execCommand(cmd);
+                        if (AdvancedKeepAliveManager.hasRoot()) {
+                            // 强制类型转换后拼接，绝对安全
+                            RootManager.execCommand("input tap " + (int)x + " " + (int)y);
+                        }
+                    } else if (action.equals("swipe") && parts.length == 5) {
+                        float x1 = Float.parseFloat(parts[1]);
+                        float y1 = Float.parseFloat(parts[2]);
+                        float x2 = Float.parseFloat(parts[3]);
+                        float y2 = Float.parseFloat(parts[4]);
+                        if (x1 < 0 || x1 > screenWidth || y1 < 0 || y1 > screenHeight) return;
+                        
+                        if (NasAccessibilityService.instance != null && Build.VERSION.SDK_INT >= 24) {
+                            NasAccessibilityService.instance.dispatchSwipe(x1, y1, x2, y2);
+                            return;
+                        }
+                        if (AdvancedKeepAliveManager.hasRoot()) {
+                            RootManager.execCommand("input swipe " + (int)x1 + " " + (int)y1 + " " + (int)x2 + " " + (int)y2);
+                        }
                     }
                 } catch (Exception ignored) {}
             }
@@ -94,7 +118,6 @@ public class RemoteDesktopManager {
         wsServer.start();
     }
 
-    // ===== 模式一：H264 视频推流 =====
     public static void startStream(Context context, int resultCode, Intent data) {
         if (mediaProjection != null) return;
         stopScreenshotMode();
@@ -137,69 +160,49 @@ public class RemoteDesktopManager {
                     }
                 }
             }).start();
-            LogManager.add("Remote", "H264 推流已启动");
         } catch (Exception e) {
             LogManager.add("Remote", "推流失败: " + e.getMessage());
         }
     }
 
-    // ===== 模式二：Root 截图流 =====
     private static Thread screenshotThread;
     public static void startScreenshotMode() {
-        if (!AdvancedKeepAliveManager.hasRoot()) {
-            LogManager.add("Remote", "截图流启动失败：无 Root 权限");
-            return;
-        }
-        if (isScreenshotMode) return;
+        if (!AdvancedKeepAliveManager.hasRoot() || isScreenshotMode) return;
         isScreenshotMode = true;
-        stopStream(); // 确保不冲突
+        stopStream(); 
 
-        screenshotThread = new Thread(() -> {
-            while (isScreenshotMode) {
-                try {
-                    long start = System.currentTimeMillis();
-                    // 使用 Root 截屏
-                    Process p = Runtime.getRuntime().exec("su -c screencap -p");
-                    InputStream is = p.getInputStream();
-                    
-                    // 转换为 Bitmap
-                    Bitmap bitmap = BitmapFactory.decodeStream(is);
-                    if (bitmap != null) {
-                        // 压缩为 JPEG，质量 50，减小体积
-                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                        bitmap.compress(Bitmap.CompressFormat.JPEG, 50, baos);
-                        byte[] jpegData = baos.toByteArray();
-                        
-                        broadcastBinary(jpegData);
-                        bitmap.recycle();
-                    }
-                    p.waitFor();
-                    
-                    // 控制在每秒 1-2 帧左右
-                    long elapsed = System.currentTimeMillis() - start;
-                    if (elapsed < 800) Thread.sleep(800 - elapsed);
-                } catch (Exception e) {
-                    try { Thread.sleep(1000); } catch (Exception ignored) {}
+        screenshotThread = new Thread(new Runnable() {
+            @Override public void run() {
+                while (isScreenshotMode) {
+                    try {
+                        long start = System.currentTimeMillis();
+                        Process p = Runtime.getRuntime().exec("su -c screencap -p");
+                        InputStream is = p.getInputStream();
+                        Bitmap bitmap = BitmapFactory.decodeStream(is);
+                        if (bitmap != null) {
+                            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 50, baos);
+                            broadcastBinary(baos.toByteArray());
+                            bitmap.recycle();
+                        }
+                        p.waitFor();
+                        long elapsed = System.currentTimeMillis() - start;
+                        if (elapsed < 800) Thread.sleep(800 - elapsed);
+                    } catch (Exception e) {}
                 }
             }
         });
         screenshotThread.start();
-        LogManager.add("Remote", "Root 截图流已启动");
     }
 
     public static void stopScreenshotMode() {
         isScreenshotMode = false;
-        if (screenshotThread != null) {
-            screenshotThread.interrupt();
-            screenshotThread = null;
-        }
+        if (screenshotThread != null) { screenshotThread.interrupt(); screenshotThread = null; }
     }
 
     private static void broadcastBinary(byte[] data) {
         if (wsServer != null && !wsServer.getConnections().isEmpty()) {
-            for (WebSocket socket : wsServer.getConnections()) {
-                socket.send(data);
-            }
+            for (WebSocket socket : wsServer.getConnections()) socket.send(data);
         }
     }
 

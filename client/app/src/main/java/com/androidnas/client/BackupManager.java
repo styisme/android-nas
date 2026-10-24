@@ -130,7 +130,7 @@ public class BackupManager {
         try (Cursor cursor = context.getContentResolver().query(
                 MediaStore.Images.Media.EXTERNAL_CONTENT_URI, projection, null, null,
                 MediaStore.Images.Media.DATE_ADDED + " DESC")) {
-            if (cursor != null && cursor.moveToFirst()) {
+            if (cursor != null && cursor.moveToPosition(-1)) {
                 int idCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID);
                 int nameCol = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME);
                 while (cursor.moveToNext()) {

@@ -13,11 +13,12 @@ public class FtpServer extends Thread {
     private volatile boolean running = true;
     private String rootDir;
     private Context context;
+    private boolean isLoggedIn = false;
 
     public FtpServer(int port, Context context) {
         this.port = port;
-        this.rootDir = SettingsManager.isGlobalMode() ? "/" : Environment.getExternalStorageDirectory().getAbsolutePath();
         this.context = context;
+        this.rootDir = Environment.getExternalStorageDirectory().getAbsolutePath();
     }
 
     public void stopServer() {
@@ -34,9 +35,7 @@ public class FtpServer extends Thread {
                 Socket socket = serverSocket.accept();
                 new Thread(new FtpSession(socket)).start();
             }
-        } catch (Exception e) {
-            LogManager.add("FTP", "FTP服务启动失败: " + e.getMessage());
-        }
+        } catch (Exception e) { LogManager.add("FTP", "启动失败: " + e.getMessage()); }
     }
 
     private String getLocalIp() {
@@ -55,28 +54,40 @@ public class FtpServer extends Thread {
         private String currentUser = "";
         private ServerSocket dataServerSocket;
         private Socket dataSocket;
-        private String renameFrom = null;
+        private boolean loggedIn = false;
 
-        public FtpSession(Socket socket) {
-            this.controlSocket = socket;
-            this.currentDir = new File(rootDir);
-        }
+        public FtpSession(Socket socket) { this.controlSocket = socket; this.currentDir = new File(rootDir); }
 
         @Override public void run() {
             try {
                 reader = new BufferedReader(new InputStreamReader(controlSocket.getInputStream(), "UTF-8"));
                 writer = new PrintWriter(new OutputStreamWriter(controlSocket.getOutputStream(), "UTF-8"), true);
-                reply("220 Android NAS FTP Server Ready");
+                reply("220 Android NAS FTP Ready");
                 String line;
                 while ((line = reader.readLine()) != null) {
                     String[] parts = line.split(" ", 2);
                     String cmd = parts[0].toUpperCase();
                     String arg = parts.length > 1 ? parts[1] : "";
+                    
+                    if (!loggedIn && !cmd.equals("USER") && !cmd.equals("PASS") && !cmd.equals("QUIT")) {
+                        reply("530 Please login with USER and PASS.");
+                        continue;
+                    }
+                    
                     if (cmd.equals("USER")) { currentUser = arg; reply("331 Password required"); }
                     else if (cmd.equals("PASS")) {
                         String enc = android.util.Base64.encodeToString((currentUser + ":" + arg).getBytes("UTF-8"), android.util.Base64.NO_WRAP);
-                        if (AuthManager.verifyRole("Basic " + enc) > 0) reply("230 Login successful");
-                        else reply("530 Login incorrect");
+                        if (AuthManager.verifyRole("Basic " + enc) > 0) {
+                            loggedIn = true;
+                            String userRoot = DatabaseManager.getInstance().getUserRoot(currentUser);
+                            if (SettingsManager.isGlobalMode() && currentUser.equals("admin")) {
+                                this.currentDir = new File("/");
+                            } else {
+                                this.currentDir = new File(rootDir, userRoot);
+                                if (!this.currentDir.exists()) this.currentDir.mkdirs();
+                            }
+                            reply("230 Login successful");
+                        } else reply("530 Login incorrect");
                     }
                     else if (cmd.equals("SYST")) reply("215 UNIX Type: L8");
                     else if (cmd.equals("FEAT")) reply("211-Features:\r\n SIZE\r\n MDTM\r\n UTF8\r\n211 End");
@@ -88,11 +99,6 @@ public class FtpServer extends Thread {
                         if (t != null && t.isDirectory()) { currentDir = t; reply("250 Directory changed"); }
                         else reply("550 Directory not found");
                     }
-                    else if (cmd.equals("CDUP")) {
-                        File p = currentDir.getParentFile();
-                        if (p != null && p.getCanonicalPath().startsWith(new File(rootDir).getCanonicalPath())) { currentDir = p; reply("250 OK"); }
-                        else reply("550 Cannot go up");
-                    }
                     else if (cmd.equals("PASV")) enterPassiveMode();
                     else if (cmd.equals("LIST") || cmd.equals("NLST")) sendList(arg);
                     else if (cmd.equals("RETR")) sendFile(arg);
@@ -100,26 +106,8 @@ public class FtpServer extends Thread {
                     else if (cmd.equals("DELE")) deleteFile(arg);
                     else if (cmd.equals("MKD") || cmd.equals("XMKD")) {
                         File f = safeFile(arg);
-                        if (f != null && f.mkdirs()) reply("257 \"" + vpath(f) + "\" created");
+                        if (f != null && f.mkdirs()) reply("257 created");
                         else reply("550 Create failed");
-                    }
-                    else if (cmd.equals("RMD") || cmd.equals("XRMD")) {
-                        File f = safeFile(arg);
-                        if (f != null && f.delete()) reply("250 Removed");
-                        else reply("550 Remove failed");
-                    }
-                    else if (cmd.equals("RNFR")) {
-                        File f = safeFile(arg);
-                        if (f != null && f.exists()) { renameFrom = f.getAbsolutePath(); reply("350 Ready for RNTO"); }
-                        else reply("550 Not found");
-                    }
-                    else if (cmd.equals("RNTO")) {
-                        if (renameFrom != null) {
-                            File to = safeFile(arg);
-                            if (to != null && new File(renameFrom).renameTo(to)) reply("250 Renamed");
-                            else reply("550 Rename failed");
-                            renameFrom = null;
-                        } else reply("503 RNFR required");
                     }
                     else if (cmd.equals("SIZE")) {
                         File f = safeFile(arg);
@@ -127,7 +115,7 @@ public class FtpServer extends Thread {
                         else reply("550 Not found");
                     }
                     else if (cmd.equals("QUIT")) { reply("221 Goodbye"); break; }
-                    else reply("502 Command not implemented: " + cmd);
+                    else reply("502 Not implemented");
                 }
             } catch (Exception ignored) {
             } finally {
@@ -136,7 +124,7 @@ public class FtpServer extends Thread {
             }
         }
 
-        private void reply(String msg) { writer.println(msg); }
+        private void reply(String msg) { writer.print(msg + "\r\n"); writer.flush(); }
 
         private void enterPassiveMode() {
             try {
@@ -147,7 +135,10 @@ public class FtpServer extends Thread {
             } catch (Exception e) { reply("425 Can't open data connection"); }
         }
 
-        private void waitDataConnection() throws Exception { dataSocket = dataServerSocket.accept(); }
+        private void waitDataConnection() throws Exception { 
+            dataServerSocket.setSoTimeout(10000);
+            dataSocket = dataServerSocket.accept(); 
+        }
 
         private void closeDataConnection() {
             try { if (dataSocket != null) dataSocket.close(); } catch (Exception ignored) {}
@@ -159,16 +150,10 @@ public class FtpServer extends Thread {
             try {
                 waitDataConnection();
                 PrintWriter dw = new PrintWriter(new OutputStreamWriter(dataSocket.getOutputStream(), "UTF-8"), true);
-                File dir = currentDir;
-                if (arg != null && !arg.trim().isEmpty() && !arg.startsWith("-")) {
-                    File t = safeFile(arg);
-                    if (t != null && t.exists()) dir = t;
-                }
-                File[] files = dir.listFiles();
+                File[] files = currentDir.listFiles();
                 if (files != null) for (File f : files) {
                     String perms = f.isDirectory() ? "drwxr-xr-x" : "-rw-r--r--";
-                    String date = new java.text.SimpleDateFormat("MMM dd HH:mm", Locale.US).format(new Date(f.lastModified()));
-                    dw.println(perms + " 1 ftp ftp " + f.length() + " " + date + " " + f.getName());
+                    dw.print(perms + " 1 ftp ftp " + f.length() + " Jan 01 00:00 " + f.getName() + "\r\n");
                 }
                 dw.flush();
                 closeDataConnection();
@@ -186,8 +171,7 @@ public class FtpServer extends Thread {
                 OutputStream os = dataSocket.getOutputStream();
                 byte[] buf = new byte[8192]; int len;
                 while ((len = is.read(buf)) > 0) os.write(buf, 0, len);
-                is.close(); os.close();
-                closeDataConnection();
+                is.close(); os.close(); closeDataConnection();
                 reply("226 Transfer complete");
             } catch (Exception e) { reply("426 Transfer aborted"); }
         }
@@ -195,9 +179,6 @@ public class FtpServer extends Thread {
         private void receiveFile(String filename) {
             File f = safeFile(filename);
             if (f == null) { reply("550 Access denied"); return; }
-            File p = f.getParentFile();
-            if (p != null && !p.exists()) p.mkdirs();
-            if (p != null && !p.isDirectory()) { reply("550 Parent not a directory"); return; }
             try {
                 waitDataConnection();
                 reply("150 Opening data connection");
@@ -205,13 +186,9 @@ public class FtpServer extends Thread {
                 OutputStream os = new FileOutputStream(f);
                 byte[] buf = new byte[8192]; int len;
                 while ((len = is.read(buf)) > 0) os.write(buf, 0, len);
-                os.close(); is.close();
-                closeDataConnection();
+                os.close(); is.close(); closeDataConnection();
                 reply("226 Transfer complete");
-            } catch (Exception e) {
-                try { f.delete(); } catch (Exception ignored) {}
-                reply("426 Transfer aborted");
-            }
+            } catch (Exception e) { try { f.delete(); } catch (Exception ignored) {} reply("426 Transfer aborted"); }
         }
 
         private void deleteFile(String filename) {
@@ -223,9 +200,8 @@ public class FtpServer extends Thread {
         private File safeFile(String path) {
             try {
                 if (path == null) return null;
-                if (SettingsManager.isGlobalMode()) {
-                    File f = new File(path).isAbsolute() ? new File(path) : new File(currentDir, path);
-                    return f;
+                if (SettingsManager.isGlobalMode() && currentUser.equals("admin")) {
+                    return new File(path).isAbsolute() ? new File(path) : new File(currentDir, path);
                 }
                 File f = new File(path).isAbsolute() ? new File(rootDir, path) : new File(currentDir, path);
                 String c = f.getCanonicalPath();
@@ -238,7 +214,7 @@ public class FtpServer extends Thread {
         private String vpath(File f) {
             try {
                 String abs = f.getCanonicalPath();
-                String root = new File(rootDir).getCanonicalPath();
+                String root = currentDir.getCanonicalPath();
                 if (abs.equals(root)) return "/";
                 if (abs.startsWith(root)) {
                     String r = abs.substring(root.length());

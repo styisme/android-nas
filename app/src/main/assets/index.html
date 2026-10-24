@@ -528,7 +528,7 @@ function openFileMenu(f, fullPath) {
         if (ext === "zip") addItem("解压", "📦", () => unzipFile(fullPath));
         
         addItem("下载", "📥", () => {
-            window.location.href = "/api/download?path=" + encodeURIComponent(fullPath);
+            fetch("/api/share", {method:"POST", body:new URLSearchParams({path:fullPath})}).then(r=>r.text()).then(t=>{window.location.href="/share/"+t;});
         });
         addItem("分享", "🔗", () => shareFile(fullPath));
         addItem("重命名", "🏷️", () => renameFile(f, fullPath));
@@ -542,16 +542,22 @@ function openFileMenu(f, fullPath) {
 function previewFile(f, ext) {
     document.getElementById("previewTitle").textContent = f.name;
     var body = document.getElementById("previewBody");
-    var url = "/api/download?path=" + encodeURIComponent(f.path);
-    
-    if (["jpg","jpeg","png","gif","webp"].includes(ext)) {
-        body.innerHTML = `<img class="media-preview" src="${escapeHtml(url)}" />`;
-    } else if (["mp4","webm","mkv"].includes(ext)) {
-        body.innerHTML = `<video class="media-preview" src="${escapeHtml(url)}" controls autoplay></video>`;
-    } else if (["mp3","wav"].includes(ext)) {
-        body.innerHTML = `<audio src="${escapeHtml(url)}" controls autoplay style="width:100%"></audio>`;
-    }
+    body.innerHTML = "获取安全链接中...";
     showModal("previewModal");
+    
+    // 先获取免密 Token
+    fetch("/api/share", { method: "POST", body: new URLSearchParams({path: f.path}) })
+    .then(function(r) { return r.text(); })
+    .then(function(token) {
+        var url = "/share/" + token;
+        if (["jpg","jpeg","png","gif","webp"].includes(ext)) {
+            body.innerHTML = '<img class="media-preview" src="' + escapeHtml(url) + '" />';
+        } else if (["mp4","webm","mkv"].includes(ext)) {
+            body.innerHTML = '<video class="media-preview" src="' + escapeHtml(url) + '" controls autoplay></video>';
+        } else if (["mp3","wav"].includes(ext)) {
+            body.innerHTML = '<audio src="' + escapeHtml(url) + '" controls autoplay style="width:100%"></audio>';
+        }
+    }).catch(function() { body.innerHTML = "加载失败"; });
 }
 
 function editFile(f, fullPath) {
@@ -630,6 +636,7 @@ document.getElementById("fileInput").onchange = function() {
         fd.append("path", currentPath);
         var xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/upload", true);
+        xhr.setRequestHeader("Authorization", localStorage.getItem("nas_auth") || "");
         xhr.upload.onprogress = function(e) {
             if (e.lengthComputable) progress.style.width = ((e.loaded / e.total) * 100) + "%";
         };
@@ -696,6 +703,7 @@ function uploadChunks(file, hash, chunkSize) {
         
         var xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/upload/chunk?hash=" + hash + "&index=" + current + "&total=" + total + "&name=" + encodeURIComponent(file.name) + "&path=" + encodeURIComponent(currentPath), true);
+        xhr.setRequestHeader("Authorization", localStorage.getItem("nas_auth") || "");
         xhr.onload = function() {
             if (xhr.status === 200) {
                 current++;
@@ -818,6 +826,8 @@ function saveSettings() {
     fd.append("stream", document.getElementById("setStream").checked);
     fd.append("clipboard", document.getElementById("setClipboard").checked);
     fd.append("globalMode", document.getElementById("setGlobal").checked);
+    fd.append("webhookUrl", document.getElementById("setWebhook").value);
+    fd.append("webhookChatId", document.getElementById("setChatId").value);
     
     fetch("/api/settings", { method: "POST", body: fd })
         .then(r => {
@@ -871,7 +881,7 @@ function switchRemoteMode() {
 
 function showPhotos() {
     closeSheet("mainMenu");
-    document.getElementById("path").textContent = "时光相册 (按时间排序)";
+    document.getElementById("pathTitle").textContent = "时光相册 (按时间排序)";
     fetch("/api/photos").then(r => r.json()).then(data => {
         var list = document.getElementById("list");
         list.innerHTML = "";
@@ -890,7 +900,7 @@ function showPhotos() {
             img.style.aspectRatio = "1";
             img.style.objectFit = "cover";
             img.style.borderRadius = "8px";
-            img.onclick = () => playMedia(f.path, f.name);
+            img.onclick = function() { fetch("/api/share", {method:"POST", body:new URLSearchParams({path:f.path})}).then(function(r){return r.text();}).then(function(t){ openPlayer(location.origin + "/share/" + t, "jpg"); }); };
             grid.appendChild(img);
         });
         list.appendChild(grid);
@@ -911,7 +921,7 @@ function showMonitor() {
     updateMonitor();
 }
 function updateMonitor() {
-    if(document.getElementById("monitorModal").style.display !== "flex") return;
+    if(!document.getElementById("monitorModal").classList.contains("show")) return;
     fetch("/api/monitor").then(function(r) { return r.json(); }).then(function(d) {
         document.getElementById("cpuText").textContent = d.cpu + "%";
         document.getElementById("barCpu").style.width = d.cpu + "%";
@@ -999,7 +1009,7 @@ function showMediaWall() {
             div.appendChild(img);
             div.appendChild(title);
             div.appendChild(rating);
-            div.onclick = function() { previewFile({name: m.name, path: m.path}); };
+            div.onclick = function() { previewFile({name: m.name, path: m.path}, m.name.split(".").pop().toLowerCase()); };
             grid.appendChild(div);
         });
         list.appendChild(grid);

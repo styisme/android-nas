@@ -307,12 +307,12 @@ jobs:
           
           请直接点击下方对应的文件下载（所有端版本号均已同步）：
           
-          - 📱 **服务端 (旧手机)**：`android-nas-server-v${VERSION}.apk`
-          - 🖥️ **手机客户端 (主力机)**：`android-nas-client-v${VERSION}.apk`
-          - 📺 **TV 电视端**：`android-nas-tv-v${VERSION}.apk`
-          - ⌚ **手表端**：`android-nas-watch-v${VERSION}.apk`
-          - 💻 **Windows GUI**：`nas-client-windows-v${VERSION}.exe`
-          - 🐧 **Linux GUI**：`nas-client-linux-v${VERSION}`
+          - 📱 **服务端 (旧手机)**：`AndroidNAS-Server-${{ steps.check_tag.outputs.version }}.apk`
+          - 🖥️ **手机客户端 (主力机)**：`AndroidNAS-Client-${{ steps.check_tag.outputs.version }}.apk`
+          - 📺 **TV 电视端**：`AndroidNAS-TV-${{ steps.check_tag.outputs.version }}.apk`
+          - ⌚ **手表端**：`AndroidNAS-Watch-${{ steps.check_tag.outputs.version }}.apk`
+          - 💻 **Windows GUI**：`AndroidNAS-Desktop-Windows-${{ steps.check_tag.outputs.version }}.exe`
+          - 🐧 **Linux GUI**：`AndroidNAS-Desktop-Linux-${{ steps.check_tag.outputs.version }}`
           - ⌨️ **Windows CLI**：`nas-cli-windows-v${VERSION}.exe`
           - ⌨️ **Linux CLI**：`nas-cli-linux-v${VERSION}`
           - 🌐 **浏览器插件 / 微信小程序**：`.zip` 压缩包

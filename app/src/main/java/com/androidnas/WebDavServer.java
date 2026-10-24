@@ -11,7 +11,7 @@ public class WebDavServer extends Thread {
     private volatile boolean running = true;
     private String rootDir;
 
-    public WebDavServer(String rootDir) { this.rootDir = SettingsManager.isGlobalMode() ? "/" : rootDir; }
+    public WebDavServer(String baseRoot) { this.rootDir = baseRoot; }
 
     public void startServer(int port) throws IOException {
         serverSocket = new ServerSocket();
@@ -39,8 +39,7 @@ public class WebDavServer extends Thread {
         public ClientHandler(Socket s) { socket = s; }
 
         @Override public void run() {
-            InputStream in = null;
-            OutputStream out = null;
+            InputStream in = null; OutputStream out = null;
             try {
                 in = new BufferedInputStream(socket.getInputStream());
                 out = socket.getOutputStream();
@@ -69,31 +68,35 @@ public class WebDavServer extends Thread {
                 if (!"OPTIONS".equalsIgnoreCase(method)) {
                     String auth = headers.get("authorization");
                     if (!AuthManager.verify(auth)) {
-                        out.write("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Android NAS WebDAV\"\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
+                        out.write("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"WebDAV\"\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
                         return;
                     }
                 }
+                
+                String user = AuthManager.getCurrentUser();
+                String userRoot = DatabaseManager.getInstance().getUserRoot(user);
+                String activeRoot = (SettingsManager.isGlobalMode() && user.equals("admin")) ? "/" : new File(rootDir, userRoot).getAbsolutePath();
+                File activeRootFile = new File(activeRoot);
+                if (!activeRootFile.exists()) activeRootFile.mkdirs();
 
-                File target = new File(rootDir, uri);
-                if (!SettingsManager.isGlobalMode()) {
+                File target = new File(activeRootFile, uri);
+                if (!(SettingsManager.isGlobalMode() && user.equals("admin"))) {
                     String tc = target.getCanonicalPath();
-                    String rc = new File(rootDir).getCanonicalPath();
-                    if (!tc.equals(rc) && !tc.startsWith(rc + File.separator)) { sendErr(out, "403 Forbidden"); return; }
+                    String rc = activeRootFile.getCanonicalPath();
+                    if (!tc.equals(rc) && !tc.startsWith(rc + File.separator)) { out.write("HTTP/1.1 403 Forbidden\r\n\r\n".getBytes("UTF-8")); return; }
                 }
-
-                String depth = headers.get("depth");
-                if (depth == null) depth = "1";
 
                 if ("OPTIONS".equalsIgnoreCase(method)) {
                     out.write("HTTP/1.1 200 OK\r\nDAV: 1\r\nAllow: OPTIONS,GET,HEAD,PUT,DELETE,PROPFIND,MKCOL\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
                 } else if ("PROPFIND".equalsIgnoreCase(method)) {
-                    if (!target.exists()) { sendErr(out, "404 Not Found"); return; }
+                    if (!target.exists()) { out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes("UTF-8")); return; }
+                    String depth = headers.get("depth");
                     String xml = buildXml(target, uri, "0".equals(depth));
                     byte[] xb = xml.getBytes("UTF-8");
                     out.write(("HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml; charset=\"utf-8\"\r\nContent-Length: " + xb.length + "\r\n\r\n").getBytes("UTF-8"));
                     out.write(xb);
                 } else if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)) {
-                    if (!target.exists() || target.isDirectory()) { sendErr(out, "404 Not Found"); return; }
+                    if (!target.exists() || target.isDirectory()) { out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes("UTF-8")); return; }
                     out.write(("HTTP/1.1 200 OK\r\nContent-Length: " + target.length() + "\r\nContent-Type: application/octet-stream\r\n\r\n").getBytes("UTF-8"));
                     if (method.equalsIgnoreCase("GET")) {
                         try (FileInputStream fis = new FileInputStream(target)) {
@@ -102,8 +105,7 @@ public class WebDavServer extends Thread {
                         }
                     }
                 } else if ("PUT".equalsIgnoreCase(method)) {
-                    if (target.isDirectory()) { sendErr(out, "409 Conflict"); return; }
-                    boolean existed = target.exists();
+                    if (target.isDirectory()) { out.write("HTTP/1.1 409 Conflict\r\n\r\n".getBytes("UTF-8")); return; }
                     if (target.getParentFile() != null) target.getParentFile().mkdirs();
                     try (FileOutputStream fos = new FileOutputStream(target)) {
                         byte[] buf = new byte[8192]; long total = 0;
@@ -114,16 +116,11 @@ public class WebDavServer extends Thread {
                             fos.write(buf, 0, r); total += r;
                         }
                     }
-                    if (existed) out.write("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
-                    else out.write("HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
-                } else if ("MKCOL".equalsIgnoreCase(method)) {
-                    if (target.exists()) { sendErr(out, "405 Method Not Allowed"); return; }
-                    if (target.mkdirs()) out.write("HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
-                    else sendErr(out, "403 Forbidden");
+                    out.write("HTTP/1.1 201 Created\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8"));
                 } else if ("DELETE".equalsIgnoreCase(method)) {
                     if (deleteRec(target)) out.write("HTTP/1.1 204 No Content\r\n\r\n".getBytes("UTF-8"));
-                    else sendErr(out, "404 Not Found");
-                } else sendErr(out, "405 Method Not Allowed");
+                    else out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes("UTF-8"));
+                } else out.write("HTTP/1.1 405 Method Not Allowed\r\n\r\n".getBytes("UTF-8"));
             } catch (Exception ignored) {
             } finally {
                 try { if (out != null) out.flush(); } catch (Exception ignored) {}
@@ -135,18 +132,7 @@ public class WebDavServer extends Thread {
 
     private String decUrl(String url) {
         try {
-            StringBuilder sb = new StringBuilder();
-            for (int i = 0; i < url.length(); i++) {
-                char c = url.charAt(i);
-                if (c == '+') sb.append(' ');
-                else if (c == '%' && i + 2 < url.length()) {
-                    try {
-                        int code = Integer.parseInt(url.substring(i + 1, i + 3), 16);
-                        sb.append((char) code); i += 2;
-                    } catch (Exception e) { sb.append(c); }
-                } else sb.append(c);
-            }
-            return sb.toString();
+            return URLDecoder.decode(url, "UTF-8");
         } catch (Exception e) { return url; }
     }
 
@@ -159,14 +145,7 @@ public class WebDavServer extends Thread {
         return sb.length() == 0 ? null : sb.toString();
     }
 
-    private void sendErr(OutputStream out, String err) throws IOException {
-        out.write(("HTTP/1.1 " + err + "\r\nContent-Length: 0\r\n\r\n").getBytes("UTF-8"));
-    }
-
-    private String xmlEsc(String s) {
-        if (s == null) return "";
-        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&apos;");
-    }
+    private String xmlEsc(String s) { return s == null ? "" : s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"); }
 
     private String buildXml(File file, String uri, boolean d0) {
         StringBuilder sb = new StringBuilder();
@@ -174,10 +153,7 @@ public class WebDavServer extends Thread {
         appendResp(sb, file, uri);
         if (!d0 && file.isDirectory()) {
             File[] ch = file.listFiles();
-            if (ch != null) for (File c : ch) {
-                String cu = uri.endsWith("/") ? uri + c.getName() : uri + "/" + c.getName();
-                appendResp(sb, c, cu);
-            }
+            if (ch != null) for (File c : ch) appendResp(sb, c, uri.endsWith("/") ? uri + c.getName() : uri + "/" + c.getName());
         }
         sb.append("</D:multistatus>");
         return sb.toString();
@@ -185,14 +161,10 @@ public class WebDavServer extends Thread {
 
     private void appendResp(StringBuilder sb, File file, String uri) {
         sb.append("<D:response>\n<D:href>").append(xmlEsc(uri)).append("</D:href>\n<D:propstat>\n<D:prop>\n");
-        String dn = file.getName();
-        if (dn.isEmpty()) dn = "SDCard";
+        String dn = file.getName(); if (dn.isEmpty()) dn = "SDCard";
         sb.append("<D:displayname>").append(xmlEsc(dn)).append("</D:displayname>\n");
         if (!file.isDirectory()) sb.append("<D:getcontentlength>").append(file.length()).append("</D:getcontentlength>\n");
-        SimpleDateFormat sdf = new SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss z", Locale.US);
-        sb.append("<D:getlastmodified>").append(sdf.format(new Date(file.lastModified()))).append("</D:getlastmodified>\n");
-        if (file.isDirectory()) sb.append("<D:resourcetype><D:collection/></D:resourcetype>\n");
-        else sb.append("<D:resourcetype/>\n");
+        sb.append("<D:resourcetype>").append(file.isDirectory() ? "<D:collection/>" : "").append("</D:resourcetype>\n");
         sb.append("</D:prop>\n<D:status>HTTP/1.1 200 OK</D:status>\n</D:propstat>\n</D:response>\n");
     }
 
