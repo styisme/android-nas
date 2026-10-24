@@ -5,7 +5,10 @@ import android.util.Base64;
 
 public class AuthManager {
     private static boolean authEnabled = true;
-    private static String currentUser = "admin";
+    // 使用 ThreadLocal 隔离每个线程的用户身份，解决并发越权问题
+    private static final ThreadLocal<String> currentUser = new ThreadLocal<String>() {
+        @Override protected String initialValue() { return "admin"; }
+    };
 
     public static void init(Context context) {
         DatabaseManager.init(context);
@@ -18,10 +21,11 @@ public class AuthManager {
         context.getSharedPreferences("nas_auth", Context.MODE_PRIVATE).edit().putBoolean("auth_enabled", enabled).apply();
     }
     
-    public static String getCurrentUser() { return currentUser; }
+    public static String getCurrentUser() { return currentUser.get(); }
+    public static void clearCurrentUser() { currentUser.remove(); }
 
     public static int verifyRole(String authHeader) {
-        if (!authEnabled) { currentUser = "admin"; return 1; }
+        if (!authEnabled) { currentUser.set("admin"); return 1; }
         if (authHeader == null || !authHeader.startsWith("Basic ")) return 0;
         try {
             String base64 = authHeader.substring(6).trim();
@@ -34,7 +38,7 @@ public class AuthManager {
             if (parts.length == 2) {
                 int role = DatabaseManager.getInstance().verifyUser(parts[0], parts[1]);
                 if (role > 0) {
-                    currentUser = parts[0];
+                    currentUser.set(parts[0]);
                     return role;
                 }
             }

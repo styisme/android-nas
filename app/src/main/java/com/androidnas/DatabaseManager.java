@@ -23,8 +23,8 @@ public class DatabaseManager extends SQLiteOpenHelper {
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, role INTEGER, root_dir TEXT)");
         db.execSQL("CREATE TABLE file_hashes (hash TEXT PRIMARY KEY, path TEXT)");
-        db.execSQL("INSERT INTO users (username, password, role, root_dir) VALUES ('admin', 'admin', 1, '/')");
-        db.execSQL("INSERT INTO users (username, password, role, root_dir) VALUES ('guest', 'guest', 2, '/Public')");
+        db.execSQL("INSERT INTO users (username, password, role, root_dir) VALUES ('admin', 'admin', 1, '')");
+        db.execSQL("INSERT INTO users (username, password, role, root_dir) VALUES ('guest', 'guest', 2, 'Public')");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {}
@@ -42,12 +42,14 @@ public class DatabaseManager extends SQLiteOpenHelper {
     }
 
     public String getUserRoot(String user) {
+        if (user == null) return "";
         SQLiteDatabase db = getReadableDatabase();
         Cursor c = db.rawQuery("SELECT root_dir FROM users WHERE username=?", new String[]{user});
-        String root = "/";
+        String root = "";
         if (c.moveToFirst()) root = c.getString(0);
         c.close();
-        return root;
+        // 核心修复：移除所有前导斜杠，防止 new File(ROOT, "/xxx") 覆盖父路径
+        return root.replaceAll("^/+", "");
     }
 
     public void saveHash(String hash, String path) {
@@ -68,6 +70,8 @@ public class DatabaseManager extends SQLiteOpenHelper {
 
     public boolean addUser(String user, String pass, int role, String root) {
         try {
+            // 清理 root 路径的前导斜杠
+            root = root.replaceAll("^/+", "");
             getWritableDatabase().execSQL("INSERT INTO users (username, password, role, root_dir) VALUES (?, ?, ?, ?)", new Object[]{user, pass, role, root});
             return true;
         } catch (Exception e) { return false; }
@@ -80,15 +84,17 @@ public class DatabaseManager extends SQLiteOpenHelper {
         while (c.moveToNext()) {
             if (!first) sb.append(",");
             sb.append("{\"id\":").append(c.getInt(0))
-              .append(",\"user\":\"").append(c.getString(1)).append("\"")
+              .append(",\"user\":\"").append(esc(c.getString(1))).append("\"")
               .append(",\"role\":").append(c.getInt(2))
-              .append(",\"root\":\"").append(c.getString(3)).append("\"}");
+              .append(",\"root\":\"").append(esc(c.getString(3))).append("\"}");
             first = false;
         }
         c.close();
         sb.append("]");
         return sb.toString();
     }
+    
+    private String esc(String s) { return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\""); }
 
     public static String md5(String input) {
         try {

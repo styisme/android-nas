@@ -351,8 +351,9 @@ public class FileListActivity extends AppCompatActivity {
                 };
                 if (type == NasDevice.TYPE_ANDROID) {
                     String enc = URLEncoder.encode(fname, "UTF-8").replace("+", "%20");
-                    String encodedPath = java.net.URLEncoder.encode(currentPath, "UTF-8").replace("+", "%20");
-                    String url = baseUrl + "/api/upload?path=" + encodedPath + "&name=" + enc;
+                    String encodedFileName = java.net.URLEncoder.encode(fname, "UTF-8").replace("+", "%20");
+                    String encodedPath = currentPath.replace(" ", "%20"); // 路径只转空格防错
+                    String url = baseUrl + (encodedPath.endsWith("/") ? encodedPath : encodedPath + "/") + encodedFileName;
                     ProgressRequestBody body = new ProgressRequestBody(MediaType.parse("application/octet-stream"), is, realSize, l);
                     Request req = new Request.Builder().url(url).put(body).header("Authorization", authHeader).build();
                     Response r = client.newCall(req).execute();

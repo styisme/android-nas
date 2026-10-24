@@ -369,11 +369,14 @@ window.fetch = function(url, options) {
     
     return window.originalFetch(url, options).then(res => {
         if (res.status === 401) {
+            if (window._authPrompting) return res;
+            window._authPrompting = true;
             var user = prompt("请输入 NAS 账号 (默认 admin):", "admin");
-            if (user === null) return res;
+            if (user === null) { window._authPrompting = false; return res; }
             var pass = prompt("请输入密码 (默认 admin):", "admin");
-            if (pass === null) return res;
+            if (pass === null) { window._authPrompting = false; return res; }
             localStorage.setItem("nas_auth", "Basic " + btoa(user + ":" + pass));
+            window._authPrompting = false;
             return window.fetch(url, options);
         }
         return res;
@@ -539,6 +542,15 @@ function openFileMenu(f, fullPath) {
 }
 
 // ================= 具体操作实现 =================
+function openPlayer(url, ext) {
+    document.getElementById('previewTitle').textContent = '播放';
+    var body = document.getElementById('previewBody');
+    if (['jpg','jpeg','png'].includes(ext)) body.innerHTML = '<img class="media-preview" src="' + url + '" />';
+    else if (['mp4','mkv','webm'].includes(ext)) body.innerHTML = '<video class="media-preview" src="' + url + '" controls autoplay></video>';
+    else body.innerHTML = '<audio src="' + url + '" controls autoplay></audio>';
+    showModal('previewModal');
+}
+
 function previewFile(f, ext) {
     document.getElementById("previewTitle").textContent = f.name;
     var body = document.getElementById("previewBody");
@@ -703,6 +715,7 @@ function uploadChunks(file, hash, chunkSize) {
         
         var xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/upload/chunk?hash=" + hash + "&index=" + current + "&total=" + total + "&name=" + encodeURIComponent(file.name) + "&path=" + encodeURIComponent(currentPath), true);
+        xhr.setRequestHeader("Authorization", localStorage.getItem("nas_auth") || "");
         xhr.setRequestHeader("Authorization", localStorage.getItem("nas_auth") || "");
         xhr.onload = function() {
             if (xhr.status === 200) {
@@ -1024,7 +1037,8 @@ function showRemote() {
     document.getElementById("remoteStatus").textContent = "连接中...";
     
     if (wsRemote == null) {
-        wsRemote = new WebSocket("ws://" + location.hostname + ":8082");
+        var wsToken = (localStorage.getItem("nas_auth") || "").replace("Basic ", "");
+        wsRemote = new WebSocket("ws://" + location.hostname + ":8082/?token=" + wsToken);
         wsRemote.binaryType = "arraybuffer";
         
         window.jmuxer = new JMuxer({
