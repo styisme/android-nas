@@ -76,13 +76,16 @@ public class FtpServer extends Thread {
                     if (cmd.equals("USER")) { currentUser = arg; reply("331 Password required"); }
                     else if (cmd.equals("PASS")) {
                         String enc = android.util.Base64.encodeToString((currentUser + ":" + arg).getBytes("UTF-8"), android.util.Base64.NO_WRAP);
+                        String clientIp = controlSocket.getInetAddress().getHostAddress();
+                        if (SettingsManager.isFail2BanEnabled() && SecurityFilter.isBlocked(clientIp)) { reply("421 Too many attempts."); break; }
                         if (AuthManager.verifyRole("Basic " + enc) > 0) {
+                            SecurityFilter.recordSuccess(clientIp, currentUser);
                             loggedIn = true;
                             userRootDir = DatabaseManager.getInstance().getUserRoot(currentUser);
                             if (SettingsManager.isGlobalMode() && currentUser.equals("admin")) this.currentDir = new File("/");
                             else { this.currentDir = new File(rootDir, userRootDir); if (!this.currentDir.exists()) this.currentDir.mkdirs(); }
                             reply("230 Login successful");
-                        } else reply("530 Login incorrect");
+                        } else { SecurityFilter.recordFail(clientIp); reply("530 Login incorrect"); }
                     }
                     else if (cmd.equals("SYST")) reply("215 UNIX");
                     else if (cmd.equals("TYPE")) reply("200 OK");

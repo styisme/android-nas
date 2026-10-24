@@ -310,6 +310,8 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
         <label><input type="checkbox" id="setClipboard" /> 开启局域网剪贴板</label><br>
         <label><input type="checkbox" id="setGlobal" /> 开启全盘模式 (需 Root)</label>
         <label><input type="checkbox" id="setLowPower" /> 开启极寒省电模式</label>
+        <label style="margin-top:8px;"><input type="checkbox" id="setFail2Ban" /> 🛡️ 开启防爆破 (连续输错锁IP)</label>
+        <label><input type="checkbox" id="setPinRequired" /> 🚨 敏感操作需要安全码</label>
       </div>
       
       
@@ -324,7 +326,13 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
     </div>
     <div class="dialog-actions">
       <button class="btn-text" onclick="closeModal('settingsModal')">取消</button>
-      <button class="btn-filled" onclick="saveSettings()">保存并重启服务</button>
+      <div style="margin-top:16px; border-top:1px solid var(--outline); padding-top:12px;">
+          <label style="font-weight:bold; color:var(--error);">🚨 紧急安全码 (高危操作必填)</label>
+          <input type="password" id="setPin" placeholder="输入新的 4 位安全码" style="margin-top:8px;">
+          <button class="btn-text" onclick="updatePin()" style="color:var(--primary); margin-top:8px;">更新安全码</button>
+          <button class="btn-text" onclick="showSessions()" style="color:var(--primary); margin-top:8px;">查看在线设备</button>
+        </div>
+        <button class="btn-filled" onclick="saveSettings()">保存并重启服务</button>
     </div>
   </div>
 </div>
@@ -789,13 +797,19 @@ function showTerminal() {
 }
 
 function execShell() {
+    var pin = "";
+    if (window._pinRequired) {
+        pin = prompt("请输入紧急安全码执行 Root 命令:");
+        if (pin === null) return;
+    }
+
     var cmd = document.getElementById("termInput").value.trim();
     if (!cmd) return;
     var out = document.getElementById("termOutput");
     out.innerHTML += "\n$ " + escapeHtml(cmd) + "\n";
     document.getElementById("termInput").value = "";
     
-    fetch("/api/shell", { method: "POST", body: new URLSearchParams({ cmd: cmd }) })
+    fetch("/api/shell", { method: "POST", body: new URLSearchParams({ cmd: cmd, pin: pin }) })
         .then(r => r.text())
         .then(t => {
             out.innerHTML += escapeHtml(t) + "\n";
@@ -825,6 +839,9 @@ function showSettings() {
         document.getElementById("setClipboard").checked = s.clipboard;
         document.getElementById("setGlobal").checked = s.globalMode;
         document.getElementById("setLowPower").checked = s.lowPower;
+        document.getElementById("setFail2Ban").checked = s.fail2ban;
+        document.getElementById("setPinRequired").checked = s.pinRequired;
+        window._pinRequired = s.pinRequired;
         document.getElementById("setPassword").value = "";
         document.getElementById("setWebhook").value = s.webhookUrl || "";
         document.getElementById("setChatId").value = s.webhookChatId || "";
@@ -832,6 +849,12 @@ function showSettings() {
 }
 
 function saveSettings() {
+    var pin = "";
+    if (window._pinRequired) {
+        pin = prompt("请输入紧急安全码:");
+        if (pin === null) return;
+    }
+
     var fd = new FormData();
     fd.append("alias", document.getElementById("setAlias").value);
     fd.append("webPort", document.getElementById("setWebPort").value);
@@ -844,8 +867,11 @@ function saveSettings() {
     fd.append("clipboard", document.getElementById("setClipboard").checked);
     fd.append("globalMode", document.getElementById("setGlobal").checked);
     fd.append("lowPower", document.getElementById("setLowPower").checked);
+    fd.append("fail2ban", document.getElementById("setFail2Ban").checked);
+    fd.append("pinRequired", document.getElementById("setPinRequired").checked);
     fd.append("webhookUrl", document.getElementById("setWebhook").value);
     fd.append("webhookChatId", document.getElementById("setChatId").value);
+    fd.append("pin", pin);
     
     fetch("/api/settings", { method: "POST", body: fd })
         .then(r => {
@@ -861,6 +887,25 @@ function saveSettings() {
                 toast("保存失败");
             }
         });
+}
+
+function updatePin() {
+    var oldPin = prompt("请输入当前安全码:");
+    if (!oldPin) return;
+    var newPin = prompt("请输入新的安全码 (至少4位):");
+    if (!newPin) return;
+    fetch("/api/security/pin", {method:"POST", body: new URLSearchParams({oldPin: oldPin, newPin: newPin})}).then(function(r){
+        if (r.ok) toast("安全码已更新");
+        else toast("更新失败，原安全码错误");
+    });
+}
+
+function showSessions() {
+    fetch("/api/security/sessions").then(function(r){ return r.json(); }).then(function(data){
+        var msg = "在线设备:\n";
+        data.forEach(function(s){ msg += s.ip + " - " + s.user + " (" + s.lastActive + ")\n"; });
+        alert(msg || "暂无在线设备");
+    });
 }
 
 function finishSave() {

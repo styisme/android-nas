@@ -62,10 +62,18 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/manifest.json".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", getClass().getClassLoader().getResourceAsStream("assets/manifest.json"), -1);
             if ("/sw.js".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/javascript", getClass().getClassLoader().getResourceAsStream("assets/sw.js"), -1);
 
+            String clientIp = session.getHeaders().get("x-forwarded-for");
+            if (clientIp == null) clientIp = session.getHeaders().get("remote-addr");
+            
+            if (SettingsManager.isFail2BanEnabled() && SecurityFilter.isBlocked(clientIp)) {
+                return text(Response.Status.TOO_MANY_REQUESTS, "Too many attempts. IP Blocked for 15 mins.");
+            }
+
             int role = 1;
             if (!Method.OPTIONS.equals(session.getMethod())) {
                 role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
                 if (role == 0) {
+                    SecurityFilter.recordFail(clientIp);
                     Response r = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "401");
                     r.addHeader("WWW-Authenticate", "Basic realm=\"Android NAS\"");
                     return r;
@@ -80,6 +88,25 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/monitor".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", SystemMonitor.getStatusJson(context));
             if ("/api/ota".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"version\":\"4.3.0\"}");
             
+            if ("/api/security/sessions".equals(uri) && role == 1) {
+                return newFixedLengthResponse(Response.Status.OK, "application/json", SecurityFilter.getActiveSessionsJson());
+            }
+            if ("/api/security/pin".equals(uri) && Method.POST.equals(session.getMethod()) && role == 1) {
+                if (!DatabaseManager.getInstance().verifyPin(session.getParms().get("oldPin"))) return text(Response.Status.FORBIDDEN, "Invalid PIN");
+                String np = session.getParms().get("newPin");
+                if (np == null || np.length() < 4) return text(Response.Status.BAD_REQUEST, "PIN too short");
+                DatabaseManager.getInstance().setPin(np);
+                return text(Response.Status.OK, "OK");
+            }
+            
+            // 敏感操作校验 PIN
+            if (("/api/settings".equals(uri) && Method.POST.equals(session.getMethod())) || 
+                ("/api/shell".equals(uri))) {
+                if (SettingsManager.isPinRequired() && !DatabaseManager.getInstance().verifyPin(session.getParms().get("pin"))) {
+                    return text(Response.Status.FORBIDDEN, "Invalid Emergency PIN");
+                }
+            }
+
             if ("/api/settings".equals(uri)) {
                 if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
                 if (Method.GET.equals(session.getMethod())) {
@@ -321,7 +348,26 @@ public class NasHttpServer extends NanoHTTPD {
                     return text(Response.Status.OK, "OK");
                 }
                 
-                if ("/api/settings".equals(uri)) {
+                if ("/api/security/sessions".equals(uri) && role == 1) {
+                return newFixedLengthResponse(Response.Status.OK, "application/json", SecurityFilter.getActiveSessionsJson());
+            }
+            if ("/api/security/pin".equals(uri) && Method.POST.equals(session.getMethod()) && role == 1) {
+                if (!DatabaseManager.getInstance().verifyPin(session.getParms().get("oldPin"))) return text(Response.Status.FORBIDDEN, "Invalid PIN");
+                String np = session.getParms().get("newPin");
+                if (np == null || np.length() < 4) return text(Response.Status.BAD_REQUEST, "PIN too short");
+                DatabaseManager.getInstance().setPin(np);
+                return text(Response.Status.OK, "OK");
+            }
+            
+            // 敏感操作校验 PIN
+            if (("/api/settings".equals(uri) && Method.POST.equals(session.getMethod())) || 
+                ("/api/shell".equals(uri))) {
+                if (SettingsManager.isPinRequired() && !DatabaseManager.getInstance().verifyPin(session.getParms().get("pin"))) {
+                    return text(Response.Status.FORBIDDEN, "Invalid Emergency PIN");
+                }
+            }
+
+            if ("/api/settings".equals(uri)) {
                     if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
                     try {
                         if (session.getParms().get("alias") != null) SettingsManager.setDeviceAlias(session.getParms().get("alias"));
@@ -335,6 +381,8 @@ public class NasHttpServer extends NanoHTTPD {
                         SettingsManager.setClipboardEnabled("true".equals(session.getParms().get("clipboard")));
                         SettingsManager.setLowPowerMode("true".equals(session.getParms().get("lowPower")));
                         SettingsManager.setGlobalMode("true".equals(session.getParms().get("globalMode")));
+                        SettingsManager.setFail2BanEnabled("true".equals(session.getParms().get("fail2ban")));
+                        SettingsManager.setPinRequired("true".equals(session.getParms().get("pinRequired")));
                         if (session.getParms().get("webhookUrl") != null) SettingsManager.setWebhookUrl(session.getParms().get("webhookUrl"));
                         if (session.getParms().get("webhookChatId") != null) SettingsManager.setWebhookChatId(session.getParms().get("webhookChatId"));
                         

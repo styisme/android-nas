@@ -6,10 +6,11 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 
 public class DatabaseManager extends SQLiteOpenHelper {
     private static final String DB_NAME = "nas_core.db";
-    private static final int DB_VERSION = 1;
+    private static final int DB_VERSION = 2;
     private static DatabaseManager instance;
 
     public static void init(Context context) {
@@ -21,24 +22,79 @@ public class DatabaseManager extends SQLiteOpenHelper {
     private DatabaseManager(Context context) { super(context, DB_NAME, null, DB_VERSION); }
 
     @Override public void onCreate(SQLiteDatabase db) {
-        db.execSQL("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, role INTEGER, root_dir TEXT)");
+        db.execSQL("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, salt TEXT, pin TEXT, role INTEGER, root_dir TEXT)");
         db.execSQL("CREATE TABLE file_hashes (hash TEXT PRIMARY KEY, path TEXT)");
-        db.execSQL("INSERT INTO users (username, password, role, root_dir) VALUES ('admin', 'admin', 1, '')");
-        db.execSQL("INSERT INTO users (username, password, role, root_dir) VALUES ('guest', 'guest', 2, 'Public')");
+        
+        String adminSalt = genSalt();
+        db.execSQL("INSERT INTO users (username, password, salt, pin, role, root_dir) VALUES ('admin', ?, ?, '1234', 1, '')", 
+                   new Object[]{hash("admin", adminSalt), adminSalt});
+        
+        String guestSalt = genSalt();
+        db.execSQL("INSERT INTO users (username, password, salt, pin, role, root_dir) VALUES ('guest', ?, ?, '', 2, 'Public')", 
+                   new Object[]{hash("guest", guestSalt), guestSalt});
     }
 
-    @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {}
+    @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+        if (oldVersion < 2) {
+            try {
+                db.execSQL("ALTER TABLE users ADD COLUMN salt TEXT");
+                db.execSQL("ALTER TABLE users ADD COLUMN pin TEXT");
+                // 重置旧密码为加盐状态
+                db.execSQL("UPDATE users SET salt='', password='admin' WHERE username='admin'");
+                db.execSQL("UPDATE users SET salt='', password='guest' WHERE username='guest'");
+                db.execSQL("UPDATE users SET pin='1234' WHERE username='admin'");
+            } catch (Exception ignored) {}
+        }
+    }
+
+    public static String genSalt() {
+        byte[] salt = new byte[16];
+        new SecureRandom().nextBytes(salt);
+        return bytesToHex(salt);
+    }
+
+    public static String hash(String password, String salt) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return bytesToHex(md.digest((password + salt).getBytes("UTF-8")));
+        } catch (Exception e) { return password; }
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (byte b : bytes) sb.append(String.format("%02x", b));
+        return sb.toString();
+    }
 
     public int verifyUser(String user, String pass) {
         SQLiteDatabase db = getReadableDatabase();
-        Cursor c = db.rawQuery("SELECT role FROM users WHERE username=? AND password=?", new String[]{user, pass});
+        Cursor c = db.rawQuery("SELECT role, password, salt FROM users WHERE username=?", new String[]{user});
         if (c.moveToFirst()) {
             int role = c.getInt(0);
+            String storedHash = c.getString(1);
+            String salt = c.getString(2);
             c.close();
-            return role;
+            if (salt == null) salt = ""; // 兼容旧版
+            if (storedHash.equals(hash(pass, salt))) return role;
+        } else {
+            c.close();
         }
-        c.close();
         return 0;
+    }
+
+    public boolean verifyPin(String pin) {
+        SQLiteDatabase db = getReadableDatabase();
+        Cursor c = db.rawQuery("SELECT pin FROM users WHERE username='admin'", null);
+        boolean ok = false;
+        if (c.moveToFirst()) ok = pin != null && pin.equals(c.getString(0));
+        c.close();
+        return ok;
+    }
+
+    public void setPin(String newPin) {
+        ContentValues cv = new ContentValues();
+        cv.put("pin", newPin);
+        getWritableDatabase().update("users", cv, "username='admin'", null);
     }
 
     public String getUserRoot(String user) {
@@ -64,10 +120,7 @@ public class DatabaseManager extends SQLiteOpenHelper {
         SQLiteDatabase db = getReadableDatabase();
         String query = "SELECT path FROM file_hashes WHERE hash=?";
         String[] args;
-        // 核心修复：admin (userRoot="") 也要限定在自己的根目录下(通常是/)，不能随意跨用户秒传
         if (userRoot == null || userRoot.isEmpty()) {
-            // admin 的路径通常以 / 开头且不包含特定 User 目录，为了防止匹配到 guest，
-            // 这里简单处理：要求路径不以 /Public/ 开头。
             query += " AND path NOT LIKE '/Public/%'";
             args = new String[]{hash};
         } else {
@@ -84,14 +137,18 @@ public class DatabaseManager extends SQLiteOpenHelper {
     public boolean addUser(String user, String pass, int role, String root) {
         try {
             root = root.replaceAll("^/+", "");
-            getWritableDatabase().execSQL("INSERT INTO users (username, password, role, root_dir) VALUES (?, ?, ?, ?)", new Object[]{user, pass, role, root});
+            String salt = genSalt();
+            getWritableDatabase().execSQL("INSERT INTO users (username, password, salt, pin, role, root_dir) VALUES (?, ?, ?, '', ?, ?)", 
+                                          new Object[]{user, hash(pass, salt), salt, role, root});
             return true;
         } catch (Exception e) { return false; }
     }
 
     public void changePassword(String user, String newPass) {
+        String salt = genSalt();
         ContentValues cv = new ContentValues();
-        cv.put("password", newPass);
+        cv.put("password", hash(newPass, salt));
+        cv.put("salt", salt);
         getWritableDatabase().update("users", cv, "username=?", new String[]{user});
     }
 
@@ -122,9 +179,7 @@ public class DatabaseManager extends SQLiteOpenHelper {
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
             byte[] digest = md.digest(input.getBytes());
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) sb.append(String.format("%02x", b));
-            return sb.toString();
+            return bytesToHex(digest);
         } catch (Exception e) { return ""; }
     }
 }

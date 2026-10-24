@@ -56,10 +56,14 @@ public class WebDavServer extends Thread {
                 }
 
                 if (!"OPTIONS".equalsIgnoreCase(method)) {
+                    String clientIp = socket.getInetAddress().getHostAddress();
+                    if (SettingsManager.isFail2BanEnabled() && SecurityFilter.isBlocked(clientIp)) { out.write("HTTP/1.1 429 Too Many Requests\r\n\r\n".getBytes()); return; }
                     String auth = headers.get("authorization");
                     if (AuthManager.verifyRole(auth) == 0) {
+                        SecurityFilter.recordFail(clientIp);
                         out.write("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"WebDAV\"\r\nContent-Length: 0\r\n\r\n".getBytes("UTF-8")); return;
                     }
+                    SecurityFilter.recordSuccess(clientIp, AuthManager.getCurrentUser());
                 }
                 
                 String user = AuthManager.getCurrentUser();

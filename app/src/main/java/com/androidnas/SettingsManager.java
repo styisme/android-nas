@@ -9,10 +9,7 @@ public class SettingsManager {
 
     public static void init(Context context) {
         sp = context.getSharedPreferences("nas_settings", Context.MODE_PRIVATE);
-    
-    public static boolean isHttpsEnabled() { return sp.getBoolean("https_enabled", false); }
-    public static void setHttpsEnabled(boolean enabled) { sp.edit().putBoolean("https_enabled", enabled).apply(); }
-}
+    }
 
     public static String getDeviceAlias() { return sp.getString("device_alias", "Android NAS"); }
     public static void setDeviceAlias(String alias) { sp.edit().putString("device_alias", alias).apply(); }
@@ -65,9 +62,18 @@ public class SettingsManager {
         return fp;
     }
 
-    // --- Webhook 新增配置 ---
     public static String getWebhookUrl() { return sp.getString("webhook_url", ""); }
     public static void setWebhookUrl(String url) { sp.edit().putString("webhook_url", url).apply(); }
     public static String getWebhookChatId() { return sp.getString("webhook_chat_id", ""); }
     public static void setWebhookChatId(String id) { sp.edit().putString("webhook_chat_id", id).apply(); }
+
+    // ======= 新增的安全开关 =======
+    public static boolean isFail2BanEnabled() { return sp.getBoolean("fail2ban_enabled", true); }
+    public static void setFail2BanEnabled(boolean enabled) { sp.edit().putBoolean("fail2ban_enabled", enabled).apply(); }
+
+    public static boolean isPinRequired() { return sp.getBoolean("pin_required", true); }
+    public static void setPinRequired(boolean required) { sp.edit().putBoolean("pin_required", required).apply(); }
+    
+    public static boolean isHttpsEnabled() { return sp.getBoolean("https_enabled", false); }
+    public static void setHttpsEnabled(boolean enabled) { sp.edit().putBoolean("https_enabled", enabled).apply(); }
 }
