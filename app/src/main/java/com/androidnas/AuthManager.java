@@ -5,7 +5,6 @@ import android.util.Base64;
 
 public class AuthManager {
     private static boolean authEnabled = true;
-    // 使用 ThreadLocal 隔离每个线程的用户身份，解决并发越权问题
     private static final ThreadLocal<String> currentUser = new ThreadLocal<String>() {
         @Override protected String initialValue() { return "admin"; }
     };

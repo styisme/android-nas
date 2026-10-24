@@ -48,11 +48,11 @@ public class DatabaseManager extends SQLiteOpenHelper {
         String root = "";
         if (c.moveToFirst()) root = c.getString(0);
         c.close();
-        // 核心修复：移除所有前导斜杠，防止 new File(ROOT, "/xxx") 覆盖父路径
         return root.replaceAll("^/+", "");
     }
 
     public void saveHash(String hash, String path) {
+        if (hash == null || path == null) return;
         ContentValues cv = new ContentValues();
         cv.put("hash", hash);
         cv.put("path", path);
@@ -60,6 +60,7 @@ public class DatabaseManager extends SQLiteOpenHelper {
     }
 
     public String getPathByHash(String hash) {
+        if (hash == null) return null;
         SQLiteDatabase db = getReadableDatabase();
         Cursor c = db.rawQuery("SELECT path FROM file_hashes WHERE hash=?", new String[]{hash});
         String path = null;
@@ -70,11 +71,16 @@ public class DatabaseManager extends SQLiteOpenHelper {
 
     public boolean addUser(String user, String pass, int role, String root) {
         try {
-            // 清理 root 路径的前导斜杠
             root = root.replaceAll("^/+", "");
             getWritableDatabase().execSQL("INSERT INTO users (username, password, role, root_dir) VALUES (?, ?, ?, ?)", new Object[]{user, pass, role, root});
             return true;
         } catch (Exception e) { return false; }
+    }
+
+    public void changePassword(String user, String newPass) {
+        ContentValues cv = new ContentValues();
+        cv.put("password", newPass);
+        getWritableDatabase().update("users", cv, "username=?", new String[]{user});
     }
 
     public String getAllUsersJson() {
@@ -94,7 +100,11 @@ public class DatabaseManager extends SQLiteOpenHelper {
         return sb.toString();
     }
     
-    private String esc(String s) { return s == null ? "" : s.replace("\\", "\\\\").replace("\"", "\\\""); }
+    private String esc(String s) { 
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;");
+    }
 
     public static String md5(String input) {
         try {

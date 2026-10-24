@@ -91,12 +91,21 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/ota".equals(uri)) {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"version\":\"4.2.0\"}");
             }
+            
+            // 核心修复：增加 Admin 角色校验 (role == 1)
             if ("/api/settings".equals(uri)) {
+                if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
                 if (Method.GET.equals(session.getMethod())) {
                     String json = "{\"alias\":\"" + SettingsManager.getDeviceAlias() + "\",\"webPort\":" + SettingsManager.getWebPort() + ",\"davPort\":" + SettingsManager.getWebDavPort() + ",\"ftpPort\":" + SettingsManager.getFtpPort() + ",\"webdav\":" + SettingsManager.isWebDavEnabled() + ",\"ftp\":" + SettingsManager.isFtpEnabled() + ",\"dlna\":" + SettingsManager.isDlnaEnabled() + ",\"stream\":" + SettingsManager.isStreamEnabled() + ",\"clipboard\":" + SettingsManager.isClipboardEnabled() + ",\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"webhookUrl\":\"" + SettingsManager.getWebhookUrl() + "\",\"webhookChatId\":\"" + SettingsManager.getWebhookChatId() + "\"}";
                     return newFixedLengthResponse(Response.Status.OK, "application/json", json);
                 }
             }
+            
+            if ("/api/users".equals(uri) && Method.GET.equals(session.getMethod())) {
+                if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", DatabaseManager.getInstance().getAllUsersJson());
+            }
+
             if ("/api/clipboard".equals(uri)) {
                 if (Method.GET.equals(session.getMethod())) return text(Response.Status.OK, clipboardContent);
             }
@@ -141,13 +150,14 @@ public class NasHttpServer extends NanoHTTPD {
                 File img = safeFile(session.getParms().get("path"));
                 if (img != null && img.exists() && !img.isDirectory()) {
                     File thumb = ThumbnailManager.getThumbnail(img);
-                    return newChunkedResponse(Response.Status.OK, "image/jpeg", new FileInputStream(thumb));
+                    if (thumb != null && thumb.exists()) return newChunkedResponse(Response.Status.OK, "image/jpeg", new FileInputStream(thumb));
                 }
                 return text(Response.Status.NOT_FOUND, "Not found");
             }
             if ("/api/preview".equals(uri)) {
                 File f = safeFile(session.getParms().get("path"));
                 if (f != null && f.exists() && !f.isDirectory()) {
+                    if (f.length() > 2 * 1024 * 1024) return text(Response.Status.REQUEST_ENTITY_TOO_LARGE, "Too Large");
                     return newChunkedResponse(Response.Status.OK, "text/plain; charset=utf-8", new FileInputStream(f));
                 }
                 return text(Response.Status.NOT_FOUND, "Not found");
@@ -161,6 +171,7 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/search".equals(uri)) {
                 String q = session.getParms().get("q");
                 File dir = safeFile("/");
+                if (dir == null) return text(Response.Status.FORBIDDEN, "No access");
                 List<File> results = new ArrayList<File>();
                 searchFiles(dir, q, results, 0);
                 StringBuilder sb = new StringBuilder("[");
@@ -173,9 +184,6 @@ public class NasHttpServer extends NanoHTTPD {
                 sb.append("]");
                 return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
             }
-            if ("/api/users".equals(uri) && Method.GET.equals(session.getMethod())) {
-                return newFixedLengthResponse(Response.Status.OK, "application/json", DatabaseManager.getInstance().getAllUsersJson());
-            }
             if ("/api/download".equals(uri)) {
                 File file = safeFile(session.getParms().get("path"));
                 if (file == null || !file.exists() || file.isDirectory()) return text(Response.Status.NOT_FOUND, "Not found");
@@ -187,6 +195,7 @@ public class NasHttpServer extends NanoHTTPD {
                     long end = parts.length > 1 && !parts[1].isEmpty() ? Long.parseLong(parts[1]) : file.length() - 1;
                     if (start < 0) start = 0;
                     if (end >= file.length()) end = file.length() - 1;
+                    if (start > end) return text(Response.Status.BAD_REQUEST, "Bad Range");
                     long len = end - start + 1;
                     
                     RandomAccessFile raf = new RandomAccessFile(file, "r");
@@ -197,7 +206,7 @@ public class NasHttpServer extends NanoHTTPD {
                     return res;
                 }
                 Response resp = newChunkedResponse(Response.Status.OK, mime(file.getName()), new FileInputStream(file));
-                resp.addHeader("Content-Disposition", "attachment; filename=\"" + file.getName().replace("\"", "") + "\"");
+                resp.addHeader("Content-Disposition", "attachment; filename=\"" + file.getName().replace("\r", "").replace("\n", "").replace("\"", "") + "\"");
                 resp.addHeader("Accept-Ranges", "bytes");
                 return resp;
             }
@@ -205,6 +214,7 @@ public class NasHttpServer extends NanoHTTPD {
             // ---------------- POST & PUT ----------------
             if (Method.POST.equals(session.getMethod())) {
                 if ("/api/upload/chunk".equals(uri)) {
+                    // 修复：直接从 Query 拿参数，不再 parseBody 吞流
                     String fileName = getSafeName(session.getParms().get("name"));
                     File targetDir = safeFile(session.getParms().get("path"));
                     if (targetDir == null) return text(Response.Status.FORBIDDEN, "Access denied");
@@ -230,9 +240,7 @@ public class NasHttpServer extends NanoHTTPD {
                 }
                 
                 if ("/api/upload/check".equals(uri)) {
-                    // 前端通过 FormData 传，必须 parseBody 才能拿到
-                    Map<String, String> files = new HashMap<String, String>();
-                    session.parseBody(files);
+                    // 修复：前端改用 Query 传 hash，不解析 Body
                     String hash = session.getParms().get("hash");
                     if (hash != null && DatabaseManager.getInstance().getPathByHash(hash) != null) return text(Response.Status.OK, "SECONDS_UPLOAD");
                     return text(Response.Status.OK, "NEED_UPLOAD");
@@ -257,35 +265,44 @@ public class NasHttpServer extends NanoHTTPD {
                     WebhookManager.send("文件上传完成", dest.getName());
                     return text(Response.Status.OK, "OK");
                 }
+                
                 if ("/api/mkdir".equals(uri)) {
                     File dir = safeFile(session.getParms().get("path"));
                     String name = getSafeName(session.getParms().get("name"));
                     if (dir != null && name.length() > 0 && new File(dir, name).mkdirs()) return text(Response.Status.OK, "OK");
+                    return text(Response.Status.INTERNAL_ERROR, "Failed");
                 }
                 if ("/api/delete".equals(uri)) {
                     File f = safeFile(session.getParms().get("path"));
-                    if (f != null && deleteRec(f)) return text(Response.Status.OK, "OK");
+                    // 防止删除用户根目录
+                    if (f != null && !f.getAbsolutePath().equals(safeFile("/").getAbsolutePath()) && deleteRec(f)) return text(Response.Status.OK, "OK");
+                    return text(Response.Status.INTERNAL_ERROR, "Failed");
                 }
                 if ("/api/rename".equals(uri)) {
                     File f = safeFile(session.getParms().get("path"));
                     String newName = getSafeName(session.getParms().get("newName"));
-                    if (f != null && f.getParentFile() != null && f.renameTo(new File(f.getParentFile(), newName))) return text(Response.Status.OK, "OK");
+                    if (f != null && newName.length() > 0 && f.getParentFile() != null && f.renameTo(new File(f.getParentFile(), newName))) return text(Response.Status.OK, "OK");
+                    return text(Response.Status.INTERNAL_ERROR, "Failed");
                 }
                 if ("/api/save".equals(uri)) {
                     File f = safeFile(session.getParms().get("path"));
                     if (f != null) { FileWriter fw = new FileWriter(f); fw.write(session.getParms().get("content")); fw.close(); return text(Response.Status.OK, "OK"); }
+                    return text(Response.Status.INTERNAL_ERROR, "Failed");
                 }
                 if ("/api/clipboard".equals(uri)) {
                     clipboardContent = session.getParms().get("content");
                     return text(Response.Status.OK, "OK");
                 }
+                
+                if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
+                
                 if ("/api/settings".equals(uri)) {
                     SettingsManager.setWebhookUrl(session.getParms().get("webhookUrl"));
                     SettingsManager.setWebhookChatId(session.getParms().get("webhookChatId"));
                     return text(Response.Status.OK, "OK");
                 }
                 if ("/api/password".equals(uri)) {
-                    // 简单实现：实际生产需修改 DatabaseManager
+                    DatabaseManager.getInstance().changePassword(AuthManager.getCurrentUser(), session.getParms().get("password"));
                     return text(Response.Status.OK, "OK");
                 }
                 if ("/api/users".equals(uri)) {
@@ -301,6 +318,7 @@ public class NasHttpServer extends NanoHTTPD {
                 if ("/api/unzip".equals(uri)) {
                     File f = safeFile(session.getParms().get("path"));
                     if (f != null && unzip(f)) return text(Response.Status.OK, "OK");
+                    return text(Response.Status.INTERNAL_ERROR, "Failed");
                 }
                 if ("/api/webhook/test".equals(uri)) {
                     WebhookManager.send("测试通知", "这是一条测试消息！");
@@ -331,6 +349,8 @@ public class NasHttpServer extends NanoHTTPD {
 
         } catch (Exception e) {
             return text(Response.Status.INTERNAL_ERROR, "Error: " + e.getMessage());
+        } finally {
+            AuthManager.clearCurrentUser(); // 核心修复：防越权残留
         }
         return text(Response.Status.NOT_FOUND, "Not found");
     }
@@ -339,10 +359,11 @@ public class NasHttpServer extends NanoHTTPD {
         String data = sharedLinks.get(token);
         if (data == null) return text(Response.Status.NOT_FOUND, "失效");
         String[] parts = data.split("\\|\\|");
+        if (parts.length > 1 && System.currentTimeMillis() > Long.parseLong(parts[1])) return text(Response.Status.FORBIDDEN, "已过期");
         File f = safeFile(parts[0]);
         if (f != null && f.exists() && !f.isDirectory()) {
             Response r = newChunkedResponse(Response.Status.OK, "application/octet-stream", new FileInputStream(f));
-            r.addHeader("Content-Disposition", "attachment; filename=\"" + f.getName().replace("\"", "") + "\"");
+            r.addHeader("Content-Disposition", "attachment; filename=\"" + f.getName().replace("\r", "").replace("\n", "").replace("\"", "") + "\"");
             return r;
         }
         return text(Response.Status.NOT_FOUND, "丢失");

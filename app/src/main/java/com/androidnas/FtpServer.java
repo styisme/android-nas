@@ -37,6 +37,14 @@ public class FtpServer extends Thread {
         } catch (Exception e) {}
     }
 
+    private String getLocalIp() {
+        try {
+            WifiManager wm = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
+            int ip = wm.getConnectionInfo().getIpAddress();
+            return String.format("%d.%d.%d.%d", (ip & 0xff), (ip >> 8 & 0xff), (ip >> 16 & 0xff), (ip >> 24 & 0xff));
+        } catch (Exception e) { return "127.0.0.1"; }
+    }
+
     private class FtpSession implements Runnable {
         private Socket controlSocket;
         private BufferedReader reader;
@@ -102,7 +110,8 @@ public class FtpServer extends Thread {
             try {
                 closeDataConnection(); dataServerSocket = new ServerSocket(0);
                 int p = dataServerSocket.getLocalPort();
-                reply("227 Entering Passive Mode (127,0,0,1," + (p / 256) + "," + (p % 256) + ")");
+                // 修复：使用真实的局域网 IP
+                reply("227 Entering Passive Mode (" + getLocalIp().replace('.', ',') + "," + (p / 256) + "," + (p % 256) + ")");
             } catch (Exception e) { reply("425 Fail"); }
         }
 

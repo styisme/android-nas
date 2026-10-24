@@ -68,7 +68,8 @@ public class WebDavServer extends Thread {
                 File activeRootFile = new File(activeRoot);
                 if (!activeRootFile.exists()) activeRootFile.mkdirs();
 
-                File target = new File(activeRootFile, uri);
+                // 核心修复：移除 uri 前导斜杠，防止 new File(parent, child) 忽略 parent
+                File target = new File(activeRootFile, uri.replaceAll("^/+", ""));
                 if (!(SettingsManager.isGlobalMode() && user.equals("admin"))) {
                     String tc = target.getCanonicalPath(); String rc = activeRootFile.getCanonicalPath();
                     if (!tc.equals(rc) && !tc.startsWith(rc + File.separator)) { out.write("HTTP/1.1 403 Forbidden\r\n\r\n".getBytes()); return; }
@@ -93,7 +94,8 @@ public class WebDavServer extends Thread {
                     }
                     out.write((existed ? "HTTP/1.1 204 No Content\r\n\r\n" : "HTTP/1.1 201 Created\r\n\r\n").getBytes());
                 } else if ("MKCOL".equalsIgnoreCase(method)) {
-                    if (target.mkdirs()) out.write("HTTP/1.1 201 Created\r\n\r\n".getBytes()); else out.write("HTTP/1.1 403 Forbidden\r\n\r\n".getBytes());
+                    if (target.exists()) out.write("HTTP/1.1 405 Method Not Allowed\r\n\r\n".getBytes());
+                    else if (target.mkdirs()) out.write("HTTP/1.1 201 Created\r\n\r\n".getBytes()); else out.write("HTTP/1.1 403 Forbidden\r\n\r\n".getBytes());
                 } else if ("DELETE".equalsIgnoreCase(method)) {
                     if (deleteRec(target)) out.write("HTTP/1.1 204 No Content\r\n\r\n".getBytes()); else out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
                 } else out.write("HTTP/1.1 405 Method Not Allowed\r\n\r\n".getBytes());

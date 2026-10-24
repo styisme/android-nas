@@ -371,10 +371,9 @@ window.fetch = function(url, options) {
         if (res.status === 401) {
             if (window._authPrompting) return res;
             window._authPrompting = true;
-            var user = prompt("请输入 NAS 账号 (默认 admin):", "admin");
-            if (user === null) { window._authPrompting = false; return res; }
-            var pass = prompt("请输入密码 (默认 admin):", "admin");
-            if (pass === null) { window._authPrompting = false; return res; }
+            var user = prompt("请输入 NAS 账号:");
+            var pass = prompt("请输入密码:");
+            
             localStorage.setItem("nas_auth", "Basic " + btoa(user + ":" + pass));
             window._authPrompting = false;
             return window.fetch(url, options);
@@ -691,8 +690,7 @@ document.getElementById("fileInput").onchange = function() {
 
 function checkUpload(file, hash, chunkSize) {
     var fd = new FormData();
-    fd.append("hash", hash);
-    fetch("/api/upload/check", { method: "POST", body: fd }).then(function(r) { return r.text(); }).then(function(res) {
+    fetch("/api/upload/check?hash=" + hash, { method: "POST" }).then(function(r) { return r.text(); }).then(function(res) {
         if (res.indexOf("SECONDS_UPLOAD") === 0) {
             toast("极速秒传成功！");
             refresh();
@@ -715,7 +713,6 @@ function uploadChunks(file, hash, chunkSize) {
         
         var xhr = new XMLHttpRequest();
         xhr.open("POST", "/api/upload/chunk?hash=" + hash + "&index=" + current + "&total=" + total + "&name=" + encodeURIComponent(file.name) + "&path=" + encodeURIComponent(currentPath), true);
-        xhr.setRequestHeader("Authorization", localStorage.getItem("nas_auth") || "");
         xhr.setRequestHeader("Authorization", localStorage.getItem("nas_auth") || "");
         xhr.onload = function() {
             if (xhr.status === 200) {
@@ -1038,7 +1035,7 @@ function showRemote() {
     
     if (wsRemote == null) {
         var wsToken = (localStorage.getItem("nas_auth") || "").replace("Basic ", "");
-        wsRemote = new WebSocket("ws://" + location.hostname + ":8082/?token=" + wsToken);
+        wsRemote = new WebSocket("ws://" + location.hostname + ":8082/?token=" + encodeURIComponent(wsToken));
         wsRemote.binaryType = "arraybuffer";
         
         window.jmuxer = new JMuxer({
