@@ -183,6 +183,7 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
 </div>
 
 <div id="globalModeWarning" class="banner">⚠️ 已开启全盘 Root 模式，请小心操作！</div>
+<div id="httpsWarning" class="banner" style="background:#4CAF50; color:white; display:none;">🛡️ 当前连接已使用 HTTPS 加密传输</div>
 <div id="lowPowerHint" class="banner">❄️ 服务端处于极寒省电模式</div>
 
 <main id="list">
@@ -406,6 +407,7 @@ function escapeHtml(s) {
 function checkStatus() {
     fetch("/api/status").then(r => r.json()).then(s => {
         document.getElementById("globalModeWarning").style.display = s.globalMode ? "block" : "none";
+        document.getElementById("httpsWarning").style.display = s.httpsEnabled && location.protocol === "https:" ? "block" : "none";
         document.getElementById("lowPowerHint").style.display = s.lowPower ? "block" : "none";
     }).catch(() => {});
 }
@@ -1041,7 +1043,8 @@ function showRemote() {
     
     if (wsRemote == null) {
         var wsToken = (localStorage.getItem("nas_auth") || "").replace("Basic ", "");
-        wsRemote = new WebSocket("ws://" + location.hostname + ":8082/?token=" + encodeURIComponent(wsToken));
+        var wsProto = location.protocol === "https:" ? "wss://" : "ws://";
+        wsRemote = new WebSocket(wsProto + location.hostname + ":8082/?token=" + encodeURIComponent(wsToken));
         wsRemote.binaryType = "arraybuffer";
         
         window.jmuxer = new JMuxer({

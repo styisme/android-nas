@@ -9,7 +9,10 @@ public class SettingsManager {
 
     public static void init(Context context) {
         sp = context.getSharedPreferences("nas_settings", Context.MODE_PRIVATE);
-    }
+    
+    public static boolean isHttpsEnabled() { return sp.getBoolean("https_enabled", false); }
+    public static void setHttpsEnabled(boolean enabled) { sp.edit().putBoolean("https_enabled", enabled).apply(); }
+}
 
     public static String getDeviceAlias() { return sp.getString("device_alias", "Android NAS"); }
     public static void setDeviceAlias(String alias) { sp.edit().putString("device_alias", alias).apply(); }
