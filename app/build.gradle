@@ -5,7 +5,7 @@ android {
     buildToolsVersion "30.0.3"
 
     defaultConfig {
-        applicationId "com.androidnas"
+        applicationId "com.androidnas.all.server"
         // 核心修复：恢复极限兼容 API 8
         minSdkVersion 8
         targetSdkVersion 22
@@ -14,7 +14,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+        }
         release {
+        signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

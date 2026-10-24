@@ -6,14 +6,18 @@ android {
     namespace 'com.androidnas.client'
     compileSdk 33
     defaultConfig {
-        applicationId "com.androidnas.client"
+        applicationId "com.androidnas.all.client"
         minSdk 21
         targetSdk 33
         versionCode 30000
         versionName "3.1.0"
     }
     buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+        }
         release {
+        signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

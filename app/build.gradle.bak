@@ -1,0 +1,37 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 30
+    buildToolsVersion "30.0.3"
+
+    defaultConfig {
+        applicationId "com.androidnas.all.server"
+        // 核心修复：恢复极限兼容 API 8
+        minSdkVersion 8
+        targetSdkVersion 22
+        versionCode 20100
+        versionName "2.1.0"
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+        }
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+}
+
+dependencies {
+    implementation 'org.nanohttpd:nanohttpd:2.2.0'
+    // 找回 SSH 核心库
+    implementation 'com.jcraft:jsch:0.1.55'
+    // 新增远程控制所需的 WebSocket 库
+    implementation 'org.java-websocket:Java-WebSocket:1.5.3'
+}

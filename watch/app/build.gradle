@@ -6,14 +6,18 @@ android {
     namespace 'com.androidnas.watch'
     compileSdk 33
     defaultConfig {
-        applicationId "com.androidnas.watch"
+        applicationId "com.androidnas.all.watch"
         minSdk 21
         targetSdk 33
         versionCode 1
         versionName "1.0.0"
     }
     buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+        }
         release {
+        signingConfig signingConfigs.debug
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
