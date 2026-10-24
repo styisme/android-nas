@@ -236,6 +236,38 @@ public class MainActivity extends Activity {
         startActivity(i);
     }
 
+
+    public void updateNasConfig(final String ip, final String user, final String pass) {
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                baseUrl = ip;
+                authHeader = "Basic " + android.util.Base64.encodeToString((user + ":" + pass).getBytes(), android.util.Base64.NO_WRAP);
+                SharedPreferences sp = getSharedPreferences("tv_nas", Context.MODE_PRIVATE);
+                sp.edit().putString("url", baseUrl).putString("user", user).putString("pass", pass).apply();
+                currentPath = "/"; 
+                if (currentMode != 0) {
+                    currentMode = 0;
+                    btnMode.setText("切换影视墙");
+                    btnUp.setVisibility(View.VISIBLE);
+                }
+                loadFiles();
+                Toast.makeText(MainActivity.this, "手机已下发配置", Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    public void playVideoDirectly(final String url) {
+        runOnUiThread(new Runnable() {
+            @Override public void run() {
+                Intent i = new Intent(MainActivity.this, PlayerActivity.class);
+                i.putExtra("url", url); 
+                i.putExtra("auth", authHeader); 
+                i.putExtra("title", "手机投屏播放");
+                startActivity(i);
+            }
+        });
+    }
+
     private void showConnectDialog() {
         LinearLayout l = new LinearLayout(this); l.setOrientation(LinearLayout.VERTICAL);
         l.setPadding(48, 24, 48, 24); l.setBackgroundColor(0xFF2A2A2A);

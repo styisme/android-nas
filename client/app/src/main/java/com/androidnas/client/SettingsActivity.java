@@ -1,6 +1,7 @@
 package com.androidnas.client;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
@@ -88,7 +89,7 @@ public class SettingsActivity extends AppCompatActivity {
     }
 
     private void injectServerUI(JSONObject s) {
-        LinearLayout layout = findViewById(R.id.main_settings_container);
+        LinearLayout layout = findViewById(android.R.id.content);
         if (layout == null) return;
         
         TextView title = new TextView(this);

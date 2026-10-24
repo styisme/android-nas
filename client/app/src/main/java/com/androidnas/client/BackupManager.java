@@ -110,6 +110,16 @@ public class BackupManager {
         }).start();
     }
 
+
+    private void ensureRemoteDirExists() {
+        try {
+            OkHttpClient client = new OkHttpClient();
+            client.newCall(new Request.Builder().url(baseUrl + "/api/mkdir")
+                    .post(new okhttp3.FormBody.Builder().add("path", "/").add("name", "Photos").build())
+                    .header("Authorization", authHeader).build()).execute();
+        } catch (Exception ignored) {}
+    }
+
     private Set<String> getRemotePhotos() {
         try {
             OkHttpClient client = new OkHttpClient();

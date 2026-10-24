@@ -45,7 +45,15 @@ public class NasHttpServer extends NanoHTTPD {
         return new File(name).getName().replace("\\", "_"); 
     }
 
-
+    private boolean deleteRec(File f) {
+        if (!f.exists()) return true;
+        if (f.isDirectory()) {
+            File[] ch = f.listFiles();
+            if (ch != null) for (File c : ch) if (!deleteRec(c)) return false;
+        }
+        return f.delete();
+    }
+    
     private void deleteDir(File dir) {
         if (dir == null || !dir.exists()) return;
         File[] files = dir.listFiles();
@@ -55,19 +63,9 @@ public class NasHttpServer extends NanoHTTPD {
                 else f.delete();
             }
         }
-        // 保留根目录本身
         if (!dir.getAbsolutePath().equals(Environment.getExternalStorageDirectory().getAbsolutePath())) {
             dir.delete();
         }
-    }
-
-    private boolean deleteRec(File f) {
-        if (!f.exists()) return true;
-        if (f.isDirectory()) {
-            File[] ch = f.listFiles();
-            if (ch != null) for (File c : ch) if (!deleteRec(c)) return false;
-        }
-        return f.delete();
     }
 
     @Override public Response serve(IHTTPSession session) {
@@ -95,9 +93,8 @@ public class NasHttpServer extends NanoHTTPD {
                 if (!allowed) return text(Response.Status.FORBIDDEN, "IP Blocked by Whitelist");
             }
             
-            
             if (SettingsManager.isFail2BanEnabled() && SecurityFilter.isBlocked(clientIp)) {
-                return text(Response.Status.TOO_MANY_REQUESTS, "Too many attempts. IP Blocked for 15 mins.");
+                return text(Response.Status.TOO_MANY_REQUESTS, "Too many attempts. IP Blocked.");
             }
 
             int role = 1;
@@ -105,73 +102,41 @@ public class NasHttpServer extends NanoHTTPD {
                 role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
                 if (role == 0) {
                     SecurityFilter.recordFail(clientIp);
-                        LogManager.audit("登录失败: " + clientIp + " 尝试账号 " + AuthManager.getCurrentUser());
+                    LogManager.audit("登录失败: " + clientIp + " 尝试账号 " + AuthManager.getCurrentUser());
                     Response r = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "401");
                     r.addHeader("WWW-Authenticate", "Basic realm=\"Android NAS\"");
                     return r;
                 }
+                SecurityFilter.recordSuccess(clientIp, AuthManager.getCurrentUser());
             }
 
             if ("/".equals(uri) || "/index.html".equals(uri)) {
                 return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", getClass().getClassLoader().getResourceAsStream("assets/index.html"), -1);
             }
 
-            if ("/api/status".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"isDefaultPwd\":" + DatabaseManager.isDefaultPwd + "}");
+            if ("/api/status".equals(uri)) {
+                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"httpsEnabled\":" + SettingsManager.isHttpsEnabled() + ",\"isDefaultPwd\":" + DatabaseManager.isDefaultPwd + ",\"fail2ban\":" + SettingsManager.isFail2BanEnabled() + ",\"pinRequired\":" + SettingsManager.isPinRequired() + ",\"auditEnabled\":" + SettingsManager.isAuditEnabled() + ",\"ipWhitelistEnabled\":" + SettingsManager.isIpWhitelistEnabled() + ",\"ipWhitelist\":\"" + SettingsManager.getIpWhitelist() + "\"}");
+            }
             if ("/api/monitor".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", SystemMonitor.getStatusJson(context));
             if ("/api/ota".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"version\":\"4.3.0\"}");
             
-            if ("/api/security/audit".equals(uri) && role == 1) {
-                return text(Response.Status.OK, LogManager.getAuditLogs());
-            }
-            if ("/api/security/sessions".equals(uri) && role == 1) {
-                return newFixedLengthResponse(Response.Status.OK, "application/json", SecurityFilter.getActiveSessionsJson());
-            }
-            if ("/api/security/pin".equals(uri) && Method.POST.equals(session.getMethod()) && role == 1) {
-                if (!DatabaseManager.getInstance().verifyPin(session.getParms().get("oldPin"))) return text(Response.Status.FORBIDDEN, "Invalid PIN");
-                String np = session.getParms().get("newPin");
-                if (np == null || np.length() < 4) return text(Response.Status.BAD_REQUEST, "PIN too short");
-                DatabaseManager.getInstance().setPin(np);
-                return text(Response.Status.OK, "OK");
-            }
-            
-            // 敏感操作校验 PIN
-            if (("/api/settings".equals(uri) && Method.POST.equals(session.getMethod())) || 
-                ("/api/shell".equals(uri))) {
-                if (SettingsManager.isPinRequired() && !DatabaseManager.getInstance().verifyPin(session.getParms().get("pin"))) {
-                    return text(Response.Status.FORBIDDEN, "Invalid Emergency PIN");
-                }
-            }
-
             if ("/api/settings".equals(uri)) {
                 if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
                 if (Method.GET.equals(session.getMethod())) {
-                    JSONObject obj = new JSONObject();
-                    try {
-                        obj.put("alias", SettingsManager.getDeviceAlias());
-                        obj.put("webPort", SettingsManager.getWebPort());
-                        obj.put("davPort", SettingsManager.getWebDavPort());
-                        obj.put("ftpPort", SettingsManager.getFtpPort());
-                        obj.put("webdav", SettingsManager.isWebDavEnabled());
-                        obj.put("ftp", SettingsManager.isFtpEnabled());
-                        obj.put("dlna", SettingsManager.isDlnaEnabled());
-                        obj.put("stream", SettingsManager.isStreamEnabled());
-                        obj.put("clipboard", SettingsManager.isClipboardEnabled());
-                        obj.put("lowPower", SettingsManager.isLowPowerMode());
-                        obj.put("globalMode", SettingsManager.isGlobalMode());
-                        obj.put("webhookUrl", SettingsManager.getWebhookUrl());
-                        obj.put("webhookChatId", SettingsManager.getWebhookChatId());
-                    } catch (Exception ignored) {}
-                    return newFixedLengthResponse(Response.Status.OK, "application/json", obj.toString());
+                    String json = "{\"alias\":\"" + SettingsManager.getDeviceAlias() + "\",\"webPort\":" + SettingsManager.getWebPort() + ",\"davPort\":" + SettingsManager.getWebDavPort() + ",\"ftpPort\":" + SettingsManager.getFtpPort() + ",\"webdav\":" + SettingsManager.isWebDavEnabled() + ",\"ftp\":" + SettingsManager.isFtpEnabled() + ",\"dlna\":" + SettingsManager.isDlnaEnabled() + ",\"stream\":" + SettingsManager.isStreamEnabled() + ",\"clipboard\":" + SettingsManager.isClipboardEnabled() + ",\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"webhookUrl\":\"" + SettingsManager.getWebhookUrl() + "\",\"webhookChatId\":\"" + SettingsManager.getWebhookChatId() + "\"}";
+                    return newFixedLengthResponse(Response.Status.OK, "application/json", json);
                 }
             }
+            
+            if ("/api/security/audit".equals(uri) && role == 1) return text(Response.Status.OK, LogManager.getAuditLogs());
+            if ("/api/security/sessions".equals(uri) && role == 1) return newFixedLengthResponse(Response.Status.OK, "application/json", SecurityFilter.getActiveSessionsJson());
             
             if ("/api/users".equals(uri) && Method.GET.equals(session.getMethod())) {
                 if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
                 return newFixedLengthResponse(Response.Status.OK, "application/json", DatabaseManager.getInstance().getAllUsersJson());
             }
-            if ("/api/clipboard".equals(uri) && Method.GET.equals(session.getMethod())) {
-                return text(Response.Status.OK, clipboardContent);
-            }
+            if ("/api/clipboard".equals(uri) && Method.GET.equals(session.getMethod())) return text(Response.Status.OK, clipboardContent);
+            
             if ("/api/photos".equals(uri)) {
                 File dir = safeFile("/");
                 if (dir == null) return text(Response.Status.FORBIDDEN, "No access");
@@ -265,13 +230,11 @@ public class NasHttpServer extends NanoHTTPD {
                         if (parts.length > 0 && !parts[0].isEmpty()) start = Long.parseLong(parts[0]);
                         if (parts.length > 1 && !parts[1].isEmpty()) end = Long.parseLong(parts[1]);
                     } catch (Exception ignored) {}
-                    
-                    if (start < 0) start = file.length() - 1; // 后缀范围
+                    if (start < 0) start = file.length() - 1; 
                     if (end >= file.length()) end = file.length() - 1;
                     if (start > end) return text(Response.Status.BAD_REQUEST, "Bad Range");
                     long len = end - start + 1;
                     
-                    // 核心修复：使用独立流，防止句柄泄漏
                     FileInputStream fis = new FileInputStream(file);
                     fis.skip(start);
                     InputStream limited = new LimitedInputStream(fis, len);
@@ -288,6 +251,33 @@ public class NasHttpServer extends NanoHTTPD {
             }
 
             if (Method.POST.equals(session.getMethod())) {
+                if ("/api/system/wipe".equals(uri)) {
+                    if (role != 1) return text(Response.Status.FORBIDDEN, "Only admin can wipe.");
+                    String pwd = session.getParms().get("password");
+                    boolean isRootWipe = "true".equals(session.getParms().get("root"));
+                    int verify = DatabaseManager.getInstance().verifyUser("admin", pwd);
+                    if (verify != 1) return text(Response.Status.UNAUTHORIZED, "密码错误，自毁程序已中止。");
+                    new Thread(new Runnable() {
+                        @Override public void run() {
+                            try {
+                                File root = Environment.getExternalStorageDirectory();
+                                deleteDir(root);
+                                File thumbs = new File(root, ".thumbnails");
+                                if (thumbs.exists()) deleteDir(thumbs);
+                                if (isRootWipe && AdvancedKeepAliveManager.hasRoot()) {
+                                    RootManager.execCommand("echo 0 > /proc/" + android.os.Process.myPid() + "/oom_score_adj");
+                                    RootManager.execCommand("rm -rf /data/media/0/*");
+                                    RootManager.execCommand("rm -rf /data/data/com.androidnas.all.server");
+                                    RootManager.execCommand("reboot");
+                                } else {
+                                    Thread.sleep(1000); System.exit(0);
+                                }
+                            } catch (Exception ignored) {}
+                        }
+                    }).start();
+                    return text(Response.Status.OK, "WIPING");
+                }
+
                 if ("/api/upload/chunk".equals(uri)) {
                     String fileName = getSafeName(session.getParms().get("name"));
                     String hash = session.getParms().get("hash");
@@ -300,7 +290,6 @@ public class NasHttpServer extends NanoHTTPD {
                     int total = Integer.parseInt(session.getParms().get("total"));
                     if (total <= 0 || total > 100000 || index < 0 || index >= total) return text(Response.Status.BAD_REQUEST, "Bad Range");
 
-                    // 核心修复：分片带 hash，防止并发污染
                     File tempFile = new File(targetDir, fileName + "." + hash + ".part");
                     FileOutputStream fos = new FileOutputStream(tempFile, true);
                     InputStream is = session.getInputStream();
@@ -354,7 +343,6 @@ public class NasHttpServer extends NanoHTTPD {
                     String name = getSafeName(session.getParms().get("name"));
                     if (dir != null && name != null) {
                         File newDir = new File(dir, name);
-                        // 核心修复：如果已存在则直接返回成功，保证幂等性
                         if (newDir.exists() || newDir.mkdirs()) return text(Response.Status.OK, "OK");
                     }
                     return text(Response.Status.INTERNAL_ERROR, "Failed");
@@ -362,7 +350,9 @@ public class NasHttpServer extends NanoHTTPD {
                 if ("/api/delete".equals(uri)) {
                     File f = safeFile(session.getParms().get("path"));
                     if (f != null && !f.getAbsolutePath().equals(safeFile("/").getAbsolutePath()) && deleteRec(f)) {
-                        LogManager.audit("删除文件: " + f.getAbsolutePath()); return text(Response.Status.OK, "OK");
+                        LogManager.audit("删除文件: " + f.getAbsolutePath());
+                        return text(Response.Status.OK, "OK");
+                    }
                     return text(Response.Status.INTERNAL_ERROR, "Failed");
                 }
                 if ("/api/rename".equals(uri)) {
@@ -389,29 +379,21 @@ public class NasHttpServer extends NanoHTTPD {
                     return text(Response.Status.OK, "OK");
                 }
                 
-                if ("/api/security/audit".equals(uri) && role == 1) {
-                return text(Response.Status.OK, LogManager.getAuditLogs());
-            }
-            if ("/api/security/sessions".equals(uri) && role == 1) {
-                return newFixedLengthResponse(Response.Status.OK, "application/json", SecurityFilter.getActiveSessionsJson());
-            }
-            if ("/api/security/pin".equals(uri) && Method.POST.equals(session.getMethod()) && role == 1) {
-                if (!DatabaseManager.getInstance().verifyPin(session.getParms().get("oldPin"))) return text(Response.Status.FORBIDDEN, "Invalid PIN");
-                String np = session.getParms().get("newPin");
-                if (np == null || np.length() < 4) return text(Response.Status.BAD_REQUEST, "PIN too short");
-                DatabaseManager.getInstance().setPin(np);
-                return text(Response.Status.OK, "OK");
-            }
-            
-            // 敏感操作校验 PIN
-            if (("/api/settings".equals(uri) && Method.POST.equals(session.getMethod())) || 
-                ("/api/shell".equals(uri))) {
-                if (SettingsManager.isPinRequired() && !DatabaseManager.getInstance().verifyPin(session.getParms().get("pin"))) {
-                    return text(Response.Status.FORBIDDEN, "Invalid Emergency PIN");
+                if ("/api/security/pin".equals(uri) && role == 1) {
+                    if (!DatabaseManager.getInstance().verifyPin(session.getParms().get("oldPin"))) return text(Response.Status.FORBIDDEN, "Invalid PIN");
+                    String np = session.getParms().get("newPin");
+                    if (np == null || np.length() < 4) return text(Response.Status.BAD_REQUEST, "PIN too short");
+                    DatabaseManager.getInstance().setPin(np);
+                    return text(Response.Status.OK, "OK");
                 }
-            }
-
-            if ("/api/settings".equals(uri)) {
+                
+                if (("/api/settings".equals(uri)) || ("/api/shell".equals(uri))) {
+                    if (SettingsManager.isPinRequired() && !DatabaseManager.getInstance().verifyPin(session.getParms().get("pin"))) {
+                        return text(Response.Status.FORBIDDEN, "Invalid Emergency PIN");
+                    }
+                }
+                
+                if ("/api/settings".equals(uri)) {
                     if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
                     try {
                         if (session.getParms().get("alias") != null) SettingsManager.setDeviceAlias(session.getParms().get("alias"));
@@ -427,10 +409,13 @@ public class NasHttpServer extends NanoHTTPD {
                         SettingsManager.setGlobalMode("true".equals(session.getParms().get("globalMode")));
                         SettingsManager.setFail2BanEnabled("true".equals(session.getParms().get("fail2ban")));
                         SettingsManager.setPinRequired("true".equals(session.getParms().get("pinRequired")));
+                        SettingsManager.setAuditEnabled("true".equals(session.getParms().get("auditEnabled")));
+                        SettingsManager.setIpWhitelistEnabled("true".equals(session.getParms().get("ipWhitelistEnabled")));
+                        SettingsManager.setIpWhitelist(session.getParms().get("ipWhitelist"));
                         if (session.getParms().get("webhookUrl") != null) SettingsManager.setWebhookUrl(session.getParms().get("webhookUrl"));
+                        if (session.getParms().get("webhookTemplate") != null) SettingsManager.setWebhookTemplate(session.getParms().get("webhookTemplate"));
                         if (session.getParms().get("webhookChatId") != null) SettingsManager.setWebhookChatId(session.getParms().get("webhookChatId"));
                         
-                        // 核心修复：重启服务（异步延迟触发）
                         new Thread(new Runnable() {
                             @Override public void run() {
                                 try { Thread.sleep(1000); } catch (Exception ignored) {}
@@ -611,17 +596,11 @@ public class NasHttpServer extends NanoHTTPD {
         in.close(); out.close();
     }
     
-    // 增强转义，防 JSON 崩溃
     private String esc(String s) { 
         if (s == null) return "";
-        return s.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace("\n", "\\n")
-                .replace("\r", "\\r")
-                .replace("\t", "\\t");
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
     
-    // 限制读取长度的输入流
     private static class LimitedInputStream extends FilterInputStream {
         private long limit;
         protected LimitedInputStream(InputStream in, long limit) { super(in); this.limit = limit; }
