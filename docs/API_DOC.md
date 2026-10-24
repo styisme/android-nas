@@ -1,7 +1,7 @@
 # Android NAS 开发者 API 接口规范
 
 本项目的所有端（Web、手机客户端、TV、Watch、CLI、鸿蒙、苹果、小程序）均通过统一的 HTTP JSON API 与局域网内的服务端通信。此外，为了支持多模态远程控制，另设有一套独立的 WebSocket 实时协议。
-以下是完整的接口规范说明（基于 v4.2.0）。
+以下是完整的接口规范说明（基于 v4.3.0）。
 
 ---
 
@@ -61,7 +61,7 @@
 - **Body**: 纯二进制流 (`application/octet-stream`)。
 - **注意**：客户端必须携带准确的 `Content-Length`。如果服务端写入异常，会触发 Drain 机制并返回明确状态码。
 
-### 5. 大文件秒传与分片上传 (v4.2.0 实装)
+### 5. 大文件秒传与分片上传 (v4.3.0 实装)
 - **秒传校验**:
   - `POST /api/upload/check`
   - Body: `hash=文件MD5`
@@ -118,7 +118,7 @@
 ]
 ```
 
-### 3. 获取影视海报墙数据 (v4.2.0 新增)
+### 3. 获取影视海报墙数据 (v4.3.0 新增)
 - **URL**: `/api/media/wall`
 - **Method**: `GET`
 - **Params**: 无。
@@ -198,13 +198,13 @@
 - **Method**: `GET`
 - **Response**: `200 OK`，返回最新版本信息，供客户端比对。
 
-### 4. 获取/保存系统配置 (v4.2.0 扩展)
+### 4. 获取/保存系统配置 (v4.3.0 扩展)
 - **URL**: `/api/settings`
 - **Method**: `GET` / `POST`
 - **GET Response**: 返回包含 `alias`, `webPort`, `davPort`, `ftpPort`, `webdav`, `ftp`, `dlna`, `stream`, `clipboard`, `lowPower`, `globalMode`, 以及 **`webhookUrl`, `webhookChatId`** 的 JSON。
 - **POST Body**: 包含上述字段进行更新。
 
-### 5. Webhook 测试 (v4.2.0 新增)
+### 5. Webhook 测试 (v4.3.0 新增)
 - **URL**: `/api/webhook/test`
 - **Method**: `POST`
 - **Response**: `200 OK`，服务端会立即向已配置的 Webhook URL 发送一条测试通知。
@@ -221,7 +221,7 @@
 - **Response**: `200 OK`，返回命令的标准输出。
 - **安全机制**：服务端会拦截包含 `rm -rf /`、`mkfs`、`dd if=` 等极危指令并返回 `403 Forbidden`。
 
-### 8. PWA 静态资源 (v4.2.0 新增)
+### 8. PWA 静态资源 (v4.3.0 新增)
 - **URL**: `/manifest.json` / `/sw.js`
 - **Method**: `GET`
 - **Response**: 直接返回 PWA 的配置文件与 Service Worker 脚本，内容由服务端从 `assets` 目录流式读取。

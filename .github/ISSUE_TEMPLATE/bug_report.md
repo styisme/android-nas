@@ -9,7 +9,7 @@ assignees: ''
 **⚠️ 提交前必读（极其重要）：**
 1. **请确保使用的是最新版本**：在提交 Bug 之前，请务必前往 **GitHub Actions** 或 **Releases** 页面下载了**最新版本**的构建产物并进行了测试。如果你使用的是旧版本，该 Bug 可能已经被修复。
 2. **高危操作警告**：如果你遇到了因开启 Root 全盘模式、Web Shell 或远控导致的系统异常，请先阅读 `SECURITY.md`。
-3. **如果是安装冲突**：提示“应用未卸载”，请先关闭 Magisk 保活模块，并在终端执行 `pm uninstall --user 0 com.androidnas.all.server`（注意：自 v4.2.0 起包名已统一迁移至 `com.androidnas.all.*`）。
+3. **如果是安装冲突**：提示“应用未卸载”，请先关闭 Magisk 保活模块，并在终端执行 `pm uninstall --user 0 com.androidnas.all.server`（注意：自 v4.3.0 起包名已统一迁移至 `com.androidnas.all.*`）。
 
 ### 1. 问题描述
 请在这里清晰、简要地描述你遇到的 Bug 是什么。如果是特定操作后闪退，请描述操作意图。

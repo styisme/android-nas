@@ -14,7 +14,7 @@
 
 ---
 
-## 📂 十端深度项目结构解析 (v4.2.0 架构)
+## 📂 十端深度项目结构解析 (v4.3.0 架构)
 
 ```text
 android-nas/
@@ -106,11 +106,11 @@ android-nas/
 
 本项目的发版过程是全自动化的，请严格遵守以下标准作业程序（SOP）：
 
-1. **修改更新日志**：在根目录 `CHANGELOG.md` 顶部，增加新版本号（例如 `## [4.2.0]`）及详细的更新内容。
+1. **修改更新日志**：在根目录 `CHANGELOG.md` 顶部，增加新版本号（例如 `## [4.3.0]`）及详细的更新内容。
 2. **推送代码**：Push 到 `main` 或 `master` 分支。
 3. **自动矩阵编译**：GitHub Actions 会检测到 `CHANGELOG.md` 的变更，触发 `build-all.yml` 矩阵。并行启动 Ubuntu、Windows、macOS 以及 OpenHarmony Docker 环境，全量编译 10 个端。
 4. **区分 Debug / Release**：独立日常构建触发 `assembleDebug`，包名带 `.debug` 后缀；`build-all` 触发 `assembleRelease`，使用 GitHub Secrets 注入正式 keystore 进行签名。
-5. **自动打 Tag**：CI 会解析 CHANGELOG 中的版本号，自动在 Git 中打上 `v4.2.0` 的标签。
+5. **自动打 Tag**：CI 会解析 CHANGELOG 中的版本号，自动在 Git 中打上 `v4.3.0` 的标签。
 6. **平铺直传发布**：摒弃传统的单一 ZIP 打包方式。CI 脚本会使用 `find -type f` 提取所有产物并重命名，直接平铺展示在 GitHub Release 页面，供用户按需下载。
 
 *(日常修改代码如果未动 `CHANGELOG.md`，只会触发对应端的快速独立编译，不会发版)*

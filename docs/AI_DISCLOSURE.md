@@ -6,7 +6,7 @@
 
 ## AI 参与的具体部分
 
-- **服务端核心 (Server Core) - v4.2.0 升级**：
+- **服务端核心 (Server Core) - v4.3.0 升级**：
   - `NasHttpServer.java`：NanoHTTPD 的路由设计、Range 分片视频流、ZIP 流式解压、剪贴板缓存、大文件分片上传与秒传合并逻辑、PWA 静态路由拦截，以及多用户路径拦截逻辑。
   - `WebDavServer.java` / `FtpServer.java`：纯 Socket 实现的协议栈，支持突破全盘权限。
   - `DatabaseManager.java`：SQLite 数据库引擎，实现多用户鉴权、独立根目录隔离、文件秒传哈希记录。

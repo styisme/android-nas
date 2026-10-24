@@ -4,7 +4,28 @@
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 **注意：推送到 main 分支修改此文件，将自动触发全平台 10 端代码并行编译，并自动打 Tag 平铺发布至 Releases。**
 
-## [4.2.0] - 2026-10-24
+## [4.3.0] - 2026-10-24
+
+**🛡️ 史诗级安全重构：多用户沙箱筑底与全端鉴权闭环**
+
+这是一个极其硬核的底层安全重构版本。在彻底完成了十端生态覆盖后，我们将重心转向了系统级安全与并发架构。本版本彻底解决了上一版遗留的全局变量越权、WebSocket 裸奔、沙箱逃逸等致命隐患，将 NAS 的安全防线提升到了企业级标准。
+
+### Fixed (🚨 核心安全架构重构与致命 Bug 排雷)
+- **彻底解决并发越权漏洞 (ThreadLocal 隔离)**：重构 `AuthManager`，彻底废弃全局静态变量，引入 `ThreadLocal` 存储当前请求用户身份。在 HTTP、WebDAV、FTP 请求的 `finally` 块中强制清理，杜绝了高并发下 A 用户的请求串到 B 用户沙箱，或因线程复用导致身份残留的漏洞。
+- **修复 WebSocket 远控未授权与命令注入**：WebSocket 8082 端口不再接受无鉴权连接。前端通过 `ws://ip:8082/?token=xxx` 传递凭据，后端严格 `URLDecoder` 解码，且仅限 `Admin` 角色接入。触控坐标强制转换 `Float` 并限制范围，彻底杜绝 `su -c input tap` 的 Shell 注入风险。
+- **彻底修复多用户沙箱逃逸漏洞**：
+  - 修复了 `new File(ROOT, "/Users/guest")` 这种因为绝对路径导致父目录被忽略的致命缺陷。底层强制剥离 `root_dir` 的前导斜杠。
+  - 修复了 FTP/WebDAV 鉴权拦截逻辑，普通用户再也无法通过 `CWD ..` 退出其专属目录。
+  - 修复了 `/api/share` 匿名越权问题，分享访问现在会绑定 Token 的所有者（Owner）身份进行沙箱路径解析，并加入了 24 小时强制过期校验。
+- **修复秒传跨用户投毒**：为 `file_hashes` 增加用户路径匹配校验（`LIKE '/Users/xxx/%'`），杜绝了 A 用户通过相同 MD5 命中 B 用户文件，导致“假秒传”数据丢失的问题。同名分片临时文件带入了 Hash 后缀，防止并发覆盖损坏。
+- **修复流处理吞流与句柄泄漏**：移除分片上传接口中错误的 `parseBody` 调用，避免二进制流被拦截消费；重写 Range 视频拖拽播放逻辑，引入 `LimitedInputStream`，彻底解决 `RandomAccessFile` 导致的高并发句柄泄漏与视频越界崩溃。
+- **补全极高危 API 权限校验**：为 `/api/settings` (POST)、`/api/users`、`/api/password`、`/api/shell` 等关键接口补齐了严格的 `role == 1` (Admin) 校验，并实现了真实的密码修改逻辑；修复了全盘模式下删除 `/sdcard` 等系统关键目录的风险。
+- **前端 401 鉴权死循环修复**：废弃了前端使用 `btoa` 导致 Unicode 崩溃的旧逻辑，修复了密码错误时无限递归弹窗的 `Promise` 死锁。
+- **前端媒体 401 拦截修复**：重写了前端 `<img>`/`<video>` 预览与下载逻辑，改用短效 Share Token 进行鉴权验证，解决了原生标签无法携带 Header 导致的预览黑屏问题。
+- **CI/CD 编译错误修复**：解决了 `targetSdkVersion 22` 触发 `lintVitalRelease` 导致编译中断；修复了签名注入正则错误导致的 `Could not find method signingConfig()` 崩溃；替换了 NanoHTTPD 不存在的高危状态码，确保 10 端 CI 矩阵顺利产出。
+
+---
+## [4.3.0] - 2026-10-24
 
 **🚀 生态大满贯：真实影视刮削、PWA 进化与 TB 级传输底座**
 
