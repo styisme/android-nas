@@ -9,29 +9,20 @@ public class SettingsManager {
 
     public static void init(Context context) {
         sp = context.getSharedPreferences("nas_settings", Context.MODE_PRIVATE);
-    
-    public static String getWebhookUrl() { return sp.getString("webhook_url", ""); }
-    public static void setWebhookUrl(String url) { sp.edit().putString("webhook_url", url).apply(); }
-    public static String getWebhookChatId() { return sp.getString("webhook_chat_id", ""); }
-    public static void setWebhookChatId(String id) { sp.edit().putString("webhook_chat_id", id).apply(); }
-}
+    }
 
     public static String getDeviceAlias() { return sp.getString("device_alias", "Android NAS"); }
     public static void setDeviceAlias(String alias) { sp.edit().putString("device_alias", alias).apply(); }
 
-    // 静音保活开关
     public static boolean isSilentKeepAlive() { return sp.getBoolean("silent_keepalive", true); }
     public static void setSilentKeepAlive(boolean enabled) { sp.edit().putBoolean("silent_keepalive", enabled).apply(); }
 
-    // 全局全盘模式 (需 Root)
     public static boolean isGlobalMode() { return sp.getBoolean("global_mode", false); }
     public static void setGlobalMode(boolean enabled) { sp.edit().putBoolean("global_mode", enabled).apply(); }
 
-    // 极寒模式
     public static boolean isLowPowerMode() { return sp.getBoolean("low_power_mode", false); }
     public static void setLowPowerMode(boolean enabled) { sp.edit().putBoolean("low_power_mode", enabled).apply(); }
 
-    // 服务开关
     public static boolean isWebDavEnabled() { return sp.getBoolean("webdav_enabled", true); }
     public static void setWebDavEnabled(boolean enabled) { sp.edit().putBoolean("webdav_enabled", enabled).apply(); }
 
@@ -50,7 +41,6 @@ public class SettingsManager {
     public static boolean isClipboardEnabled() { return sp.getBoolean("clipboard_enabled", true) && !isLowPowerMode(); }
     public static void setClipboardEnabled(boolean enabled) { sp.edit().putBoolean("clipboard_enabled", enabled).apply(); }
 
-    // 端口配置
     public static int getWebPort() { return sp.getInt("web_port", 8080); }
     public static void setWebPort(int port) { sp.edit().putInt("web_port", port).apply(); }
     
@@ -71,4 +61,10 @@ public class SettingsManager {
         }
         return fp;
     }
+
+    // --- Webhook 新增配置 ---
+    public static String getWebhookUrl() { return sp.getString("webhook_url", ""); }
+    public static void setWebhookUrl(String url) { sp.edit().putString("webhook_url", url).apply(); }
+    public static String getWebhookChatId() { return sp.getString("webhook_chat_id", ""); }
+    public static void setWebhookChatId(String id) { sp.edit().putString("webhook_chat_id", id).apply(); }
 }

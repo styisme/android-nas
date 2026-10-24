@@ -252,6 +252,28 @@ public class NasHttpServer extends NanoHTTPD {
 
 
             
+            if ("/manifest.json".equals(uri)) {
+                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/manifest.json");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", is, -1);
+            }
+            if ("/sw.js".equals(uri)) {
+                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/sw.js");
+                return newFixedLengthResponse(Response.Status.OK, "application/javascript", is, -1);
+            }
+
+
+    
+
+            // --- 秒传校验 ---
+            
+
+            // --- 接收分片 ---
+            
+
+            
+
+
+            // --- 影视刮削 ---
             if ("/api/media/wall".equals(uri)) {
                 File dir = safeFile("/");
                 List<File> videos = new ArrayList<File>();
@@ -280,33 +302,6 @@ public class NasHttpServer extends NanoHTTPD {
                 sb.append("]");
                 return newFixedLengthResponse(Response.Status.OK, "application/json", sb.toString());
             }
-
-            if ("/manifest.json".equals(uri)) {
-                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/manifest.json");
-                return newFixedLengthResponse(Response.Status.OK, "application/json", is, -1);
-            }
-            if ("/sw.js".equals(uri)) {
-                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/sw.js");
-                return newFixedLengthResponse(Response.Status.OK, "application/javascript", is, -1);
-            }
-
-
-    private void scanVideos(File dir, List<File> videos, int depth) {
-        if (dir == null || !dir.exists() || depth > 5) return;
-        File[] files = dir.listFiles();
-        if (files == null) return;
-        for (File f : files) {
-            if (f.isDirectory()) {
-                if (!f.getName().startsWith(".")) scanVideos(f, videos, depth + 1);
-            } else {
-                String name = f.getName().toLowerCase();
-                if (name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi")) {
-                    videos.add(f);
-                }
-            }
-        }
-    }
-
 
             // --- 秒传校验 ---
             if ("/api/upload/check".equals(uri) && Method.POST.equals(session.getMethod())) {
@@ -339,7 +334,6 @@ public class NasHttpServer extends NanoHTTPD {
                 File tempFile = new File(targetDir, fileName + ".part");
                 File finalFile = new File(targetDir, fileName);
                 
-                // 接收并追加写入分片
                 InputStream is = session.getInputStream();
                 FileOutputStream fos = new FileOutputStream(tempFile, true);
                 byte[] buf = new byte[8192];
@@ -347,8 +341,6 @@ public class NasHttpServer extends NanoHTTPD {
                 while ((len = is.read(buf)) > 0) fos.write(buf, 0, len);
                 fos.close();
 
-                // 检查是否全部分片接收完毕 (这里简化为判断文件大小，实际可用 lock 文件记录)
-                // 为防并发，客户端串行发送，最后一片到达时检查总大小是否吻合
                 if (index == total - 1) {
                     synchronized (NasHttpServer.class) {
                         if (tempFile.length() > 0) {
@@ -362,10 +354,38 @@ public class NasHttpServer extends NanoHTTPD {
                 return text(Response.Status.OK, "CHUNK_OK");
             }
 
+            // --- Webhook 测试 ---
             if ("/api/webhook/test".equals(uri) && Method.POST.equals(session.getMethod())) {
                 WebhookManager.send("测试通知", "这是一条来自 Android NAS 的测试消息！");
                 return text(Response.Status.OK, "OK");
             }
+
+            // --- PWA 静态资源 ---
+            if ("/manifest.json".equals(uri)) {
+                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/manifest.json");
+                return newFixedLengthResponse(Response.Status.OK, "application/json", is, -1);
+            }
+            if ("/sw.js".equals(uri)) {
+                InputStream is = getClass().getClassLoader().getResourceAsStream("assets/sw.js");
+                return newFixedLengthResponse(Response.Status.OK, "application/javascript", is, -1);
+            }
+
+
+    private void scanVideos(File dir, List<File> videos, int depth) {
+        if (dir == null || !dir.exists() || depth > 5) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            if (f.isDirectory()) {
+                if (!f.getName().startsWith(".")) scanVideos(f, videos, depth + 1);
+            } else {
+                String name = f.getName().toLowerCase();
+                if (name.endsWith(".mp4") || name.endsWith(".mkv") || name.endsWith(".avi")) {
+                    videos.add(f);
+                }
+            }
+        }
+    }
 
     private Response handleDlna(String uri) { return text(Response.Status.NOT_FOUND, "Not found"); }
     private String mime(String n) { return n.endsWith(".mp4") ? "video/mp4" : "application/octet-stream"; }
