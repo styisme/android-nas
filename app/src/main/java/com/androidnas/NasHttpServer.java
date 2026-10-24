@@ -64,6 +64,21 @@ public class NasHttpServer extends NanoHTTPD {
 
             String clientIp = session.getHeaders().get("x-forwarded-for");
             if (clientIp == null) clientIp = session.getHeaders().get("remote-addr");
+            if (clientIp == null) clientIp = "127.0.0.1";
+            
+            if (SettingsManager.isIpWhitelistEnabled()) {
+                String list = SettingsManager.getIpWhitelist();
+                boolean allowed = false;
+                if (list != null) {
+                    for (String rule : list.split(",")) {
+                        rule = rule.trim();
+                        if (rule.endsWith("*") && clientIp.startsWith(rule.substring(0, rule.length() - 1))) { allowed = true; break; }
+                        if (rule.equals(clientIp)) { allowed = true; break; }
+                    }
+                }
+                if (!allowed) return text(Response.Status.FORBIDDEN, "IP Blocked by Whitelist");
+            }
+            
             
             if (SettingsManager.isFail2BanEnabled() && SecurityFilter.isBlocked(clientIp)) {
                 return text(Response.Status.TOO_MANY_REQUESTS, "Too many attempts. IP Blocked for 15 mins.");
@@ -74,6 +89,7 @@ public class NasHttpServer extends NanoHTTPD {
                 role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
                 if (role == 0) {
                     SecurityFilter.recordFail(clientIp);
+                        LogManager.audit("登录失败: " + clientIp + " 尝试账号 " + AuthManager.getCurrentUser());
                     Response r = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "401");
                     r.addHeader("WWW-Authenticate", "Basic realm=\"Android NAS\"");
                     return r;
@@ -84,10 +100,13 @@ public class NasHttpServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", getClass().getClassLoader().getResourceAsStream("assets/index.html"), -1);
             }
 
-            if ("/api/status".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + "}");
+            if ("/api/status".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"isDefaultPwd\":" + DatabaseManager.isDefaultPwd + "}");
             if ("/api/monitor".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", SystemMonitor.getStatusJson(context));
             if ("/api/ota".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"version\":\"4.3.0\"}");
             
+            if ("/api/security/audit".equals(uri) && role == 1) {
+                return text(Response.Status.OK, LogManager.getAuditLogs());
+            }
             if ("/api/security/sessions".equals(uri) && role == 1) {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", SecurityFilter.getActiveSessionsJson());
             }
@@ -326,7 +345,8 @@ public class NasHttpServer extends NanoHTTPD {
                 }
                 if ("/api/delete".equals(uri)) {
                     File f = safeFile(session.getParms().get("path"));
-                    if (f != null && !f.getAbsolutePath().equals(safeFile("/").getAbsolutePath()) && deleteRec(f)) return text(Response.Status.OK, "OK");
+                    if (f != null && !f.getAbsolutePath().equals(safeFile("/").getAbsolutePath()) && deleteRec(f)) {
+                        LogManager.audit("删除文件: " + f.getAbsolutePath()); return text(Response.Status.OK, "OK");
                     return text(Response.Status.INTERNAL_ERROR, "Failed");
                 }
                 if ("/api/rename".equals(uri)) {
@@ -348,7 +368,10 @@ public class NasHttpServer extends NanoHTTPD {
                     return text(Response.Status.OK, "OK");
                 }
                 
-                if ("/api/security/sessions".equals(uri) && role == 1) {
+                if ("/api/security/audit".equals(uri) && role == 1) {
+                return text(Response.Status.OK, LogManager.getAuditLogs());
+            }
+            if ("/api/security/sessions".equals(uri) && role == 1) {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", SecurityFilter.getActiveSessionsJson());
             }
             if ("/api/security/pin".equals(uri) && Method.POST.equals(session.getMethod()) && role == 1) {
@@ -434,6 +457,7 @@ public class NasHttpServer extends NanoHTTPD {
                     if (role != 1 || !SettingsManager.isGlobalMode() || !AdvancedKeepAliveManager.hasRoot()) return text(Response.Status.FORBIDDEN, "Forbidden");
                     String cmd = session.getParms().get("cmd");
                     if (cmd != null && (cmd.contains("rm -rf /") || cmd.contains("mkfs") || cmd.contains("dd if="))) return text(Response.Status.FORBIDDEN, "Dangerous command blocked");
+                    LogManager.audit("执行 Shell: " + cmd);
                     String out = RootManager.execCommand(cmd);
                     return text(Response.Status.OK, out);
                 }

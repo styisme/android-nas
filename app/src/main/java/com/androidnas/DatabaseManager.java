@@ -9,6 +9,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 
 public class DatabaseManager extends SQLiteOpenHelper {
+    public static boolean isDefaultPwd = true; // 用于前端提示
     private static final String DB_NAME = "nas_core.db";
     private static final int DB_VERSION = 2;
     private static DatabaseManager instance;
@@ -145,6 +146,7 @@ public class DatabaseManager extends SQLiteOpenHelper {
     }
 
     public void changePassword(String user, String newPass) {
+        isDefaultPwd = false;
         String salt = genSalt();
         ContentValues cv = new ContentValues();
         cv.put("password", hash(newPass, salt));
