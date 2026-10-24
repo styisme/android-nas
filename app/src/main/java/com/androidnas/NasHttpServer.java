@@ -45,6 +45,22 @@ public class NasHttpServer extends NanoHTTPD {
         return new File(name).getName().replace("\\", "_"); 
     }
 
+
+    private void deleteDir(File dir) {
+        if (dir == null || !dir.exists()) return;
+        File[] files = dir.listFiles();
+        if (files != null) {
+            for (File f : files) {
+                if (f.isDirectory()) deleteDir(f);
+                else f.delete();
+            }
+        }
+        // 保留根目录本身
+        if (!dir.getAbsolutePath().equals(Environment.getExternalStorageDirectory().getAbsolutePath())) {
+            dir.delete();
+        }
+    }
+
     private boolean deleteRec(File f) {
         if (!f.exists()) return true;
         if (f.isDirectory()) {

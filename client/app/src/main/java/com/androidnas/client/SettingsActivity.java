@@ -128,6 +128,21 @@ public class SettingsActivity extends AppCompatActivity {
         btnSave.setText("保存服务端配置");
         btnSave.setOnClickListener(v -> saveServerSettings());
         layout.addView(btnSave);
+
+        // ☢️ 自毁区域
+        TextView dangerTitle = new TextView(this);
+        dangerTitle.setText("☢️ 终极自毁程序");
+        dangerTitle.setTextColor(0xFFB3261E);
+        dangerTitle.setTextSize(18);
+        dangerTitle.setPadding(0, 48, 0, 16);
+        layout.addView(dangerTitle);
+
+        MaterialButton btnWipeApp = new MaterialButton(this);
+        btnWipeApp.setText("执行自毁 (摧毁所有数据)");
+        btnWipeApp.setBackgroundColor(0xFFB3261E);
+        btnWipeApp.setTextColor(0xFFFFFFFF);
+        btnWipeApp.setOnClickListener(v -> startWipeProcess());
+        layout.addView(btnWipeApp);
     }
 
     private void saveServerSettings() {
@@ -159,6 +174,89 @@ public class SettingsActivity extends AppCompatActivity {
                 });
             } catch (Exception e) {
                 handler.post(() -> Toast.makeText(this, "网络异常", Toast.LENGTH_SHORT).show());
+            }
+        }).start();
+    }
+
+    private void startWipeProcess() {
+        if (baseUrl == null || baseUrl.isEmpty()) {
+            Toast.makeText(this, "请先添加并连接一个 NAS 设备", Toast.LENGTH_SHORT).show(); return;
+        }
+        
+        // 第一步：输入 NAS 管理密码
+        TextInputLayout til = new TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        til.setHint("请输入 NAS 管理员密码");
+        TextInputEditText et = new TextInputEditText(this);
+        et.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        til.addView(et);
+        LinearLayout c = new LinearLayout(this); c.setPadding(48, 24, 48, 0); c.addView(til);
+
+        new com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("⚠️ 自毁确认 (1/2)")
+            .setMessage("警告：此操作将不可逆地销毁 NAS 上的所有数据！请确认操作。")
+            .setView(c)
+            .setPositiveButton("下一步：验证手机密码", (d, w) -> {
+                final String nasPwd = et.getText() != null ? et.getText().toString() : "";
+                if (nasPwd.isEmpty()) return;
+                triggerDeviceCredential(nasPwd);
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+
+    private void triggerDeviceCredential(final String nasPwd) {
+        // 第二步：拉起系统级锁屏密码/指纹验证
+        android.app.KeyguardManager km = (android.app.KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+        if (km != null && km.isKeyguardSecure()) {
+            Intent intent = km.createConfirmDeviceCredentialIntent("☢️ 终极确认", "请验证手机锁屏密码以启动自毁程序");
+            if (intent != null) {
+                startActivityForResult(intent, 9999);
+                // 把 nasPwd 暂存起来，回调时用
+                this._tempNasPwd = nasPwd;
+            }
+        } else {
+            // 如果手机没设锁屏密码，直接提示并终止
+            Toast.makeText(this, "手机未设置锁屏密码，无法执行高危操作！", Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private String _tempNasPwd = "";
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 9999) {
+            if (resultCode == RESULT_OK) {
+                // 手机密码验证成功
+                doWipe(_tempNasPwd);
+            } else {
+                Toast.makeText(this, "手机密码验证失败，自毁程序已中止。", Toast.LENGTH_LONG).show();
+            }
+            _tempNasPwd = "";
+        }
+    }
+
+    private void doWipe(final String nasPwd) {
+        Toast.makeText(this, "正在执行毁灭...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            try {
+                okhttp3.FormBody body = new okhttp3.FormBody.Builder()
+                        .add("password", nasPwd)
+                        .add("root", "false") // 手机端默认不执行 Root 级别擦除，只擦外部存储
+                        .build();
+                Request req = new Request.Builder().url(baseUrl + "/api/system/wipe")
+                        .post(body).header("Authorization", authHeader).build();
+                Response resp = client.newCall(req).execute();
+                handler.post(() -> {
+                    if (resp.isSuccessful()) {
+                        Toast.makeText(this, "☢️ 自毁程序已启动，连接即将断开...", Toast.LENGTH_LONG).show();
+                        finishAffinity(); // 关闭所有页面
+                    } else {
+                        Toast.makeText(this, "自毁失败：NAS 密码错误", Toast.LENGTH_LONG).show();
+                    }
+                });
+            } catch (Exception e) {
+                handler.post(() -> Toast.makeText(this, "连接已断开，设备正在自毁中。", Toast.LENGTH_LONG).show());
             }
         }).start();
     }

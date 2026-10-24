@@ -5,6 +5,8 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.os.Handler;
@@ -19,24 +21,28 @@ import androidx.recyclerview.widget.RecyclerView;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.BufferedReader;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
-    private RecyclerView recyclerView, searchResults;
-    private TextView tvPath, tvSearchInput;
-    private Button btnUp, btnConnect, btnSearch, btnBackFromSearch;
-    private LinearLayout searchOverlay, keyboardContainer;
-    
+    private RecyclerView recyclerView;
+    private TextView tvPath;
+    private Button btnUp, btnConnect, btnSearch, btnMode;
     private String baseUrl = "", currentPath = "/", authHeader = "";
-    private List<FileItem> files = new ArrayList<>(), searchFiles = new ArrayList<>();
-    private FileAdapter adapter, searchAdapter;
-    private StringBuilder searchQuery = new StringBuilder();
+    private List<FileItem> files = new ArrayList<>();
+    private FileAdapter adapter;
     private Handler mainHandler = new Handler(Looper.getMainLooper());
+    private ExecutorService imagePool = Executors.newFixedThreadPool(6);
+    
+    // 模式：0=文件列表，1=影视墙，2=时光相册
+    private int currentMode = 0;
     private TvSyncServer syncServer;
 
     interface OnItemClickListener { void onItemClick(FileItem f); }
@@ -51,25 +57,28 @@ public class MainActivity extends Activity {
         btnConnect = findViewById(com.androidnas.tv.R.id.btnConnect);
         btnSearch = findViewById(com.androidnas.tv.R.id.btnSearch);
         
-        searchOverlay = findViewById(com.androidnas.tv.R.id.searchOverlay);
-        keyboardContainer = findViewById(com.androidnas.tv.R.id.keyboardContainer);
-        tvSearchInput = findViewById(com.androidnas.tv.R.id.tvSearchInput);
-        searchResults = findViewById(com.androidnas.tv.R.id.searchResults);
-        btnBackFromSearch = findViewById(com.androidnas.tv.R.id.btnBackFromSearch);
-        TextView tvSyncHint = findViewById(com.androidnas.tv.R.id.tvSyncHint);
+        // 找到原有的搜索按钮位置，我们要在这一行动态加一个"切换模式"按钮
+        LinearLayout topBar = (LinearLayout) btnSearch.getParent();
+        btnMode = new Button(this);
+        btnMode.setText("切换影视墙");
+        btnMode.setBackgroundResource(com.androidnas.tv.R.drawable.selector_btn);
+        btnMode.setTextColor(0xFF381E72);
+        btnMode.setTextSize(16);
+        btnMode.setPadding(24, 12, 24, 12);
+        btnMode.setFocusable(true);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-2, -2);
+        lp.setMargins(0, 0, 16, 0);
+        btnMode.setLayoutParams(lp);
+        topBar.addView(btnMode, topBar.getChildCount() - 1); // 插在连接设置前面
 
-        // 网格布局：TV 屏幕宽，展示 4 列
         recyclerView.setLayoutManager(new GridLayoutManager(this, 4));
-        adapter = new FileAdapter(files, false); recyclerView.setAdapter(adapter);
-        
-        searchResults.setLayoutManager(new GridLayoutManager(this, 4));
-        searchAdapter = new FileAdapter(searchFiles, true); searchResults.setAdapter(searchAdapter);
+        adapter = new FileAdapter(); 
+        recyclerView.setAdapter(adapter);
 
-        setupKeyboard();
         setupListeners();
         
-        syncServer = new TvSyncServer(this); syncServer.start();
-        tvSyncHint.setText("📱 手机协同 端口: 8090 | IP: " + getLocalIpAddress());
+        syncServer = new TvSyncServer(this); 
+        syncServer.start();
 
         SharedPreferences sp = getSharedPreferences("tv_nas", Context.MODE_PRIVATE);
         baseUrl = sp.getString("url", "");
@@ -83,41 +92,35 @@ public class MainActivity extends Activity {
         }
     }
 
-    public void updateNasConfig(String ip, String user, String pass) {
-        runOnUiThread(() -> {
-            baseUrl = ip;
-            authHeader = "Basic " + android.util.Base64.encodeToString((user + ":" + pass).getBytes(), android.util.Base64.NO_WRAP);
-            SharedPreferences sp = getSharedPreferences("tv_nas", Context.MODE_PRIVATE);
-            sp.edit().putString("url", baseUrl).putString("user", user).putString("pass", pass).apply();
-            currentPath = "/"; loadFiles();
-            Toast.makeText(this, "手机已下发配置", Toast.LENGTH_LONG).show();
-        });
-    }
-
-    public void playVideoDirectly(String url) {
-        runOnUiThread(() -> {
-            Intent i = new Intent(this, PlayerActivity.class);
-            i.putExtra("url", url); i.putExtra("auth", authHeader); i.putExtra("title", "手机投屏播放");
-            startActivity(i);
-        });
-    }
-
-    private String getLocalIpAddress() {
-        try {
-            WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-            int ip = wm.getConnectionInfo().getIpAddress();
-            return String.format("%d.%d.%d.%d", (ip & 0xff), (ip >> 8 & 0xff), (ip >> 16 & 0xff), (ip >> 24 & 0xff));
-        } catch (Exception e) { return "127.0.0.1"; }
-    }
-
     private void setupListeners() {
-        // 点击（遥控器确认键）
         adapter.setOnItemClickListener(f -> {
-            if (f.isDir) {
-                if (currentPath.endsWith("/")) currentPath += f.name; else currentPath += "/" + f.name;
-                loadFiles();
+            if (currentMode == 0) {
+                if (f.isDir) {
+                    if (currentPath.endsWith("/")) currentPath += f.name; else currentPath += "/" + f.name;
+                    loadFiles();
+                } else {
+                    playVideo(f, currentPath);
+                }
             } else {
-                playVideo(f, currentPath);
+                // 影视墙/相册模式点击直接播放/预览
+                playVideo(f, "");
+            }
+        });
+
+        btnMode.setOnClickListener(v -> {
+            currentMode = (currentMode + 1) % 3;
+            if (currentMode == 0) {
+                btnMode.setText("切换影视墙");
+                btnUp.setVisibility(View.VISIBLE);
+                loadFiles();
+            } else if (currentMode == 1) {
+                btnMode.setText("切换时光相册");
+                btnUp.setVisibility(View.GONE);
+                loadMediaWall();
+            } else {
+                btnMode.setText("返回文件列表");
+                btnUp.setVisibility(View.GONE);
+                loadPhotos();
             }
         });
         
@@ -130,65 +133,15 @@ public class MainActivity extends Activity {
         });
         
         btnConnect.setOnClickListener(v -> showConnectDialog());
-        btnSearch.setOnClickListener(v -> openSearch());
-        btnBackFromSearch.setOnClickListener(v -> { searchOverlay.setVisibility(View.GONE); btnSearch.requestFocus(); });
-        
-        searchAdapter.setOnItemClickListener(f -> {
-            if (f.isDir) { searchOverlay.setVisibility(View.GONE); currentPath = f.path; loadFiles(); }
-            else { String pd = f.path.substring(0, f.path.lastIndexOf("/")); playVideo(f, pd); }
-        });
+        btnSearch.setOnClickListener(v -> Toast.makeText(this, "搜索功能可通过手机端协同完成", Toast.LENGTH_SHORT).show());
     }
 
-    private void openSearch() {
-        searchQuery.setLength(0); updateSearchInput();
-        searchFiles.clear(); searchAdapter.notifyDataSetChanged();
-        searchOverlay.setVisibility(View.VISIBLE);
-        if (keyboardContainer.getChildCount() > 0) {
-            LinearLayout row = (LinearLayout) keyboardContainer.getChildAt(0);
-            if (row.getChildCount() > 0) row.getChildAt(0).requestFocus();
-        }
-    }
-
-    private void setupKeyboard() {
-        String[] keys = {"1","2","3","4","5","6","7","8","9","0","Q","W","E","R","T","Y","U","I","O","P",
-            "A","S","D","F","G","H","J","K","L","空格","Z","X","C","V","B","N","M",".","-","删除"};
-        int idx = 0;
-        for (int i = 0; i < 4; i++) {
-            LinearLayout row = new LinearLayout(this); 
-            row.setOrientation(LinearLayout.HORIZONTAL); row.setGravity(Gravity.CENTER);
-            LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, -2); 
-            rp.bottomMargin = 8; row.setLayoutParams(rp);
-            
-            for (int j = 0; j < 10 && idx < keys.length; j++) {
-                String k = keys[idx++]; 
-                Button btn = new Button(this); 
-                btn.setText(k); btn.setTextSize(16); btn.setFocusable(true);
-                btn.setBackgroundResource(com.androidnas.tv.R.drawable.selector_btn);
-                btn.setTextColor(0xFF381E72);
-                
-                LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, -2, 1f); 
-                p.setMargins(4, 0, 4, 0); btn.setLayoutParams(p);
-                btn.setOnClickListener(v -> handleKeyPress(k)); 
-                row.addView(btn);
-            }
-            keyboardContainer.addView(row);
-        }
-    }
-
-    private void handleKeyPress(String key) {
-        if (key.equals("删除")) { if (searchQuery.length() > 0) { searchQuery.deleteCharAt(searchQuery.length() - 1); updateSearchInput(); } }
-        else if (key.equals("空格")) { searchQuery.append(" "); updateSearchInput(); }
-        else { searchQuery.append(key.toLowerCase()); updateSearchInput(); performSearch(); }
-    }
-
-    private void updateSearchInput() { tvSearchInput.setText(searchQuery.toString() + "|"); }
-
-    private void performSearch() {
-        String q = searchQuery.toString().trim();
-        if (q.isEmpty()) { searchFiles.clear(); searchAdapter.notifyDataSetChanged(); return; }
+    private void loadMediaWall() {
+        tvPath.setText("🎬 影视海报墙");
+        files.clear(); adapter.notifyDataSetChanged();
         new Thread(() -> {
             try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(baseUrl + "/api/search?q=" + URLEncoder.encode(q, "UTF-8")).openConnection();
+                HttpURLConnection conn = (HttpURLConnection) new URL(baseUrl + "/api/media/wall").openConnection();
                 conn.setRequestProperty("Authorization", authHeader);
                 if (conn.getResponseCode() == 200) {
                     BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
@@ -196,15 +149,91 @@ public class MainActivity extends Activity {
                     while ((ln = r.readLine()) != null) sb.append(ln);
                     r.close();
                     JSONArray arr = new JSONArray(sb.toString());
-                    final List<FileItem> nr = new ArrayList<>();
+                    final List<FileItem> nf = new ArrayList<>();
                     for (int i = 0; i < arr.length(); i++) {
-                        JSONObject f = arr.getJSONObject(i);
-                        nr.add(new FileItem(f.getString("name"), f.getString("path"), f.getBoolean("dir")));
+                        JSONObject o = arr.getJSONObject(i);
+                        FileItem item = new FileItem(o.getString("title"), o.getString("path"), false);
+                        item.imageUrl = o.optString("poster");
+                        nf.add(item);
                     }
-                    mainHandler.post(() -> { searchFiles.clear(); searchFiles.addAll(nr); searchAdapter.notifyDataSetChanged(); });
+                    mainHandler.post(() -> { 
+                        files.clear(); files.addAll(nf); adapter.notifyDataSetChanged();
+                        if (files.size() > 0) recyclerView.requestFocus();
+                    });
                 }
             } catch (Exception ignored) {}
         }).start();
+    }
+
+    private void loadPhotos() {
+        tvPath.setText("🖼️ 时光相册");
+        files.clear(); adapter.notifyDataSetChanged();
+        new Thread(() -> {
+            try {
+                HttpURLConnection conn = (HttpURLConnection) new URL(baseUrl + "/api/photos").openConnection();
+                conn.setRequestProperty("Authorization", authHeader);
+                if (conn.getResponseCode() == 200) {
+                    BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                    StringBuilder sb = new StringBuilder(); String ln;
+                    while ((ln = r.readLine()) != null) sb.append(ln);
+                    r.close();
+                    JSONArray arr = new JSONArray(sb.toString());
+                    final List<FileItem> nf = new ArrayList<>();
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject o = arr.getJSONObject(i);
+                        FileItem item = new FileItem(o.getString("name"), o.getString("path"), false);
+                        item.imageUrl = baseUrl + "/api/thumb?path=" + URLEncoder.encode(item.path, "UTF-8");
+                        nf.add(item);
+                    }
+                    mainHandler.post(() -> { 
+                        files.clear(); files.addAll(nf); adapter.notifyDataSetChanged();
+                        if (files.size() > 0) recyclerView.requestFocus();
+                    });
+                }
+            } catch (Exception ignored) {}
+        }).start();
+    }
+
+    private void loadFiles() {
+        files.clear(); adapter.notifyDataSetChanged(); tvPath.setText("路径: " + currentPath);
+        new Thread(() -> {
+            try {
+                HttpURLConnection conn = (HttpURLConnection) new URL(baseUrl + "/api/list?path=" + URLEncoder.encode(currentPath, "UTF-8")).openConnection();
+                conn.setRequestProperty("Authorization", authHeader);
+                if (conn.getResponseCode() == 200) {
+                    BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
+                    StringBuilder sb = new StringBuilder(); String ln;
+                    while ((ln = r.readLine()) != null) sb.append(ln);
+                    r.close();
+                    JSONObject obj = new JSONObject(sb.toString());
+                    JSONArray arr = obj.getJSONArray("files");
+                    final List<FileItem> nf = new ArrayList<>();
+                    for (int i = 0; i < arr.length(); i++) {
+                        JSONObject f = arr.getJSONObject(i);
+                        nf.add(new FileItem(f.getString("name"), currentPath, f.getBoolean("dir")));
+                    }
+                    mainHandler.post(() -> { 
+                        files.clear(); files.addAll(nf); adapter.notifyDataSetChanged(); 
+                        if (files.size() > 0) recyclerView.requestFocus();
+                    });
+                }
+            } catch (Exception ignored) {}
+        }).start();
+    }
+
+    private void playVideo(FileItem f, String dir) {
+        String full = f.path;
+        if (!full.startsWith("http") && !f.isDir) {
+            full = dir.endsWith("/") ? dir + f.name : dir + "/" + f.name;
+        }
+        if (!full.startsWith("http")) {
+             full = baseUrl + "/api/download?path=" + URLEncoder.encode(full);
+        }
+        Intent i = new Intent(this, PlayerActivity.class);
+        i.putExtra("url", full);
+        i.putExtra("auth", authHeader); 
+        i.putExtra("title", f.name);
+        startActivity(i);
     }
 
     private void showConnectDialog() {
@@ -230,76 +259,52 @@ public class MainActivity extends Activity {
                 authHeader = "Basic " + android.util.Base64.encodeToString((u + ":" + pw).getBytes(), android.util.Base64.NO_WRAP);
                 SharedPreferences sp = getSharedPreferences("tv_nas", Context.MODE_PRIVATE);
                 sp.edit().putString("url", baseUrl).putString("user", u).putString("pass", pw).apply();
-                currentPath = "/"; loadFiles();
+                currentPath = "/"; currentMode = 0; loadFiles();
             }).setNegativeButton("取消", null).show();
-    }
-
-    private void loadFiles() {
-        files.clear(); adapter.notifyDataSetChanged(); tvPath.setText("路径: " + currentPath);
-        new Thread(() -> {
-            try {
-                HttpURLConnection conn = (HttpURLConnection) new URL(baseUrl + "/api/list?path=" + URLEncoder.encode(currentPath, "UTF-8")).openConnection();
-                conn.setRequestProperty("Authorization", authHeader);
-                if (conn.getResponseCode() == 200) {
-                    BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream(), "UTF-8"));
-                    StringBuilder sb = new StringBuilder(); String ln;
-                    while ((ln = r.readLine()) != null) sb.append(ln);
-                    r.close();
-                    JSONObject obj = new JSONObject(sb.toString());
-                    JSONArray arr = obj.getJSONArray("files");
-                    final List<FileItem> nf = new ArrayList<>();
-                    for (int i = 0; i < arr.length(); i++) {
-                        JSONObject f = arr.getJSONObject(i);
-                        nf.add(new FileItem(f.getString("name"), currentPath, f.getBoolean("dir")));
-                    }
-                    mainHandler.post(() -> { 
-                        files.clear(); 
-                        files.addAll(nf); 
-                        adapter.notifyDataSetChanged(); 
-                        if (files.size() > 0) recyclerView.getChildAt(0).requestFocus();
-                        else btnUp.requestFocus();
-                    });
-                }
-            } catch (Exception ignored) {}
-        }).start();
-    }
-
-    private void playVideo(FileItem f, String dir) {
-        String full = dir.endsWith("/") ? dir + f.name : dir + "/" + f.name;
-        Intent i = new Intent(this, PlayerActivity.class);
-        i.putExtra("url", baseUrl + "/api/download?path=" + URLEncoder.encode(full));
-        i.putExtra("auth", authHeader); i.putExtra("title", f.name);
-        startActivity(i);
     }
 
     @Override protected void onDestroy() { super.onDestroy(); if (syncServer != null) syncServer.stopServer(); }
 
     private static class FileItem {
-        String name, path; boolean isDir;
+        String name, path, imageUrl; boolean isDir;
         FileItem(String n, String p, boolean d) { name = n; path = p; isDir = d; }
     }
 
-    // ============== 新版 RecyclerView Adapter ==============
+    // 终极 TV 适配器
     private class FileAdapter extends RecyclerView.Adapter<FileAdapter.VH> {
-        private List<FileItem> data; private boolean isSearch;
         private OnItemClickListener listener;
-
-        FileAdapter(List<FileItem> d, boolean s) { data = d; isSearch = s; }
         void setOnItemClickListener(OnItemClickListener l) { this.listener = l; }
 
-        @Override public int getItemCount() { return data.size(); }
+        @Override public int getItemCount() { return files.size(); }
 
         @Override public VH onCreateViewHolder(ViewGroup parent, int viewType) {
             View v = getLayoutInflater().inflate(com.androidnas.tv.R.layout.item_tv_file, parent, false);
+            // 动态调整高度以适应图片模式
+            if (currentMode != 0) {
+                v.getLayoutParams().height = 300; 
+            } else {
+                v.getLayoutParams().height = ViewGroup.LayoutParams.WRAP_CONTENT;
+            }
             return new VH(v);
         }
 
         @Override public void onBindViewHolder(VH h, int pos) {
-            FileItem f = data.get(pos);
+            FileItem f = files.get(pos);
             h.tvName.setText(f.name);
-            h.tvIcon.setText(f.isDir ? "📁" : "🎬");
+            
+            if (currentMode == 0) {
+                h.tvIcon.setText(f.isDir ? "📁" : "🎬");
+                h.tvIcon.setVisibility(View.VISIBLE);
+                h.img.setVisibility(View.GONE);
+            } else {
+                h.tvIcon.setVisibility(View.GONE);
+                h.img.setVisibility(View.VISIBLE);
+                h.img.setImageResource(android.R.color.darker_gray); // 占位
+                if (f.imageUrl != null && !f.imageUrl.isEmpty()) {
+                    loadImage(f.imageUrl, h.img);
+                }
+            }
 
-            // 电视端极其重要的焦点放大效果
             h.itemView.setOnFocusChangeListener((v, hasFocus) -> {
                 float scale = hasFocus ? 1.1f : 1.0f;
                 v.animate().scaleX(scale).scaleY(scale).setDuration(150).start();
@@ -311,8 +316,38 @@ public class MainActivity extends Activity {
         }
 
         class VH extends RecyclerView.ViewHolder {
-            TextView tvName, tvIcon;
-            VH(View v) { super(v); tvName = v.findViewById(com.androidnas.tv.R.id.tvName); tvIcon = v.findViewById(com.androidnas.tv.R.id.tvIcon); }
+            TextView tvName, tvIcon; ImageView img;
+            VH(View v) { 
+                super(v); 
+                tvName = v.findViewById(com.androidnas.tv.R.id.tvName); 
+                tvIcon = v.findViewById(com.androidnas.tv.R.id.tvIcon); 
+                // 动态创建一个 ImageView 塞进卡片
+                img = new ImageView(v.getContext());
+                LinearLayout parent = (LinearLayout) tvIcon.getParent();
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(-1, -1);
+                lp.weight = 1;
+                img.setLayoutParams(lp);
+                img.setScaleType(ImageView.ScaleType.CENTER_CROP);
+                parent.addView(img, 0);
+            }
         }
+    }
+
+    private void loadImage(final String urlStr, final ImageView imgView) {
+        imagePool.execute(() -> {
+            try {
+                URL url = new URL(urlStr);
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                if (authHeader != null && !authHeader.isEmpty()) {
+                    conn.setRequestProperty("Authorization", authHeader);
+                }
+                InputStream is = conn.getInputStream();
+                final Bitmap bmp = BitmapFactory.decodeStream(is);
+                is.close();
+                mainHandler.post(() -> {
+                    if (bmp != null) imgView.setImageBitmap(bmp);
+                });
+            } catch (Exception ignored) {}
+        });
     }
 }

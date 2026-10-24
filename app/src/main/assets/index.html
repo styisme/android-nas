@@ -338,7 +338,14 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
           <button class="btn-text" onclick="updatePin()" style="color:var(--primary); margin-top:8px;">更新安全码</button>
           <button class="btn-text" onclick="showSessions()" style="color:var(--primary); margin-top:8px;">查看在线设备</button>
         </div>
-        <button class="btn-filled" onclick="saveSettings()">保存并重启服务</button>
+        
+      <div style="margin-top:32px; border-top:2px dashed var(--error); padding-top:16px;">
+        <h4 style="color:var(--error); margin-bottom:8px;">☢️ 终极自毁程序 (Panic Wipe)</h4>
+        <p style="font-size:12px; color:var(--on-surface-variant); margin-bottom:12px;">警告：这将永久删除 NAS 上的所有文件。如果开启了 Root 模式，设备将被彻底格式化并重启。此操作不可逆。</p>
+        <button id="btnWipe" class="btn-filled" style="background:var(--error); color:white; width:100%;" onclick="triggerWipe()">执行自毁</button>
+      </div>
+
+        <button class="btn-filled" style="margin-top:24px;" onclick="saveSettings()">保存并重启服务</button>
     </div>
   </div>
 </div>
@@ -948,6 +955,36 @@ function showAudit() {
         document.getElementById("previewTitle").textContent = "安全审计日志";
         body.innerHTML = '<pre style="text-align:left; max-height:60vh; overflow:auto; font-size:12px; background:var(--surface-variant); padding:12px; border-radius:8px;">' + escapeHtml(text) + '</pre>';
         showModal("previewModal");
+    });
+}
+
+
+function triggerWipe() {
+    if (!confirm("⚠️ 第一次确认：你即将销毁所有文件！确定要继续吗？")) return;
+    if (!confirm("☢️ 第二次确认：此操作绝对不可逆，手机可能会变砖！你确定吗？")) return;
+    
+    var pwd = prompt("请输入管理员密码以启动自毁程序：");
+    if (!pwd) return;
+    
+    var rootMode = confirm("是否连同系统底层一起摧毁？\n\n[确定] = 包含系统 (需Root)\n[取消] = 仅删除文件");
+    
+    var btn = document.getElementById("btnWipe");
+    btn.innerText = "正在执行毁灭...";
+    btn.disabled = true;
+    
+    fetch("/api/system/wipe", {
+        method: "POST",
+        body: new URLSearchParams({ password: pwd, root: rootMode ? "true" : "false" })
+    }).then(function(r) {
+        if (r.ok) {
+            document.body.innerHTML = "<div style='display:flex; justify-content:center; align-items:center; height:100vh; background:#000; color:#f00; font-size:24px; font-family:monospace; text-align:center;'>☢️ 系统已自毁。<br>连接已断开。</div>";
+        } else {
+            alert("自毁失败：" + r.status + "，请检查密码是否正确。");
+            btn.innerText = "执行自毁";
+            btn.disabled = false;
+        }
+    }).catch(function() {
+        document.body.innerHTML = "<div style='display:flex; justify-content:center; align-items:center; height:100vh; background:#000; color:#f00; font-size:24px; font-family:monospace; text-align:center;'>☢️ 连接已强制断开。<br>设备正在销毁中...</div>";
     });
 }
 
