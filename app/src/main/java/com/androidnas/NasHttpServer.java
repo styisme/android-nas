@@ -290,7 +290,11 @@ public class NasHttpServer extends NanoHTTPD {
                 if ("/api/mkdir".equals(uri)) {
                     File dir = safeFile(session.getParms().get("path"));
                     String name = getSafeName(session.getParms().get("name"));
-                    if (dir != null && name != null && new File(dir, name).mkdirs()) return text(Response.Status.OK, "OK");
+                    if (dir != null && name != null) {
+                        File newDir = new File(dir, name);
+                        // 核心修复：如果已存在则直接返回成功，保证幂等性
+                        if (newDir.exists() || newDir.mkdirs()) return text(Response.Status.OK, "OK");
+                    }
                     return text(Response.Status.INTERNAL_ERROR, "Failed");
                 }
                 if ("/api/delete".equals(uri)) {

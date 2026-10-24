@@ -54,17 +54,25 @@ public class BackupManager {
 
         new Thread(() -> {
             try {
+                // 0. 统一建目录 (只发一次请求)
+                ensureRemoteDirExists();
+
                 // 1. 获取 NAS 上已有的照片列表
                 Set<String> remoteFiles = getRemotePhotos();
                 if (remoteFiles == null) {
-                    mainHandler.post(() -> callback.onError("无法连接 NAS 获取文件列表"));
+                    mainHandler.post(() -> callback.onError("无法连接 NAS 或账号密码错误"));
                     isRunning = false;
                     return;
                 }
 
                 // 2. 扫描本地相册
                 List<LocalPhoto> localPhotos = getLocalPhotos();
-                
+                if (localPhotos == null || localPhotos.isEmpty()) {
+                    mainHandler.post(() -> callback.onError("手机相册中没有找到照片"));
+                    isRunning = false;
+                    return;
+                }
+
                 // 3. 过滤出需要备份的
                 List<LocalPhoto> toBackup = new ArrayList<>();
                 for (LocalPhoto p : localPhotos) {
@@ -108,6 +116,16 @@ public class BackupManager {
             String url = baseUrl + "/api/list?path=/Photos/";
             Request req = new Request.Builder().url(url).header("Authorization", authHeader).build();
             Response resp = client.newCall(req).execute();
+            
+            // 核心修复：如果返回 404，说明服务端还没有 /Photos/ 文件夹，直接返回空集合
+            if (resp.code() == 404) {
+                return new HashSet<>();
+            }
+            // 如果是 401，说明密码错了
+            if (resp.code() == 401) {
+                return null;
+            }
+            
             if (resp.isSuccessful() && resp.body() != null) {
                 JSONObject obj = new JSONObject(resp.body().string());
                 JSONArray arr = obj.getJSONArray("files");
@@ -117,7 +135,9 @@ public class BackupManager {
                 }
                 return set;
             }
-        } catch (Exception ignored) {}
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
         return null;
     }
 
@@ -147,11 +167,6 @@ public class BackupManager {
     private boolean uploadPhoto(LocalPhoto photo) {
         try {
             OkHttpClient client = new OkHttpClient();
-            // 确保 /Photos 目录存在
-            client.newCall(new Request.Builder().url(baseUrl + "/api/mkdir")
-                    .post(new okhttp3.FormBody.Builder().add("path", "/").add("name", "Photos").build())
-                    .header("Authorization", authHeader).build()).execute();
-
             InputStream is = context.getContentResolver().openInputStream(photo.uri);
             if (is == null) return false;
 
@@ -164,7 +179,8 @@ public class BackupManager {
                 }
             };
 
-            String targetUrl = baseUrl + "/Photos/" + Uri.encode(photo.name);
+            String encodedName = java.net.URLEncoder.encode(photo.name, "UTF-8").replace("+", "%20");
+            String targetUrl = baseUrl + "/Photos/" + encodedName;
             Request req = new Request.Builder().url(targetUrl).put(body).header("Authorization", authHeader).build();
             Response resp = client.newCall(req).execute();
             is.close();
