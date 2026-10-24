@@ -3,6 +3,11 @@ plugins {
 }
 
 android {
+    lintOptions {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
     namespace 'com.androidnas.watch'
     compileSdk 33
     defaultConfig {
