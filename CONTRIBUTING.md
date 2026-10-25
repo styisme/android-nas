@@ -14,7 +14,7 @@
 
 ---
 
-## 📂 十端深度项目结构解析 (v4.4.1 架构)
+## 📂 十端深度项目结构解析 (v4.5.0 架构)
 
 ```text
 android-nas/
@@ -29,7 +29,10 @@ android-nas/
 │   │   ├── LocalSendServer.java         # LocalSend 接收端
 │   │   ├── DatabaseManager.java         # SQLite 多用户与秒传记录引擎
 │   │   ├── AuthManager.java             # 基于 ThreadLocal 的并发身份隔离与鉴权
-│   │   ├── SecurityFilter.java          # 防爆破(Fail2Ban)与在线设备审计
+│   │   ├── TotpManager.java             # [v4.5.0] 纯 Java 2FA 算法 (TOTP)
+│   │   ├── SmsManager.java              # [v4.5.0] 短信监听与发送引擎
+│   │   ├── BatteryProtector.java        # [v4.5.0] 电池温度熔断报警引擎
+│   │   ├── SecurityFilter.java          # 防爆破(Fail2Ban)、CC限流与在线设备审计
 │   │   ├── CertificateUtils.java        # HTTPS / WSS 自签证书动态生成器
 │   │   ├── MediaScraper.java            # 免 Key 影视刮削引擎 (纯 Java 正则)
 │   │   ├── WebhookManager.java          # Webhook 事件推送引擎
@@ -78,29 +81,41 @@ android-nas/
 
 项目高度依赖 HTTP 与 WebSocket，所有端的网络层必须严格遵守以下规范（完整细节请见 `docs/API_DOC.md`）。
 
-### 1. 统一鉴权与多用户沙箱隔离 (v4.4.1 重构)
+### 1. 统一鉴权与多用户沙箱隔离 (v4.5.0 升级)
 除分享链接外，所有请求必须携带 Header：`Authorization: Basic Base64(账号:密码)`。
 - **并发隔离**：底层 `AuthManager` 引入了 `ThreadLocal`。在 HTTP、WebDAV、FTP 的请求线程结束时，**必须** 调用 `clearCurrentUser()` 清理状态，防止线程池复用导致的跨请求身份残留越权。
+- **2FA 二次校验**：如果开启了 2FA 且登录账号为 `admin`，所有请求的 Header 中必须携带 `X-TOTP-Code`（6位动态口令），否则直接返回 401 或 2FA_REQUIRED。
 - **沙箱映射**：`NasHttpServer.safeFile()` 会读取当前用户的 `root_dir`。普通用户路径被锁定在专属目录下；仅 `admin` 在全盘模式可越权。
-- **IP 白名单与防爆破**：`SecurityFilter` 会拦截在黑名单中的 IP。白名单开启时，优先校验 IP 合法性。
+- **高危 API 局域网锁**：`NasHttpServer` 会通过 `isLanIp()` 强制校验来源 IP。非内网 IP 无法调用 `/api/settings`、`/api/shell`、`/api/system/wipe` 等核心接口。
 
-### 2. 文件流式上传与大文件断点续传
+### 2. 五重安全防线底层实现 (v4.5.0 新增)
+- **隐藏暗号**：`NasHttpServer` 在路由最前端拦截。如果启用了 `secretPath`，未携带 `?s=xxx` 的非 API 请求一律直接返回 404。
+- **防 CC 限流**：`SecurityFilter.isBlocked()` 中引入了基于 `ConcurrentHashMap` 的滑动窗口计数器。单 IP 每秒超 30 次请求直接封禁。
+- **算数验证码**：触发防爆破时，接口返回 401 并在 Header 中要求 `X-Captcha`。前端请求 `/api/captcha` 获取题目并计算结果。
+- **防爆破 (Fail2Ban)**：连续 5 次鉴权失败（`SecurityFilter.recordFail`），该 IP 被封锁 15 分钟。
+- **会话超时**：前端 fetch 拦截器负责读取本地保存的过期时间，无操作超过设定时间自动清空 Token 并要求重新登录。
+
+### 3. 文件流式上传与大文件断点续传
 - **小文件 PUT 上传**：必须携带准确的 `Content-Length`。禁止使用 `Transfer-Encoding: chunked`，否则会导致 NanoHTTPD 底层无限阻塞。
 - **大文件分片上传**：前端通过 `File.slice()` 按 2MB 切块，携带 `hash`、`index`、`total` 请求 `/api/upload/chunk`。服务端利用 `FileOutputStream(..., true)` 实现流式追加，临时文件名为 `fileName.hash.part` 以防并发覆盖。
 
-### 3. 缩略图、影视刮削与打包下载
+### 4. 缩略图、影视刮削与打包下载
 - **缩略图**：前端请求 `/api/thumb?path=xxx`，服务端在 `.thumbnails` 目录生成 300px 缓存并返回。
 - **影视刮削**：前端请求 `/api/media/wall`，服务端 `MediaScraper` 纯正则解析文件名并请求开源 API 获取海报。
 - **流式打包**：前端 POST 包含 `paths` 数组到 `/api/download/zip`，服务端利用 `ZipOutputStream` 实时压缩返回。
 
-### 4. WebSocket 远控协议 (8082端口)
+### 5. 短信中枢与探针底层
+- **短信监听**：`SmsManager` 注册 `BroadcastReceiver` 抓取 `SMS_RECEIVED`。接口 `/api/sms/logs` 返回内存日志，`/api/sms/send` 调用原生 API 发送。注意在 Android 6+ 需动态申请 `RECEIVE_SMS` 与 `SEND_SMS` 权限。
+- **端口探针**：`/api/ports` 接口底层通过 `ExecutorService` 并发建立 `Socket`，超时设为 300ms，探测内网各服务存活状态。
+
+### 6. WebSocket 远控协议 (8082端口)
 - **鉴权**：**不再接受匿名连接**。前端必须通过 `ws://ip:8082/?token=<Base64(账号:密码)>` 连接，服务端严格 `URLDecoder` 解码并校验 Admin 角色。
 - **触控指令**：坐标必须 `parseFloat` 转换并限制范围，严禁直接拼接进 `su -c input` 引发 Shell 注入。
 
-### 5. 跨端协同 UDP 协议 (8090端口)
+### 7. 跨端协同 UDP 协议 (8090端口)
 手机端与 TV 端通过 `255.255.255.255:8090` 发送 `DISCOVER_TV` 进行广播发现，实现配置下发与一键投屏。详见 `SyncHelper.java`。
 
-### 6. 高危自毁接口 (v4.4.1 新增)
+### 8. 高危自毁接口
 - 接口 `/api/system/wipe` 为核弹级操作。前端在调用前必须实现**多重验证**（NAS 密码输入 + 系统锁屏指纹验证）。后端接收到请求后会彻底删除物理文件，若带 Root 参数还会直接格式化并重启设备。测试该功能请务必使用废弃设备。
 
 ---
@@ -111,12 +126,12 @@ android-nas/
 
 本项目的发版过程是全自动化的，请严格遵守以下标准作业程序（SOP）：
 
-1. **修改更新日志**：在根目录 `CHANGELOG.md` 顶部，增加新版本号（例如 `## [4.4.1]`）及详细的更新内容。
+1. **修改更新日志**：在根目录 `CHANGELOG.md` 顶部，增加新版本号（例如 `## [4.5.0]`）及详细的更新内容。
 2. **推送代码**：Push 到 `main` 或 `master` 分支。
 3. **自动矩阵编译**：GitHub Actions 检测到 `CHANGELOG.md` 变更，触发 `build-all.yml` 矩阵。并行启动全量编译。
 4. **区分 Debug / Release**：独立日常构建触发 `assembleDebug`，包名带 `.debug` 后缀；`build-all` 触发 `assembleRelease`，使用 GitHub Secrets 注入正式 keystore 进行签名。
-5. **自动打 Tag**：CI 会解析版本号，自动打上 `v4.4.1` 标签。
-6. **平铺直传发布**：CI 脚本会使用 `find -type f` 提取所有产物并重命名，直接平铺展示在 Release 页面。
+5. **自动打 Tag**：CI 会解析版本号，自动打上 `v4.5.0` 标签。
+6. **平铺直传发布**：CI 脚本会使用 `find -type f` 提取所有产物并重命名，直接平铺展示在 Release 页面。**注意：生成 Release Notes 时严禁使用 Here-Document (<<EOF)，必须使用 `printf` 防止 YAML 缩进引发 Bash 语法错误。**
 
 *(日常修改代码如果未动 `CHANGELOG.md`，只会触发对应端的快速独立编译，不会发版)*
 

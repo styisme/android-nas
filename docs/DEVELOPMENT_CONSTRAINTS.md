@@ -30,15 +30,19 @@
 
 见 [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md)。本项目约 **99% 的代码由 AI 生成**，人类开发者负责产品决策、真机测试、错误反馈与发布裁决。这是事实，不美化。
 
-### 2. 高危功能默认关闭 + 单独警告
+### 2. 高危与隐私功能默认关闭 + 单独警告
 
-见 [`SECURITY.md`](../SECURITY.md)。以下功能**默认全部关闭**，且在使用前有独立警告章节：
+见 [`SECURITY.md`](../SECURITY.md)。以下功能**默认全部关闭**或**默认受到严格限制**，且在使用前有独立警告章节：
 
 - Root 全盘模式
 - Web Shell 终端
 - H264 远程控制 / 无障碍触控
 - IP 白名单（锁死风险）
 - 终极自毁 (Panic Wipe)
+- **原生 2FA 两步验证（v4.5.0 新增，默认关闭）**
+- **隐藏入口暗号（v4.5.0 新增，默认关闭）**
+- **高危 API 局域网物理锁（v4.5.0 新增，默认开启）**
+- **短信读取与发送权限（v4.5.0 新增，需用户显式授权）**
 
 ### 3. CI 编译门禁
 
@@ -58,12 +62,15 @@
 
 以下模块**每次改动都在真机上验证过**（不只是 CI 编译通过）：
 
-- `AuthManager.java` — ThreadLocal 并发身份隔离
-- `NasHttpServer.safeFile()` — 路径沙箱映射
+- `AuthManager.java` — ThreadLocal 并发身份隔离与双因子校验
+- `NasHttpServer.safeFile()` — 路径沙箱映射与防逃逸
 - `WebDavServer.java` / `FtpServer.java` — 纯 Socket 协议解析
 - `RemoteDesktopManager.java` — WebSocket Token 鉴权
 - `AdvancedKeepAliveManager.java` — Root 命令执行
 - `DatabaseManager.hash()` — 密码加盐哈希
+- **`TotpManager.java`** — 2FA 动态口令加密算法（v4.5.0 新增）
+- **`SmsManager.java`** — 短信读取与发送监听（涉及隐私，v4.5.0 新增）
+- **`SecurityFilter.java`** — 防爆破、防 CC 与局域网物理锁（v4.5.0 新增）
 - `.github/workflows/build-all.yml` — Keystore 注入与签名
 
 ---
