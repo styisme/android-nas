@@ -29,6 +29,9 @@ public class SecurityFilter {
             }
         }
         
+        // 如果关闭了 CC 限流，直接跳过检测
+        if (!SettingsManager.isCcLimitEnabled()) return false;
+
         long now = System.currentTimeMillis();
         RateInfo rInfo = rateLimitMap.get(ip);
         if (rInfo == null || now - rInfo.windowStart > 1000) {

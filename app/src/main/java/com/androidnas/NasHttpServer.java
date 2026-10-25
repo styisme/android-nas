@@ -147,7 +147,9 @@ public class NasHttpServer extends NanoHTTPD {
             }
 
             if ("/".equals(uri) || "/index.html".equals(uri)) {
-                return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", getClass().getClassLoader().getResourceAsStream("assets/index.html"), -1);
+                Response r = newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", getClass().getClassLoader().getResourceAsStream("assets/index.html"), -1);
+                if (SettingsManager.isHideHeaderEnabled()) r.addHeader("Server", "SecureNAS");
+                return r;
             }
 
             if ("/api/ports".equals(uri)) {
@@ -492,6 +494,12 @@ public class NasHttpServer extends NanoHTTPD {
                         SettingsManager.setAuditEnabled("true".equals(session.getParms().get("auditEnabled")));
                         SettingsManager.setIpWhitelistEnabled("true".equals(session.getParms().get("ipWhitelistEnabled")));
                         SettingsManager.setIpWhitelist(session.getParms().get("ipWhitelist"));
+                        SettingsManager.setLanOnlyStrict("true".equals(session.getParms().get("lanOnlyStrict")));
+                        SettingsManager.setCaptchaEnabled("true".equals(session.getParms().get("captchaEnabled")));
+                        SettingsManager.setCcLimitEnabled("true".equals(session.getParms().get("ccLimitEnabled")));
+                        SettingsManager.setSecretPath(session.getParms().get("secretPath") == null ? "" : session.getParms().get("secretPath"));
+                        try { SettingsManager.setSessionTimeout(Integer.parseInt(session.getParms().get("sessionTimeout"))); } catch (Exception ignored) {}
+                        SettingsManager.setHideHeaderEnabled("true".equals(session.getParms().get("hideHeader")));
                         if (session.getParms().get("webhookUrl") != null) SettingsManager.setWebhookUrl(session.getParms().get("webhookUrl"));
                         if (session.getParms().get("webhookTemplate") != null) SettingsManager.setWebhookTemplate(session.getParms().get("webhookTemplate"));
                         if (session.getParms().get("webhookChatId") != null) SettingsManager.setWebhookChatId(session.getParms().get("webhookChatId"));

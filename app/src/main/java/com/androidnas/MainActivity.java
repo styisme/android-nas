@@ -384,6 +384,26 @@ public class MainActivity extends Activity {
         CheckBox cbSilent = new CheckBox(this); cbSilent.setText("🎵 静音保活"); cbSilent.setChecked(SettingsManager.isSilentKeepAlive()); groupAdvanced.addView(cbSilent);
         CheckBox cbLs = new CheckBox(this); cbLs.setText("开启 LocalSend"); cbLs.setChecked(SettingsManager.isLocalSendEnabled()); groupAdvanced.addView(cbLs);
         EditText etPin = new EditText(this); etPin.setHint("LocalSend PIN"); etPin.setText(SettingsManager.getLsPin()); groupAdvanced.addView(etPin);
+        
+        // 🔥 新增：高级安全防线控制台
+        TextView tvSecTitle = new TextView(this);
+        tvSecTitle.setText("\n🛡️ 高级安全防线");
+        tvSecTitle.setTextColor(0xFFB3261E); // 强调色
+        tvSecTitle.setTextSize(16);
+        tvSecTitle.setPadding(0, 24, 0, 8);
+        groupAdvanced.addView(tvSecTitle);
+
+        CheckBox cbFail2Ban = new CheckBox(this); cbFail2Ban.setText("防爆破 (连错 5 次锁 IP)"); cbFail2Ban.setChecked(SettingsManager.isFail2BanEnabled()); groupAdvanced.addView(cbFail2Ban);
+        CheckBox cbCcLimit = new CheckBox(this); cbCcLimit.setText("防 CC 限流 (防恶意刷流量)"); cbCcLimit.setChecked(SettingsManager.isCcLimitEnabled()); groupAdvanced.addView(cbCcLimit);
+        CheckBox cbCaptcha = new CheckBox(this); cbCaptcha.setText("触发安全拦截弹出算数验证码"); cbCaptcha.setChecked(SettingsManager.isCaptchaEnabled()); groupAdvanced.addView(cbCaptcha);
+        CheckBox cbLanOnly = new CheckBox(this); cbLanOnly.setText("🚨 高危操作仅限局域网"); cbLanOnly.setChecked(SettingsManager.isLanOnlyStrict()); groupAdvanced.addView(cbLanOnly);
+        CheckBox cbHideHeader = new CheckBox(this); cbHideHeader.setText("隐藏 Server 响应头 (防扫描)"); cbHideHeader.setChecked(SettingsManager.isHideHeaderEnabled()); groupAdvanced.addView(cbHideHeader);
+        
+        CheckBox cb2FA = new CheckBox(this); cb2FA.setText("开启 2FA 两步验证 (请用网页端绑定)"); cb2FA.setChecked(SettingsManager.is2FAEnabled()); groupAdvanced.addView(cb2FA);
+        
+        EditText etSecret = new EditText(this); etSecret.setHint("隐藏入口暗号 (留空关闭)"); etSecret.setText(SettingsManager.getSecretPath()); groupAdvanced.addView(etSecret);
+        EditText etTimeout = new EditText(this); etTimeout.setHint("闲置自动登出时间 (分钟)"); etTimeout.setInputType(InputType.TYPE_CLASS_NUMBER); etTimeout.setText(String.valueOf(SettingsManager.getSessionTimeout())); groupAdvanced.addView(etTimeout);
+        
         layout.addView(groupAdvanced);
 
         tabGroup.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
@@ -424,6 +444,16 @@ public class MainActivity extends Activity {
                     SettingsManager.setSilentKeepAlive(cbSilent.isChecked());
                     SettingsManager.setLocalSendEnabled(cbLs.isChecked());
                     SettingsManager.setLsPin(etPin.getText().toString().trim());
+                    
+                    // 🔥 新增安全参数保存
+                    SettingsManager.setFail2BanEnabled(cbFail2Ban.isChecked());
+                    SettingsManager.setCcLimitEnabled(cbCcLimit.isChecked());
+                    SettingsManager.setCaptchaEnabled(cbCaptcha.isChecked());
+                    SettingsManager.setLanOnlyStrict(cbLanOnly.isChecked());
+                    SettingsManager.setHideHeaderEnabled(cbHideHeader.isChecked());
+                    SettingsManager.set2FAEnabled(cb2FA.isChecked());
+                    SettingsManager.setSecretPath(etSecret.getText().toString().trim());
+                    try { SettingsManager.setSessionTimeout(Integer.parseInt(etTimeout.getText().toString())); } catch (Exception ignored) {}
 
                     if (HttpServerService.isRunning()) {
                         stopService(new Intent(MainActivity.this, HttpServerService.class));

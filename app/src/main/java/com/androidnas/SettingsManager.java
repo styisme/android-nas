@@ -81,6 +81,17 @@ public class SettingsManager {
     public static void setAuditEnabled(boolean enabled) { sp.edit().putBoolean("audit_enabled", enabled).apply(); }
 
 
+
+    public static boolean isCcLimitEnabled() { return sp.getBoolean("cc_limit_enabled", true); }
+    public static void setCcLimitEnabled(boolean enabled) { sp.edit().putBoolean("cc_limit_enabled", enabled).apply(); }
+
+
+    public static int getSessionTimeout() { return sp.getInt("session_timeout", 30); }
+    public static void setSessionTimeout(int mins) { sp.edit().putInt("session_timeout", mins).apply(); }
+    
+    public static boolean isHideHeaderEnabled() { return sp.getBoolean("hide_header", true); }
+    public static void setHideHeaderEnabled(boolean enabled) { sp.edit().putBoolean("hide_header", enabled).apply(); }
+
     public static String getSecretPath() { return sp.getString("secret_path", ""); }
     public static void setSecretPath(String path) { sp.edit().putString("secret_path", path).apply(); }
 

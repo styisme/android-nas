@@ -363,12 +363,17 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
   <div class="dialog" onclick="event.stopPropagation()" style="max-width: 500px;">
     <div class="dialog-title">⚙️ 系统设置</div>
     <div class="dialog-content" id="settingsBody" style="display:flex; flex-direction:column; gap:12px;">
-      <label>设备名称：<input type="text" id="setAlias" /></label>
-      <label>Web 端口：<input type="number" id="setWebPort" /></label>
-      <label>WebDAV 端口：<input type="number" id="setDavPort" /></label>
-      <label>FTP 端口：<input type="number" id="setFtpPort" /></label>
-      
-      <div style="margin-top:8px;">
+
+      <!-- 基础设备配置 -->
+      <div style="margin-bottom:16px; border-bottom:1px solid var(--outline); padding-bottom:16px;">
+        <label>设备名称：<input type="text" id="setAlias" /></label>
+        <label style="margin-top:8px; display:block;">Web 端口：<input type="number" id="setWebPort" /></label>
+        <label style="margin-top:8px; display:block;">WebDAV 端口：<input type="number" id="setDavPort" /></label>
+        <label style="margin-top:8px; display:block;">FTP 端口：<input type="number" id="setFtpPort" /></label>
+      </div>
+
+      <!-- 协议开关 -->
+      <div style="margin-bottom:16px; border-bottom:1px solid var(--outline); padding-bottom:16px;">
         <label><input type="checkbox" id="setWebDav" /> 开启 WebDAV</label><br>
         <label><input type="checkbox" id="setFtp" /> 开启 FTP</label><br>
         <label><input type="checkbox" id="setDlna" /> 开启 DLNA</label><br>
@@ -376,26 +381,72 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
         <label><input type="checkbox" id="setClipboard" /> 开启局域网剪贴板</label><br>
         <label><input type="checkbox" id="setGlobal" /> 开启全盘模式 (需 Root)</label>
         <label><input type="checkbox" id="setLowPower" /> 开启极寒省电模式</label>
-        <label style="margin-top:8px;"><input type="checkbox" id="setFail2Ban" /> 🛡️ 开启防爆破 (连续输错锁IP)</label>
-        <label><input type="checkbox" id="setPinRequired" /> 🚨 敏感操作需要安全码</label>
-        <label style="margin-top:8px;"><input type="checkbox" id="setAuditEnabled" /> 📝 开启安全审计日志</label>
-        <label style="margin-top:8px;"><input type="checkbox" id="setIpWhitelistEnabled" /> 🛡️ 开启 IP 白名单访问</label>
-        <input type="text" id="setIpWhitelist" placeholder="如 192.168.1.*,127.0.0.1" style="margin-top:8px;">
-        <button class="btn-text" onclick="showAudit()" style="color:var(--primary); margin-top:8px;">查看审计日志</button>
       </div>
-      
-      
-      <div style="margin-top:16px; border-top:1px solid var(--outline); padding-top:12px;">
+
+      <!-- 🛡️ 高级安全控制台 -->
+      <div style="margin-bottom:16px; border-bottom:2px dashed var(--primary); padding-bottom:16px; background: var(--surface-variant); padding: 12px; border-radius: 12px;">
+        <h4 style="color:var(--primary); margin-bottom:12px; font-size:15px;">🛡️ 高级安全控制台</h4>
+        
+        <label><input type="checkbox" id="setFail2Ban" /> 防爆破 (连续输错锁 IP)</label><br>
+        <label style="margin-top:6px; display:block;"><input type="checkbox" id="setCcLimit" /> 防 CC 限流 (单 IP 每秒 30 次)</label>
+        <label style="margin-top:6px; display:block;"><input type="checkbox" id="setCaptcha" /> 算数验证码 (被锁时弹出)</label>
+        
+        <label style="margin-top:6px; display:block;"><input type="checkbox" id="setIpWhitelistEnabled" /> 开启 IP 白名单访问</label>
+        <input type="text" id="setIpWhitelist" placeholder="如 192.168.1.*,127.0.0.1" style="margin-top:4px; margin-bottom:8px;">
+        
+        <label style="margin-top:6px; display:block;"><input type="checkbox" id="setLanOnly" /> 🚨 高危操作仅限局域网</label>
+        <label style="margin-top:6px; display:block;"><input type="checkbox" id="setHideHeader" /> 隐藏 Server 响应头 (防扫描)</label>
+        
+        <label style="margin-top:6px; display:block;"><input type="checkbox" id="setPinRequired" /> 敏感操作需要紧急安全码</label>
+        <label style="margin-top:6px; display:block;"><input type="checkbox" id="setAuditEnabled" /> 开启安全审计日志</label>
+        
+        <label style="margin-top:12px; display:block;">隐藏入口暗号 (留空关闭):</label>
+        <input type="text" id="setSecretPath" placeholder="如 mysecret，访问需加 ?s=mysecret">
+        
+        <label style="margin-top:12px; display:block;">闲置自动登出 (分钟，0为不登出):</label>
+        <input type="number" id="setSessionTimeout" value="30">
+        
+        <button class="btn-text" onclick="showAudit()" style="color:var(--primary); margin-top:12px; font-weight:bold;">查看审计日志</button>
+      </div>
+
+      <!-- 🔐 2FA 两步验证 -->
+      <div style="margin-bottom:16px; border-bottom:1px solid var(--outline); padding-bottom:16px;">
+        <label style="font-weight:bold; color:var(--primary);">🔐 两步验证 (2FA)</label>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+            <input type="checkbox" id="set2FA" onchange="toggle2FA(this.checked)">
+            <span>启用 2FA 保护</span>
+        </div>
+        <div id="2faSecretBox" style="display:none; margin-top:8px; background:var(--surface-variant); padding:8px; border-radius:8px;">
+            <p style="font-size:12px; margin-bottom:4px;">密钥 (添加到 Authenticator):</p>
+            <code id="2faSecretText" style="font-size:14px; font-weight:bold; color:var(--primary);"></code>
+        </div>
+      </div>
+
+      <!-- Webhook 与密码 -->
+      <div style="margin-bottom:16px;">
         <label>修改管理员密码：<input type="password" id="setPassword" placeholder="不修改请留空" /></label>
-      </div>
-      <div style="margin-top:12px;">
-        <label>Webhook URL (支持 TG/企微): <input type="text" id="setWebhook" placeholder="https://..." /></label>
-        <label style="margin-top:8px;">Telegram Chat ID: <input type="text" id="setChatId" placeholder="仅 TG 需要" /></label>
+        <label style="margin-top:12px; display:block;">Webhook URL (支持 TG/企微): <input type="text" id="setWebhook" placeholder="https://..." /></label>
+        <label style="margin-top:8px; display:block;">Telegram Chat ID: <input type="text" id="setChatId" placeholder="仅 TG 需要" /></label>
         <button class="btn-text" onclick="testWebhook()" style="margin-top:8px; color:var(--primary);">测试推送</button>
-        <textarea id="setWebhookTemplate" placeholder='自定义 JSON 模板 (留空默认企微格式)' style="margin-top:8px; height:80px;"></textarea>
+        <textarea id="setWebhookTemplate" placeholder='自定义 JSON 模板' style="margin-top:8px; height:80px;"></textarea>
       </div>
-    </div>
-    <div class="dialog-actions">
+
+      <!-- 紧急安全码更新 -->
+      <div style="margin-top:16px; border-top:1px solid var(--outline); padding-top:12px;">
+          <label style="font-weight:bold; color:var(--error);">🚨 紧急安全码</label>
+          <input type="password" id="setPin" placeholder="输入新的 4 位安全码" style="margin-top:8px;">
+          <button class="btn-text" onclick="updatePin()" style="color:var(--primary); margin-top:8px;">更新安全码</button>
+          <button class="btn-text" onclick="showSessions()" style="color:var(--primary); margin-top:8px;">查看在线设备</button>
+      </div>
+
+      <!-- 自毁核弹 -->
+      <div style="margin-top:32px; border-top:2px dashed var(--error); padding-top:16px;">
+        <h4 style="color:var(--error); margin-bottom:8px;">☢️ 终极自毁程序 (Panic Wipe)</h4>
+        <button id="btnWipe" class="btn-filled" style="background:var(--error); color:white; width:100%;" onclick="triggerWipe()">执行自毁</button>
+      </div>
+    
+</div>
+<div class="dialog-actions">
       <button class="btn-text" onclick="closeModal('settingsModal')">取消</button>
       <div style="margin-top:16px; border-top:1px solid var(--outline); padding-top:12px;">
           <label style="font-weight:bold; color:var(--error);">🚨 紧急安全码 (高危操作必填)</label>
@@ -989,10 +1040,11 @@ function showPorts() {
     });
 }
 
+
 function showSettings() {
     closeSheet("mainMenu");
     showModal("settingsModal");
-    fetch("/api/settings").then(r => r.json()).then(s => {
+    fetch("/api/status").then(r=>r.json()).then(s=>{
         document.getElementById("setAlias").value = s.alias || "";
         document.getElementById("setWebPort").value = s.webPort;
         document.getElementById("setDavPort").value = s.davPort;
@@ -1004,18 +1056,37 @@ function showSettings() {
         document.getElementById("setClipboard").checked = s.clipboard;
         document.getElementById("setGlobal").checked = s.globalMode;
         document.getElementById("setLowPower").checked = s.lowPower;
-        document.getElementById("setFail2Ban").checked = s.fail2ban;
-        document.getElementById("setAuditEnabled").checked = s.auditEnabled;
+        
+        // 安全控制台
+        document.getElementById("setFail2Ban").checked = s.fail2ban !== false;
+        document.getElementById("setCcLimit").checked = s.ccLimitEnabled !== false;
+        document.getElementById("setCaptcha").checked = s.captchaEnabled !== false;
+        document.getElementById("setLanOnly").checked = s.lanOnlyStrict !== false;
+        document.getElementById("setHideHeader").checked = s.hideHeader !== false;
+        document.getElementById("setAuditEnabled").checked = s.auditEnabled !== false;
+        document.getElementById("setPinRequired").checked = s.pinRequired !== false;
         document.getElementById("setIpWhitelistEnabled").checked = s.ipWhitelistEnabled;
         document.getElementById("setIpWhitelist").value = s.ipWhitelist || "";
-        document.getElementById("setPinRequired").checked = s.pinRequired;
-        window._pinRequired = s.pinRequired;
-        document.getElementById("setPassword").value = "";
+        document.getElementById("setSecretPath").value = s.secretPath || "";
+        document.getElementById("setSessionTimeout").value = s.sessionTimeout || 30;
+        
         document.getElementById("setWebhook").value = s.webhookUrl || "";
         document.getElementById("setWebhookTemplate").value = s.webhookTemplate || "";
         document.getElementById("setChatId").value = s.webhookChatId || "";
-    }).catch(() => toast("获取设置失败"));
+        document.getElementById("setPassword").value = "";
+        
+        localStorage.setItem("nas_secret", s.secretPath || "");
+        
+        fetch("/api/2fa").then(r=>r.json()).then(d=>{
+            document.getElementById("set2FA").checked = d.enabled;
+            if(d.enabled) {
+                document.getElementById("2faSecretBox").style.display = "block";
+                document.getElementById("2faSecretText").textContent = d.secret;
+            }
+        });
+    });
 }
+
 
 function saveSettings() {
     var ipEnabled = document.getElementById("setIpWhitelistEnabled").checked;
@@ -1043,6 +1114,8 @@ function saveSettings() {
     fd.append("globalMode", document.getElementById("setGlobal").checked);
     fd.append("lanOnlyStrict", document.getElementById("setLanOnly").checked);
     fd.append("captchaEnabled", document.getElementById("setCaptcha").checked);
+    fd.append("sessionTimeout", document.getElementById("setSessionTimeout").value);
+    fd.append("hideHeader", document.getElementById("setHideHeader").checked);
     fd.append("secretPath", document.getElementById("setSecretPath").value);
     fd.append("lowPower", document.getElementById("setLowPower").checked);
     fd.append("fail2ban", document.getElementById("setFail2Ban").checked);
@@ -1394,16 +1467,9 @@ function showAbout() {
 }
 
 
-var oldGetSettings = showSettings;
-showSettings = function() {
-    oldGetSettings();
-    fetch("/api/settings").then(r=>r.json()).then(s=>{
-        document.getElementById("setLanOnly").checked = s.lanOnlyStrict !== false;
-        document.getElementById("setCaptcha").checked = s.captchaEnabled !== false;
-        document.getElementById("setSecretPath").value = s.secretPath || "";
-        localStorage.setItem("nas_secret", s.secretPath || "");
-    });
-};
+
+
+
 
 // 启动
 refresh();
