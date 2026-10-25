@@ -80,9 +80,18 @@ public class SettingsManager {
     public static boolean isAuditEnabled() { return sp.getBoolean("audit_enabled", true); }
     public static void setAuditEnabled(boolean enabled) { sp.edit().putBoolean("audit_enabled", enabled).apply(); }
 
+
+    public static String getSecretPath() { return sp.getString("secret_path", ""); }
+    public static void setSecretPath(String path) { sp.edit().putString("secret_path", path).apply(); }
+
+    public static boolean isLanOnlyStrict() { return sp.getBoolean("lan_only_strict", true); }
+    public static void setLanOnlyStrict(boolean strict) { sp.edit().putBoolean("lan_only_strict", strict).apply(); }
+    
+    public static boolean isCaptchaEnabled() { return sp.getBoolean("captcha_enabled", true); }
+    public static void setCaptchaEnabled(boolean enabled) { sp.edit().putBoolean("captcha_enabled", enabled).apply(); }
+}
     public static String getFingerprint() {
         String fp = sp.getString("fingerprint", "");
         if (fp.isEmpty()) { fp = UUID.randomUUID().toString(); sp.edit().putString("fingerprint", fp).apply(); }
         return fp;
     }
-}

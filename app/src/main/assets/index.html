@@ -466,9 +466,52 @@ var editingFile = "";
 var currentFileToMenu = null;
 
 // ================= 全局 Fetch 拦截 (401) =================
+
+var _needCaptcha = false;
 window.originalFetch = window.fetch;
 window.fetch = function(url, options) {
     if (!options) options = {};
+    if (!options.headers) options.headers = {};
+    
+    var auth = localStorage.getItem("nas_auth");
+    if (auth) options.headers["Authorization"] = auth;
+    
+    var totp = localStorage.getItem("nas_2fa");
+    if (totp) options.headers["X-TOTP-Code"] = totp;
+    
+    var cap = localStorage.getItem("nas_captcha");
+    if (cap) options.headers["X-Captcha"] = cap;
+
+    var secret = localStorage.getItem("nas_secret");
+    if (secret && url.indexOf("?") === -1 && url.indexOf("s=") === -1) {
+        url += "?s=" + secret;
+    } else if (secret && url.indexOf("?") > -1 && url.indexOf("s=") === -1) {
+        url += "&s=" + secret;
+    }
+    
+    return window.originalFetch(url, options).then(res => {
+        if (res.status === 401) {
+            var clone = res.clone();
+            clone.text().then(function(text) {
+                if (text === "2FA_REQUIRED") {
+                    var code = prompt("🔐 请输入 2FA 动态验证码:");
+                    if (code) { localStorage.setItem("nas_2fa", code); location.reload(); }
+                    else { localStorage.removeItem("nas_2fa"); }
+                } else if (text === "CAPTCHA_FAILED") {
+                    fetch("/api/captcha").then(r=>r.json()).then(d=>{
+                        var ans = prompt("🛡️ 触发安全验证，请计算: " + d.q);
+                        if (ans) {
+                            localStorage.setItem("nas_captcha", ans);
+                            location.reload();
+                        }
+                    });
+                }
+            });
+        }
+        return res;
+    });
+};
+
     if (!options.headers) options.headers = {};
     var auth = localStorage.getItem("nas_auth");
     if (auth) options.headers["Authorization"] = auth;
@@ -998,6 +1041,9 @@ function saveSettings() {
     fd.append("stream", document.getElementById("setStream").checked);
     fd.append("clipboard", document.getElementById("setClipboard").checked);
     fd.append("globalMode", document.getElementById("setGlobal").checked);
+    fd.append("lanOnlyStrict", document.getElementById("setLanOnly").checked);
+    fd.append("captchaEnabled", document.getElementById("setCaptcha").checked);
+    fd.append("secretPath", document.getElementById("setSecretPath").value);
     fd.append("lowPower", document.getElementById("setLowPower").checked);
     fd.append("fail2ban", document.getElementById("setFail2Ban").checked);
     fd.append("auditEnabled", document.getElementById("setAuditEnabled").checked);
@@ -1346,6 +1392,18 @@ function showAbout() {
     closeSheet("mainMenu");
     showModal("aboutModal");
 }
+
+
+var oldGetSettings = showSettings;
+showSettings = function() {
+    oldGetSettings();
+    fetch("/api/settings").then(r=>r.json()).then(s=>{
+        document.getElementById("setLanOnly").checked = s.lanOnlyStrict !== false;
+        document.getElementById("setCaptcha").checked = s.captchaEnabled !== false;
+        document.getElementById("setSecretPath").value = s.secretPath || "";
+        localStorage.setItem("nas_secret", s.secretPath || "");
+    });
+};
 
 // 启动
 refresh();

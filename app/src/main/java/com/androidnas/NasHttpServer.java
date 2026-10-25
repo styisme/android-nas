@@ -73,15 +73,38 @@ public class NasHttpServer extends NanoHTTPD {
     @Override public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         try {
+            String clientIp = session.getHeaders().get("x-forwarded-for");
+            if (clientIp == null) clientIp = session.getHeaders().get("remote-addr");
+            if (clientIp == null) clientIp = "127.0.0.1";
+
+            // 1. 隐藏入口拦截
+            String secretPath = SettingsManager.getSecretPath();
+            if (secretPath != null && !secretPath.trim().isEmpty()) {
+                String reqSecret = session.getParms().get("s");
+                if (reqSecret == null || !reqSecret.equals(secretPath.trim())) {
+                    if (!uri.startsWith("/api/")) {
+                        return text(Response.Status.NOT_FOUND, "404 Not Found");
+                    }
+                }
+            }
+
+            // 2. 防 CC 限流
+            if (SettingsManager.isFail2BanEnabled() && SecurityFilter.isBlocked(clientIp)) {
+                return text(Response.Status.FORBIDDEN, "Too many requests. IP Blocked.");
+            }
+            
+            // 3. 高危 API 物理局域网锁
+            if (SettingsManager.isLanOnlyStrict() && isHighRiskApi(uri)) {
+                if (!isLanIp(clientIp)) {
+                    LogManager.audit("拦截公网高危请求: " + clientIp + " 访问 " + uri);
+                    return text(Response.Status.FORBIDDEN, "Forbidden: High-risk API only allowed from LAN.");
+                }
+            }
             if (uri.startsWith("/share/")) return handleSecureShare(session, uri.substring(7));
             
             if ("/manifest.json".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", getClass().getClassLoader().getResourceAsStream("assets/manifest.json"), -1);
             if ("/sw.js".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/javascript", getClass().getClassLoader().getResourceAsStream("assets/sw.js"), -1);
 
-            String clientIp = session.getHeaders().get("x-forwarded-for");
-            if (clientIp == null) clientIp = session.getHeaders().get("remote-addr");
-            if (clientIp == null) clientIp = "127.0.0.1";
-            
             if (SettingsManager.isIpWhitelistEnabled()) {
                 String list = SettingsManager.getIpWhitelist();
                 boolean allowed = false;
@@ -101,6 +124,17 @@ public class NasHttpServer extends NanoHTTPD {
 
             int role = 1;
             if (!Method.OPTIONS.equals(session.getMethod())) {
+                if (SettingsManager.isCaptchaEnabled()) {
+                    String reqCap = session.getHeaders().get("x-captcha");
+                    String expected = captchaMap.get(clientIp);
+                    if (expected != null) {
+                        if (reqCap == null || !reqCap.equals(expected)) {
+                            SecurityFilter.recordFail(clientIp);
+                            return text(Response.Status.UNAUTHORIZED, "CAPTCHA_FAILED");
+                        }
+                        captchaMap.remove(clientIp);
+                    }
+                }
                 role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
                 if (role == 0) {
                     SecurityFilter.recordFail(clientIp);
@@ -151,6 +185,14 @@ public class NasHttpServer extends NanoHTTPD {
                 resJson.append("]");
                 pool.shutdown();
                 return newFixedLengthResponse(Response.Status.OK, "application/json", resJson.toString());
+            }
+
+            if ("/api/captcha".equals(uri)) {
+                int a = (int)(Math.random() * 10);
+                int b = (int)(Math.random() * 10);
+                String ans = String.valueOf(a + b);
+                captchaMap.put(clientIp, ans);
+                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"q\":\"" + a + " + " + b + " = ?\",\"id\":\"" + ans + "\"}");
             }
             if ("/api/status".equals(uri)) {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"httpsEnabled\":" + SettingsManager.isHttpsEnabled() + ",\"isDefaultPwd\":" + DatabaseManager.isDefaultPwd + ",\"fail2ban\":" + SettingsManager.isFail2BanEnabled() + ",\"pinRequired\":" + SettingsManager.isPinRequired() + ",\"auditEnabled\":" + SettingsManager.isAuditEnabled() + ",\"ipWhitelistEnabled\":" + SettingsManager.isIpWhitelistEnabled() + ",\"ipWhitelist\":\"" + SettingsManager.getIpWhitelist() + "\"}");

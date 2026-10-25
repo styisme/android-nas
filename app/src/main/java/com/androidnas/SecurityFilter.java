@@ -11,20 +11,38 @@ import org.json.JSONObject;
 public class SecurityFilter {
     private static class FailInfo { int count; long lastAttempt; }
     private static class SessionInfo { String user; long lastActive; }
+    private static class RateInfo { long windowStart; int count; }
     
     private static final Map<String, FailInfo> failMap = new ConcurrentHashMap<String, FailInfo>();
     private static final Map<String, SessionInfo> activeSessions = new ConcurrentHashMap<String, SessionInfo>();
+    private static final Map<String, RateInfo> rateLimitMap = new ConcurrentHashMap<String, RateInfo>();
     private static final int MAX_FAILS = 5;
     private static final long BAN_TIME = 15 * 60 * 1000L;
 
     public static boolean isBlocked(String ip) {
         FailInfo info = failMap.get(ip);
-        if (info == null) return false;
-        if (System.currentTimeMillis() - info.lastAttempt > BAN_TIME) {
-            failMap.remove(ip);
-            return false;
+        if (info != null && info.count >= MAX_FAILS) {
+            if (System.currentTimeMillis() - info.lastAttempt > BAN_TIME) {
+                failMap.remove(ip);
+            } else {
+                return true;
+            }
         }
-        return info.count >= MAX_FAILS;
+        
+        long now = System.currentTimeMillis();
+        RateInfo rInfo = rateLimitMap.get(ip);
+        if (rInfo == null || now - rInfo.windowStart > 1000) {
+            rInfo = new RateInfo();
+            rInfo.windowStart = now;
+            rInfo.count = 1;
+            rateLimitMap.put(ip, rInfo);
+        } else {
+            rInfo.count++;
+            if (rInfo.count > 30) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static void recordFail(String ip) {
