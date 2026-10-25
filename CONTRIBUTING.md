@@ -14,7 +14,7 @@
 
 ---
 
-## 📂 十端深度项目结构解析 (v4.4.0 架构)
+## 📂 十端深度项目结构解析 (v4.4.1 架构)
 
 ```text
 android-nas/
@@ -78,7 +78,7 @@ android-nas/
 
 项目高度依赖 HTTP 与 WebSocket，所有端的网络层必须严格遵守以下规范（完整细节请见 `docs/API_DOC.md`）。
 
-### 1. 统一鉴权与多用户沙箱隔离 (v4.4.0 重构)
+### 1. 统一鉴权与多用户沙箱隔离 (v4.4.1 重构)
 除分享链接外，所有请求必须携带 Header：`Authorization: Basic Base64(账号:密码)`。
 - **并发隔离**：底层 `AuthManager` 引入了 `ThreadLocal`。在 HTTP、WebDAV、FTP 的请求线程结束时，**必须** 调用 `clearCurrentUser()` 清理状态，防止线程池复用导致的跨请求身份残留越权。
 - **沙箱映射**：`NasHttpServer.safeFile()` 会读取当前用户的 `root_dir`。普通用户路径被锁定在专属目录下；仅 `admin` 在全盘模式可越权。
@@ -100,7 +100,7 @@ android-nas/
 ### 5. 跨端协同 UDP 协议 (8090端口)
 手机端与 TV 端通过 `255.255.255.255:8090` 发送 `DISCOVER_TV` 进行广播发现，实现配置下发与一键投屏。详见 `SyncHelper.java`。
 
-### 6. 高危自毁接口 (v4.4.0 新增)
+### 6. 高危自毁接口 (v4.4.1 新增)
 - 接口 `/api/system/wipe` 为核弹级操作。前端在调用前必须实现**多重验证**（NAS 密码输入 + 系统锁屏指纹验证）。后端接收到请求后会彻底删除物理文件，若带 Root 参数还会直接格式化并重启设备。测试该功能请务必使用废弃设备。
 
 ---
@@ -111,11 +111,11 @@ android-nas/
 
 本项目的发版过程是全自动化的，请严格遵守以下标准作业程序（SOP）：
 
-1. **修改更新日志**：在根目录 `CHANGELOG.md` 顶部，增加新版本号（例如 `## [4.4.0]`）及详细的更新内容。
+1. **修改更新日志**：在根目录 `CHANGELOG.md` 顶部，增加新版本号（例如 `## [4.4.1]`）及详细的更新内容。
 2. **推送代码**：Push 到 `main` 或 `master` 分支。
 3. **自动矩阵编译**：GitHub Actions 检测到 `CHANGELOG.md` 变更，触发 `build-all.yml` 矩阵。并行启动全量编译。
 4. **区分 Debug / Release**：独立日常构建触发 `assembleDebug`，包名带 `.debug` 后缀；`build-all` 触发 `assembleRelease`，使用 GitHub Secrets 注入正式 keystore 进行签名。
-5. **自动打 Tag**：CI 会解析版本号，自动打上 `v4.4.0` 标签。
+5. **自动打 Tag**：CI 会解析版本号，自动打上 `v4.4.1` 标签。
 6. **平铺直传发布**：CI 脚本会使用 `find -type f` 提取所有产物并重命名，直接平铺展示在 Release 页面。
 
 *(日常修改代码如果未动 `CHANGELOG.md`，只会触发对应端的快速独立编译，不会发版)*

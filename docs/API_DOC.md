@@ -1,7 +1,7 @@
 # Android NAS 开发者 API 接口规范
 
 本项目的所有端（Web、手机客户端、TV、Watch、CLI、鸿蒙、苹果、小程序）均通过统一的 HTTP JSON API 与局域网内的服务端通信。此外，为了支持多模态远程控制，另设有一套独立的 WebSocket 实时协议。
-以下是完整的接口规范说明（基于 v4.4.0）。
+以下是完整的接口规范说明（基于 v4.4.1）。
 
 ---
 
@@ -63,7 +63,7 @@
 - **Body**: 纯二进制流 (`application/octet-stream`)。
 - **注意**：客户端必须携带准确的 `Content-Length`。如果服务端写入异常，会触发 Drain 机制并返回明确状态码。
 
-### 5. 大文件秒传与分片上传 (v4.4.0 实装)
+### 5. 大文件秒传与分片上传 (v4.4.1 实装)
 - **秒传校验**:
   - `POST /api/upload/check?hash=文件MD5`
   - 返回: `SECONDS_UPLOAD`（秒传成功，服务端已有该文件）或 `NEED_UPLOAD`（需要继续上传）。
@@ -89,7 +89,7 @@
 - **新建文件夹**: `POST /api/mkdir`，Body: `path=/当前目录&name=新目录名`
 - **重命名**: `POST /api/rename`，Body: `path=/旧路径&newName=新名字`
 - **递归删除**: `POST /api/delete`，Body: `path=/目标路径`
-- **在线保存文本**: `POST /api/save`，Body: `path=/文件路径&content=新的内容` (v4.4.0 起会自动生成带时间戳的 `.bak` 备份)
+- **在线保存文本**: `POST /api/save`，Body: `path=/文件路径&content=新的内容` (v4.4.1 起会自动生成带时间戳的 `.bak` 备份)
 
 ### 9. 在线解压 ZIP
 - **URL**: `/api/unzip`
@@ -153,7 +153,7 @@
 - **URL**: `/share/{token}`
 - **Method**: `GET`
 - **Params**: 如果有提取码，需携带 `?pass=1234`。
-- **Response**: 校验通过后，返回文件流。（注：v4.4.0 起分享链接在底层强制绑定了生成者的 Owner 身份进行沙箱解析）
+- **Response**: 校验通过后，返回文件流。（注：v4.4.1 起分享链接在底层强制绑定了生成者的 Owner 身份进行沙箱解析）
 
 ---
 
@@ -201,7 +201,7 @@
 - **URL**: `/api/settings`
 - **Method**: `GET` / `POST`
 - **GET Response**: 返回包含基础配置 (`alias`, `webPort`, `davPort` 等)、协议开关 (`webdav`, `ftp`, `dlna` 等)、极客配置 (`lowPower`, `globalMode`)、Webhook 配置 (`webhookUrl`, `webhookChatId`) 的 JSON。
-- **POST Body (v4.4.0 扩展)**:
+- **POST Body (v4.4.1 扩展)**:
   - 安全类：`fail2ban` (防爆破开关), `pinRequired` (敏感操作需安全码), `auditEnabled` (审计日志), `ipWhitelistEnabled` (IP白名单开关), `ipWhitelist` (如 `192.168.1.*`)。
   - 敏感验证：如果开启了 `pinRequired`，必须额外传递 `pin=当前安全码`，否则返回 `403 Forbidden`。
 
@@ -246,7 +246,7 @@
 
 为了实现极低延迟的屏幕推流与触控，本项目在 8082 端口独立运行了一套 WebSocket 服务。
 
-- **URL (v4.4.0 鉴权升级)**: `ws://<ip>:8082/?token=<Base64(账号:密码)>`
+- **URL (v4.4.1 鉴权升级)**: `ws://<ip>:8082/?token=<Base64(账号:密码)>`
   - **注意**：不支持匿名连接，且仅限 `admin` 角色。服务端会严格校验 token 并将非法连接断开（Close Code `1008`）。
 - **数据类型**：支持 Binary（视频/图像流）与 Text（控制指令）。
 

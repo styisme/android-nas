@@ -353,7 +353,7 @@ textarea { height: 200px; resize: vertical; font-family: monospace; }
   <div class="dialog" onclick="event.stopPropagation()">
     <div class="dialog-title" style="color:var(--primary)">关于 Android NAS</div>
     <div class="dialog-content" style="line-height:1.6; color:var(--on-surface-variant)">
-      版本: v4.3.0 旗舰版<br><br>
+      版本: v4.4.1 旗舰版<br><br>
       支持流媒体、局域网剪贴板、在线解压、全局搜索、Root 全盘与终端。
     </div>
     <div class="dialog-actions">
@@ -1053,7 +1053,7 @@ function showPhotos() {
 function checkOta() {
     closeSheet("mainMenu");
     fetch("/api/ota").then(r => r.json()).then(data => {
-        alert("当前版本: v4.3.0\n最新版本: v" + data.version + "\n\n" + (data.version === "4.3.0" ? "已是最新版本" : "有新版本可用！"));
+        alert("当前版本: v4.4.1\n最新版本: v" + data.version + "\n\n" + (data.version === "4.4.1" ? "已是最新版本" : "有新版本可用！"));
     });
 }
 

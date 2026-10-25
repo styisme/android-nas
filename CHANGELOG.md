@@ -4,6 +4,27 @@
 版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 **注意：推送到 main 分支修改此文件，将自动触发全平台 10 端代码并行编译，并自动打 Tag 平铺发布至 Releases。**
 
+## [4.4.1] - 2026-10-25
+
+**🚑 紧急核弹补丁：全端沙箱重生与 CI 发版链路抢救**
+
+这是一个专门针对 v4.4.0 遗留的高危逻辑漏洞、底层语法雪崩与自动化发版链路的抢救性版本。彻底拔除了潜伏在底层的所有致命隐患。
+
+### Fixed (🚨 核心安全与全站瘫痪)
+- **普通用户全站 404 与沙箱逃逸**：彻底修复了 `NasHttpServer` 与 `FtpServer` 中因 `new File(rootDir, "/path")` 前导斜杠导致父目录被忽略的底层 Bug。修复前 Guest 账号访问任何文件均报 404，且存在底层越权风险。
+- **CI 自动化发版脚本崩溃**：废弃了极易引发 YAML/Bash 语法错乱的 Here-Document (<<EOF)，改用 `printf` 追加生成 Release Notes，彻底解决发版环节的报错。
+
+### Fixed (🩹 历史遗留的编译雪崩)
+- **SettingsManager 括号嵌套死局**：全量重写类结构，拔除了导致 93 个连锁报错的未闭合方法。
+- **NanoHTTPD 2.2.0 状态码错乱**：将不支持的 `429 TOO_MANY_REQUESTS` 与 `503 SERVICE_UNAVAILABLE` 降级兼容为 `403 FORBIDDEN`，完美适配极限 API 8。
+- **HttpServerService 导包缺失**：补齐了被遗漏的 `java.io.File` 导入，解决 `cleanOldParts` 报错。
+- **FtpServer 幽灵代码残留**：清理了错误复制的 `break` 语句与重复声明的变量，恢复纯 Socket 线程的正常运转。
+
+### Changed (开发规范与文档)
+- **新增移动端极限开发规范**：引入 `DEVELOPMENT_CONSTRAINTS.md`，诚实披露本项目的物理开发环境限制与责任边界。
+- **AI 协作透明化**：进一步细化 AI 开发声明与真机验证模块清单。
+
+---
 ## [4.4.0] - 2026-10-24
 
 **🛡️ 终极安全大满贯、媒体视界与全端底座重构**
