@@ -15,6 +15,7 @@ public class NasHttpServer extends NanoHTTPD {
     private Map<String, ShareInfo> sharedLinks = new ConcurrentHashMap<String, ShareInfo>();
     private static volatile String clipboardContent = "";
     private Context context;
+    private static Map<String, String> captchaMap = new ConcurrentHashMap<String, String>();
 
     public NasHttpServer(int port, Context context) { 
         super(port); 
@@ -33,9 +34,9 @@ public class NasHttpServer extends NanoHTTPD {
         File rootDir = new File(ROOT, userRoot);
         if (!rootDir.exists()) rootDir.mkdirs();
         
-        // 🔥 核心修复：去除前导斜杠，防止 Java File 构造函数忽略父目录导致沙箱逃逸与全站 404
         String relativePath = path.replaceAll("^/+", "");
         File f = new File(rootDir, relativePath);
+        
         String c = f.getCanonicalPath();
         String r = rootDir.getCanonicalPath();
         if (!c.equals(r) && !c.startsWith(r + File.separator)) return null;
@@ -70,14 +71,26 @@ public class NasHttpServer extends NanoHTTPD {
         }
     }
 
+    private boolean isHighRiskApi(String uri) {
+        return uri.startsWith("/api/shell") || uri.startsWith("/api/settings") || uri.startsWith("/api/system/wipe") || uri.startsWith("/api/password");
+    }
+
+    private boolean isLanIp(String ip) {
+        if (ip == null) return false;
+        return ip.startsWith("127.0.0.1") || ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.16.") || ip.startsWith("172.17.") || ip.startsWith("172.18.") || ip.startsWith("172.19.") || ip.startsWith("172.2") || ip.startsWith("172.30.") || ip.startsWith("172.31.") || ip.equals("::1");
+    }
+
     @Override public Response serve(IHTTPSession session) {
         String uri = session.getUri();
         try {
+            if (uri.startsWith("/share/")) return handleSecureShare(session, uri.substring(7));
+            if ("/manifest.json".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", getClass().getClassLoader().getResourceAsStream("assets/manifest.json"), -1);
+            if ("/sw.js".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/javascript", getClass().getClassLoader().getResourceAsStream("assets/sw.js"), -1);
+
             String clientIp = session.getHeaders().get("x-forwarded-for");
             if (clientIp == null) clientIp = session.getHeaders().get("remote-addr");
             if (clientIp == null) clientIp = "127.0.0.1";
 
-            // 1. 隐藏入口拦截
             String secretPath = SettingsManager.getSecretPath();
             if (secretPath != null && !secretPath.trim().isEmpty()) {
                 String reqSecret = session.getParms().get("s");
@@ -88,23 +101,17 @@ public class NasHttpServer extends NanoHTTPD {
                 }
             }
 
-            // 2. 防 CC 限流
             if (SettingsManager.isFail2BanEnabled() && SecurityFilter.isBlocked(clientIp)) {
                 return text(Response.Status.FORBIDDEN, "Too many requests. IP Blocked.");
             }
             
-            // 3. 高危 API 物理局域网锁
             if (SettingsManager.isLanOnlyStrict() && isHighRiskApi(uri)) {
                 if (!isLanIp(clientIp)) {
                     LogManager.audit("拦截公网高危请求: " + clientIp + " 访问 " + uri);
                     return text(Response.Status.FORBIDDEN, "Forbidden: High-risk API only allowed from LAN.");
                 }
             }
-            if (uri.startsWith("/share/")) return handleSecureShare(session, uri.substring(7));
             
-            if ("/manifest.json".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", getClass().getClassLoader().getResourceAsStream("assets/manifest.json"), -1);
-            if ("/sw.js".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/javascript", getClass().getClassLoader().getResourceAsStream("assets/sw.js"), -1);
-
             if (SettingsManager.isIpWhitelistEnabled()) {
                 String list = SettingsManager.getIpWhitelist();
                 boolean allowed = false;
@@ -116,10 +123,6 @@ public class NasHttpServer extends NanoHTTPD {
                     }
                 }
                 if (!allowed) return text(Response.Status.FORBIDDEN, "IP Blocked by Whitelist");
-            }
-            
-            if (SettingsManager.isFail2BanEnabled() && SecurityFilter.isBlocked(clientIp)) {
-                return text(Response.Status.FORBIDDEN, "Too many attempts. IP Blocked.");
             }
 
             int role = 1;
@@ -135,8 +138,13 @@ public class NasHttpServer extends NanoHTTPD {
                         captchaMap.remove(clientIp);
                     }
                 }
-                role = AuthManager.verifyRole(session.getHeaders().get("authorization"));
+                
+                String totpCode = session.getHeaders().get("x-totp-code");
+                role = AuthManager.verifyRole(session.getHeaders().get("authorization"), totpCode);
                 if (role == 0) {
+                    if (SettingsManager.is2FAEnabled() && AuthManager.verifyRole(session.getHeaders().get("authorization"), null) > 0) {
+                        return text(Response.Status.UNAUTHORIZED, "2FA_REQUIRED");
+                    }
                     SecurityFilter.recordFail(clientIp);
                     LogManager.audit("登录失败: " + clientIp + " 尝试账号 " + AuthManager.getCurrentUser());
                     Response r = newFixedLengthResponse(Response.Status.UNAUTHORIZED, "text/plain", "401");
@@ -152,13 +160,23 @@ public class NasHttpServer extends NanoHTTPD {
                 return r;
             }
 
+            if ("/api/status".equals(uri)) {
+                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"httpsEnabled\":" + SettingsManager.isHttpsEnabled() + ",\"isDefaultPwd\":" + DatabaseManager.isDefaultPwd + ",\"fail2ban\":" + SettingsManager.isFail2BanEnabled() + ",\"pinRequired\":" + SettingsManager.isPinRequired() + ",\"auditEnabled\":" + SettingsManager.isAuditEnabled() + ",\"ipWhitelistEnabled\":" + SettingsManager.isIpWhitelistEnabled() + ",\"ipWhitelist\":\"" + SettingsManager.getIpWhitelist() + "\",\"lanOnlyStrict\":" + SettingsManager.isLanOnlyStrict() + ",\"captchaEnabled\":" + SettingsManager.isCaptchaEnabled() + ",\"ccLimitEnabled\":" + SettingsManager.isCcLimitEnabled() + ",\"secretPath\":\"" + SettingsManager.getSecretPath() + "\",\"sessionTimeout\":" + SettingsManager.getSessionTimeout() + ",\"hideHeader\":" + SettingsManager.isHideHeaderEnabled() + "}");
+            }
+            
+            if ("/api/captcha".equals(uri)) {
+                int a = (int)(Math.random() * 10);
+                int b = (int)(Math.random() * 10);
+                String ans = String.valueOf(a + b);
+                captchaMap.put(clientIp, ans);
+                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"q\":\"" + a + " + " + b + " = ?\",\"id\":\"" + ans + "\"}");
+            }
+            
             if ("/api/ports".equals(uri)) {
                 final int[] ports = {8080, 8081, 2121, 8082, 53317, 8090, 445, 8096, 5244, 3000, 53};
                 final String[] names = {"Web 控制台", "WebDAV", "FTP 服务", "WebSocket 远控", "LocalSend", "协同发现", "SMB", "Jellyfin", "Alist", "AdGuard Web", "AdGuard DNS"};
-                
                 java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(10);
                 java.util.List<java.util.concurrent.Future<String>> futures = new java.util.ArrayList<>();
-                
                 for (int i = 0; i < ports.length; i++) {
                     final int p = ports[i];
                     final String n = names[i];
@@ -178,7 +196,6 @@ public class NasHttpServer extends NanoHTTPD {
                         }
                     }));
                 }
-                
                 StringBuilder resJson = new StringBuilder("[");
                 for (int i = 0; i < futures.size(); i++) {
                     if (i > 0) resJson.append(",");
@@ -189,18 +206,39 @@ public class NasHttpServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", resJson.toString());
             }
 
-            if ("/api/captcha".equals(uri)) {
-                int a = (int)(Math.random() * 10);
-                int b = (int)(Math.random() * 10);
-                String ans = String.valueOf(a + b);
-                captchaMap.put(clientIp, ans);
-                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"q\":\"" + a + " + " + b + " = ?\",\"id\":\"" + ans + "\"}");
+            if ("/api/speedtest".equals(uri)) {
+                long bytesToSend = 20 * 1024 * 1024L;
+                try { bytesToSend = Long.parseLong(session.getParms().get("size")) * 1024 * 1024; } catch (Exception ignored) {}
+                return newChunkedResponse(Response.Status.OK, "application/octet-stream", new SpeedTestStream(bytesToSend));
             }
-            if ("/api/status".equals(uri)) {
-                return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"httpsEnabled\":" + SettingsManager.isHttpsEnabled() + ",\"isDefaultPwd\":" + DatabaseManager.isDefaultPwd + ",\"fail2ban\":" + SettingsManager.isFail2BanEnabled() + ",\"pinRequired\":" + SettingsManager.isPinRequired() + ",\"auditEnabled\":" + SettingsManager.isAuditEnabled() + ",\"ipWhitelistEnabled\":" + SettingsManager.isIpWhitelistEnabled() + ",\"ipWhitelist\":\"" + SettingsManager.getIpWhitelist() + "\"}");
+            if ("/api/sms/send".equals(uri) && Method.POST.equals(session.getMethod())) {
+                String phone = session.getParms().get("phone");
+                String content = session.getParms().get("content");
+                if (phone != null && content != null) {
+                    SmsManager.sendSms(phone, content);
+                    return text(Response.Status.OK, "OK");
+                }
+                return text(Response.Status.BAD_REQUEST, "Missing params");
             }
+            if ("/api/sms/logs".equals(uri)) {
+                return newFixedLengthResponse(Response.Status.OK, "application/json", SmsManager.getLogsJson());
+            }
+            if ("/api/2fa".equals(uri)) {
+                if (Method.GET.equals(session.getMethod())) {
+                    String secret = SettingsManager.get2FASecret();
+                    if (secret.isEmpty()) secret = TotpManager.generateSecret();
+                    return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"enabled\":" + SettingsManager.is2FAEnabled() + ",\"secret\":\"" + secret + "\"}");
+                } else if (Method.POST.equals(session.getMethod())) {
+                    String enable = session.getParms().get("enable");
+                    String secret = session.getParms().get("secret");
+                    if (secret != null) SettingsManager.set2FASecret(secret);
+                    SettingsManager.set2FAEnabled("true".equals(enable));
+                    return text(Response.Status.OK, "OK");
+                }
+            }
+
             if ("/api/monitor".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", SystemMonitor.getStatusJson(context));
-            if ("/api/ota".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"version\":\"4.3.0\"}");
+            if ("/api/ota".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"version\":\"4.4.1\"}");
             
             if ("/api/settings".equals(uri)) {
                 if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
@@ -585,11 +623,7 @@ public class NasHttpServer extends NanoHTTPD {
     private Response handleSecureShare(IHTTPSession session, String token) throws Exception {
         ShareInfo info = sharedLinks.get(token);
         if (info == null) return text(Response.Status.NOT_FOUND, "失效");
-        if (System.currentTimeMillis() > info.expire) {
-            sharedLinks.remove(token);
-            return text(Response.Status.FORBIDDEN, "已过期");
-        }
-        
+        if (System.currentTimeMillis() > info.expire) { sharedLinks.remove(token); return text(Response.Status.FORBIDDEN, "已过期"); }
         AuthManager.setCurrentUser(info.owner);
         try {
             File f = safeFile(info.path);
@@ -689,6 +723,21 @@ public class NasHttpServer extends NanoHTTPD {
         return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
     
+    private static class SpeedTestStream extends InputStream {
+        private long remaining;
+        public SpeedTestStream(long size) { this.remaining = size; }
+        @Override public int read() throws java.io.IOException {
+            if (remaining <= 0) return -1;
+            remaining--; return 0;
+        }
+        @Override public int read(byte[] b, int off, int len) throws java.io.IOException {
+            if (remaining <= 0) return -1;
+            int toRead = (int) Math.min(len, remaining);
+            java.util.Arrays.fill(b, off, off + toRead, (byte)0);
+            remaining -= toRead; return toRead;
+        }
+    }
+
     private static class LimitedInputStream extends FilterInputStream {
         private long limit;
         protected LimitedInputStream(InputStream in, long limit) { super(in); this.limit = limit; }
