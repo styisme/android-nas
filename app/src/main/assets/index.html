@@ -1475,13 +1475,13 @@ function showAbout() {
 // 补全 4.5.0 缺失的核弹级功能
 if (typeof toggle2FA === 'undefined') {
     function toggle2FA(enabled) {
-        fetch("/api/2fa").then(r=>r.json()).then(d=>{
+        fetch("/api/2fa").then(function(r){ return r.json(); }).then(function(d){
             if (enabled && !d.enabled) {
                 if (!confirm("请确保已安装 Authenticator，密钥为: " + d.secret + "\n\n确定开启吗？")) {
                     document.getElementById("set2FA").checked = false; return;
                 }
             }
-            fetch("/api/2fa", {method:"POST", body:new URLSearchParams({enable: enabled, secret: d.secret})}).then(()=>{
+            fetch("/api/2fa", {method:"POST", body:new URLSearchParams({enable: enabled, secret: d.secret})}).then(function(){
                 document.getElementById("2faSecretBox").style.display = enabled ? "block" : "none";
                 document.getElementById("2faSecretText").textContent = d.secret;
                 toast(enabled ? "2FA 已开启" : "2FA 已关闭");
