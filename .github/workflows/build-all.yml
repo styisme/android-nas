@@ -283,55 +283,39 @@ jobs:
         if: steps.check_tag.outputs.skip_release == 'false'
         run: |
           VERSION=$(grep -oP '##\s*\[?v?\K\d+\.\d+\.\d+' CHANGELOG.md | head -1)
-          
-          # 提取最新的更新日志部分（从最新的 ## [ 开始，到下一个 ## [ 结束）
           awk '/^## \[/{count++} count==1{print}' CHANGELOG.md | tail -n +2 > changelog_body.md
           
-          cat << EOF > release_notes.md
-          ## 👑 Android NAS v${VERSION} 正式发布！
-          
-          **十端生态矩阵：全平台私有云控制中枢**
-          
-          ---
-          
-          ### 🚀 核心更新亮点
-          EOF
+          # 使用 printf 避免 Here-Document 缩进导致的语法错误
+          printf "## 👑 Android NAS v%s 正式发布！\n\n" "$VERSION" > release_notes.md
+          printf "**十端生态矩阵：全平台私有云控制中枢**\n\n" >> release_notes.md
+          printf -- "---\n\n" >> release_notes.md
+          printf "### 🚀 核心更新亮点\n\n" >> release_notes.md
           
           cat changelog_body.md >> release_notes.md
           
-          cat << EOF >> release_notes.md
+          printf "\n\n---\n\n" >> release_notes.md
+          printf "### 📦 安装包下载指南 (Assets)\n\n" >> release_notes.md
+          printf "请直接点击下方对应的文件下载（所有端版本号均已同步）：\n\n" >> release_notes.md
           
-          ---
+          printf -- "- 📱 **服务端 (旧手机)**：\`AndroidNAS-Server-v%s.apk\`\n" "$VERSION" >> release_notes.md
+          printf -- "- 🖥️ **手机客户端 (主力机)**：\`AndroidNAS-Client-v%s.apk\`\n" "$VERSION" >> release_notes.md
+          printf -- "- 📺 **TV 电视端**：\`AndroidNAS-TV-v%s.apk\`\n" "$VERSION" >> release_notes.md
+          printf -- "- ⌚ **手表端**：\`AndroidNAS-Watch-v%s.apk\`\n" "$VERSION" >> release_notes.md
+          printf -- "- 💻 **Windows GUI**：\`AndroidNAS-Desktop-Windows-v%s.exe\`\n" "$VERSION" >> release_notes.md
+          printf -- "- 🐧 **Linux GUI**：\`AndroidNAS-Desktop-Linux-v%s\`\n" "$VERSION" >> release_notes.md
+          printf -- "- ⌨️ **Windows CLI**：\`nas-cli-windows-v%s.exe\`\n" "$VERSION" >> release_notes.md
+          printf -- "- ⌨️ **Linux CLI**：\`nas-cli-linux-v%s\`\n" "$VERSION" >> release_notes.md
+          printf -- "- 🌐 **浏览器插件 / 微信小程序**：\`.zip\` 压缩包\n\n" >> release_notes.md
           
-          ### 📦 安装包下载指南 (Assets)
-          
-          请直接点击下方对应的文件下载（所有端版本号均已同步）：
-          
-          - 📱 **服务端 (旧手机)**：`AndroidNAS-Server-${{ steps.check_tag.outputs.version }}.apk`
-          - 🖥️ **手机客户端 (主力机)**：`AndroidNAS-Client-${{ steps.check_tag.outputs.version }}.apk`
-          - 📺 **TV 电视端**：`AndroidNAS-TV-${{ steps.check_tag.outputs.version }}.apk`
-          - ⌚ **手表端**：`AndroidNAS-Watch-${{ steps.check_tag.outputs.version }}.apk`
-          - 💻 **Windows GUI**：`AndroidNAS-Desktop-Windows-${{ steps.check_tag.outputs.version }}.exe`
-          - 🐧 **Linux GUI**：`AndroidNAS-Desktop-Linux-${{ steps.check_tag.outputs.version }}`
-          - ⌨️ **Windows CLI**：`nas-cli-windows-v${VERSION}.exe`
-          - ⌨️ **Linux CLI**：`nas-cli-linux-v${VERSION}`
-          - 🌐 **浏览器插件 / 微信小程序**：`.zip` 压缩包
-          
-          *(注：苹果与鸿蒙端需使用开发者工具自行编译签名。)*
-          
-          ---
-          
-          ### ⚠️ 安全与高危警告
-          
-          1. **全盘模式与远控的危险性**：开启 Web Shell、H264 远控或 Root 免死保活时，应用将拥有极高的系统权限。**请绝对不要在公共 WiFi 下暴露远控端口**。
-          2. **保活模块冲突**：若刷入了 Magisk 特权模块，可能会导致系统安装器提示“应用未卸载”。请进入 Magisk 临时关闭模块并重启后，使用 `pm uninstall` 强删。
-          3. **明文传输**：局域网传输默认明文 HTTP。公网访问请务必自建 SSH 穿透进行加密。
-          
-          ---
-          
-          **Enjoy your personal cloud! 如果觉得项目对你有帮助，欢迎点一个 ⭐ Star！**
-          EOF
-          
+          printf "*(注：苹果与鸿蒙端需使用开发者工具自行编译签名。)*\n\n" >> release_notes.md
+          printf -- "---\n\n" >> release_notes.md
+          printf "### ⚠️ 安全与高危警告\n\n" >> release_notes.md
+          printf "1. **全盘模式与远控的危险性**：开启 Web Shell、H264 远控或 Root 免死保活时，应用将拥有极高的系统权限。**请绝对不要在公共 WiFi 下暴露远控端口**。\n" >> release_notes.md
+          printf "2. **保活模块冲突**：若刷入了 Magisk 特权模块，可能会导致系统安装器提示“应用未卸载”。请进入 Magisk 临时关闭模块并重启后，使用 \`pm uninstall\` 强删。\n" >> release_notes.md
+          printf "3. **明文传输**：局域网传输默认明文 HTTP。公网访问请务必自建 SSH 穿透进行加密。\n\n" >> release_notes.md
+          printf -- "---\n\n" >> release_notes.md
+          printf "**Enjoy your personal cloud! 如果觉得项目对你有帮助，欢迎点一个 ⭐ Star！**\n" >> release_notes.md
+
       - name: Create GitHub Release
         if: steps.check_tag.outputs.skip_release == 'false'
         uses: softprops/action-gh-release@v2

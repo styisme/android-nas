@@ -33,7 +33,9 @@ public class NasHttpServer extends NanoHTTPD {
         File rootDir = new File(ROOT, userRoot);
         if (!rootDir.exists()) rootDir.mkdirs();
         
-        File f = new File(rootDir, path);
+        // 🔥 核心修复：去除前导斜杠，防止 Java File 构造函数忽略父目录导致沙箱逃逸与全站 404
+        String relativePath = path.replaceAll("^/+", "");
+        File f = new File(rootDir, relativePath);
         String c = f.getCanonicalPath();
         String r = rootDir.getCanonicalPath();
         if (!c.equals(r) && !c.startsWith(r + File.separator)) return null;

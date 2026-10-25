@@ -178,7 +178,10 @@ public class FtpServer extends Thread {
                 if (SettingsManager.isGlobalMode() && currentUser.equals("admin")) return new File(path).isAbsolute() ? new File(path) : new File(currentDir, path);
                 File baseDir = new File(rootDir, userRootDir);
                 if (!baseDir.exists()) baseDir.mkdirs();
-                File f = new File(path).isAbsolute() ? new File(baseDir, path) : new File(currentDir, path);
+                
+                // 🔥 核心修复：去除前导斜杠，防止绝对路径逃逸
+                String relativePath = path.replaceAll("^/+", "");
+                File f = new File(path).isAbsolute() ? new File(baseDir, relativePath) : new File(currentDir, path);
                 String c = f.getCanonicalPath();
                 String r = baseDir.getCanonicalPath();
                 if (!c.equals(r) && !c.startsWith(r + File.separator)) return null;
