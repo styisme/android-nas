@@ -534,10 +534,8 @@ window.fetch = function(url, options) {
     if (cap) options.headers["X-Captcha"] = cap;
 
     var secret = localStorage.getItem("nas_secret");
-    if (secret && url.indexOf("?") === -1 && url.indexOf("s=") === -1) {
-        url += "?s=" + secret;
-    } else if (secret && url.indexOf("?") > -1 && url.indexOf("s=") === -1) {
-        url += "&s=" + secret;
+    if (secret && !/[?&]s=/.test(url)) {
+        url += (url.indexOf("?") === -1 ? "?" : "&") + "s=" + secret;
     }
     
     return window.originalFetch(url, options).then(res => {
@@ -1044,7 +1042,8 @@ function showPorts() {
 function showSettings() {
     closeSheet("mainMenu");
     showModal("settingsModal");
-    fetch("/api/status").then(r=>r.json()).then(s=>{
+    // 🔥 修复：改回读取 /api/settings 获取完整数据
+    fetch("/api/settings").then(r=>r.json()).then(s=>{
         document.getElementById("setAlias").value = s.alias || "";
         document.getElementById("setWebPort").value = s.webPort;
         document.getElementById("setDavPort").value = s.davPort;

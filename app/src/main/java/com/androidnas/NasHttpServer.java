@@ -142,7 +142,8 @@ public class NasHttpServer extends NanoHTTPD {
                 String totpCode = session.getHeaders().get("x-totp-code");
                 role = AuthManager.verifyRole(session.getHeaders().get("authorization"), totpCode);
                 if (role == 0) {
-                    if (SettingsManager.is2FAEnabled() && AuthManager.verifyRole(session.getHeaders().get("authorization"), null) > 0) {
+                    // 🔥 修复死锁：如果密码正确但 2FA 失败，提示需要验证码
+                    if (SettingsManager.is2FAEnabled() && AuthManager.verifyPasswordOnly(session.getHeaders().get("authorization")) > 0) {
                         return text(Response.Status.UNAUTHORIZED, "2FA_REQUIRED");
                     }
                     SecurityFilter.recordFail(clientIp);
@@ -207,7 +208,7 @@ public class NasHttpServer extends NanoHTTPD {
             }
 
             if ("/api/speedtest".equals(uri)) {
-                long bytesToSend = 20 * 1024 * 1024L;
+                long bytesToSend = 5 * 1024 * 1024L;
                 try { bytesToSend = Long.parseLong(session.getParms().get("size")) * 1024 * 1024; } catch (Exception ignored) {}
                 return newChunkedResponse(Response.Status.OK, "application/octet-stream", new SpeedTestStream(bytesToSend));
             }
@@ -226,7 +227,10 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/2fa".equals(uri)) {
                 if (Method.GET.equals(session.getMethod())) {
                     String secret = SettingsManager.get2FASecret();
-                    if (secret.isEmpty()) secret = TotpManager.generateSecret();
+                    if (secret.isEmpty()) {
+                        secret = TotpManager.generateSecret();
+                        SettingsManager.set2FASecret(secret); // 🔥 修复：生成后立即持久化
+                    }
                     return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"enabled\":" + SettingsManager.is2FAEnabled() + ",\"secret\":\"" + secret + "\"}");
                 } else if (Method.POST.equals(session.getMethod())) {
                     String enable = session.getParms().get("enable");
@@ -238,7 +242,7 @@ public class NasHttpServer extends NanoHTTPD {
             }
 
             if ("/api/monitor".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", SystemMonitor.getStatusJson(context));
-            if ("/api/ota".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"version\":\"4.4.1\"}");
+            if ("/api/ota".equals(uri)) return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"version\":\"__VERSION__\"}");
             
             if ("/api/settings".equals(uri)) {
                 if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");

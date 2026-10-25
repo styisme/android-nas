@@ -24,6 +24,23 @@ public class AuthManager {
     public static void setCurrentUser(String user) { currentUser.set(user); }
     public static void clearCurrentUser() { currentUser.remove(); }
 
+
+    // 仅验证密码，忽略 2FA (用于判断是否是因为缺少 2FA 导致的失败)
+    public static int verifyPasswordOnly(String authHeader) {
+        if (!authEnabled) { currentUser.set("admin"); return 1; }
+        if (authHeader == null || !authHeader.startsWith("Basic ")) return 0;
+        try {
+            String base64 = authHeader.substring(6).trim();
+            byte[] decodedBytes = Base64.decode(base64, Base64.NO_WRAP);
+            String decoded = new String(decodedBytes, "UTF-8");
+            String[] parts = decoded.split(":", 2);
+            if (parts.length == 2) {
+                return DatabaseManager.getInstance().verifyUser(parts[0], parts[1]);
+            }
+        } catch (Throwable e) { return 0; }
+        return 0;
+    }
+
     // 双参数版本：支持 2FA 动态码校验
     public static int verifyRole(String authHeader, String totpCode) {
         if (!authEnabled) { currentUser.set("admin"); return 1; }
