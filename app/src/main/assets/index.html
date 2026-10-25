@@ -1115,6 +1115,7 @@ function saveSettings() {
     fd.append("captchaEnabled", document.getElementById("setCaptcha").checked);
     fd.append("sessionTimeout", document.getElementById("setSessionTimeout").value);
     fd.append("hideHeader", document.getElementById("setHideHeader").checked);
+    fd.append("ccLimitEnabled", document.getElementById("setCcLimit").checked);
     fd.append("secretPath", document.getElementById("setSecretPath").value);
     fd.append("lowPower", document.getElementById("setLowPower").checked);
     fd.append("fail2ban", document.getElementById("setFail2Ban").checked);

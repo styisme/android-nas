@@ -77,7 +77,9 @@ public class NasHttpServer extends NanoHTTPD {
 
     private boolean isLanIp(String ip) {
         if (ip == null) return false;
-        return ip.startsWith("127.0.0.1") || ip.startsWith("192.168.") || ip.startsWith("10.") || ip.startsWith("172.16.") || ip.startsWith("172.17.") || ip.startsWith("172.18.") || ip.startsWith("172.19.") || ip.startsWith("172.2") || ip.startsWith("172.30.") || ip.startsWith("172.31.") || ip.equals("::1");
+        return ip.equals("::1") || ip.startsWith("127.0.0.1") 
+            || ip.startsWith("192.168.") || ip.startsWith("10.") 
+            || ip.matches("172\\.(1[6-9]|2[0-9]|3[01])\\..*");
     }
 
     @Override public Response serve(IHTTPSession session) {
@@ -247,7 +249,30 @@ public class NasHttpServer extends NanoHTTPD {
             if ("/api/settings".equals(uri)) {
                 if (role != 1) return text(Response.Status.FORBIDDEN, "Forbidden");
                 if (Method.GET.equals(session.getMethod())) {
-                    String json = "{\"alias\":\"" + SettingsManager.getDeviceAlias() + "\",\"webPort\":" + SettingsManager.getWebPort() + ",\"davPort\":" + SettingsManager.getWebDavPort() + ",\"ftpPort\":" + SettingsManager.getFtpPort() + ",\"webdav\":" + SettingsManager.isWebDavEnabled() + ",\"ftp\":" + SettingsManager.isFtpEnabled() + ",\"dlna\":" + SettingsManager.isDlnaEnabled() + ",\"stream\":" + SettingsManager.isStreamEnabled() + ",\"clipboard\":" + SettingsManager.isClipboardEnabled() + ",\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"webhookUrl\":\"" + SettingsManager.getWebhookUrl() + "\",\"webhookChatId\":\"" + SettingsManager.getWebhookChatId() + "\"}";
+                    String json = "{\"alias\":\"" + SettingsManager.getDeviceAlias() + "\""
+                        + ",\"webPort\":" + SettingsManager.getWebPort()
+                        + ",\"davPort\":" + SettingsManager.getWebDavPort()
+                        + ",\"ftpPort\":" + SettingsManager.getFtpPort()
+                        + ",\"webdav\":" + SettingsManager.isWebDavEnabled()
+                        + ",\"ftp\":" + SettingsManager.isFtpEnabled()
+                        + ",\"dlna\":" + SettingsManager.isDlnaEnabled()
+                        + ",\"stream\":" + SettingsManager.isStreamEnabled()
+                        + ",\"clipboard\":" + SettingsManager.isClipboardEnabled()
+                        + ",\"lowPower\":" + SettingsManager.isLowPowerMode()
+                        + ",\"globalMode\":" + SettingsManager.isGlobalMode()
+                        + ",\"fail2ban\":" + SettingsManager.isFail2BanEnabled()
+                        + ",\"pinRequired\":" + SettingsManager.isPinRequired()
+                        + ",\"auditEnabled\":" + SettingsManager.isAuditEnabled()
+                        + ",\"ipWhitelistEnabled\":" + SettingsManager.isIpWhitelistEnabled()
+                        + ",\"ipWhitelist\":\"" + SettingsManager.getIpWhitelist() + "\""
+                        + ",\"lanOnlyStrict\":" + SettingsManager.isLanOnlyStrict()
+                        + ",\"captchaEnabled\":" + SettingsManager.isCaptchaEnabled()
+                        + ",\"ccLimitEnabled\":" + SettingsManager.isCcLimitEnabled()
+                        + ",\"secretPath\":\"" + SettingsManager.getSecretPath() + "\""
+                        + ",\"sessionTimeout\":" + SettingsManager.getSessionTimeout()
+                        + ",\"hideHeader\":" + SettingsManager.isHideHeaderEnabled()
+                        + ",\"webhookUrl\":\"" + SettingsManager.getWebhookUrl() + "\""
+                        + ",\"webhookChatId\":\"" + SettingsManager.getWebhookChatId() + "\"}";
                     return newFixedLengthResponse(Response.Status.OK, "application/json", json);
                 }
             }

@@ -72,6 +72,7 @@ public class HttpServerService extends Service {
 
             serverHttp.start();
             RemoteDesktopManager.init(this);
+        BatteryProtector.init(this);
 
         } catch (Exception e) {
             lastError += "Web: " + e.getMessage() + "\n";
