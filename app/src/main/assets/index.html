@@ -1471,6 +1471,67 @@ function showAbout() {
 
 
 
+
+// 补全 4.5.0 缺失的核弹级功能
+if (typeof toggle2FA === 'undefined') {
+    function toggle2FA(enabled) {
+        fetch("/api/2fa").then(r=>r.json()).then(d=>{
+            if (enabled && !d.enabled) {
+                if (!confirm("请确保已安装 Authenticator，密钥为: " + d.secret + "\n\n确定开启吗？")) {
+                    document.getElementById("set2FA").checked = false; return;
+                }
+            }
+            fetch("/api/2fa", {method:"POST", body:new URLSearchParams({enable: enabled, secret: d.secret})}).then(()=>{
+                document.getElementById("2faSecretBox").style.display = enabled ? "block" : "none";
+                document.getElementById("2faSecretText").textContent = d.secret;
+                toast(enabled ? "2FA 已开启" : "2FA 已关闭");
+            });
+        });
+    }
+}
+if (typeof updatePin === 'undefined') {
+    function updatePin() {
+        var oldPin = prompt("请输入当前安全码:");
+        if (!oldPin) return;
+        var newPin = prompt("请输入新的安全码 (至少4位):");
+        if (!newPin) return;
+        fetch("/api/security/pin", {method:"POST", body:new URLSearchParams({oldPin: oldPin, newPin: newPin})}).then(function(r){
+            if (r.ok) toast("安全码已更新");
+            else toast("更新失败，原安全码错误");
+        });
+    }
+}
+if (typeof showSessions === 'undefined') {
+    function showSessions() {
+        fetch("/api/security/sessions").then(function(r){ return r.json(); }).then(function(data){
+            var msg = "在线设备:\n";
+            data.forEach(function(s){ msg += s.ip + " - " + s.user + " (" + s.lastActive + ")\n"; });
+            alert(msg || "暂无在线设备");
+        });
+    }
+}
+if (typeof triggerWipe === 'undefined') {
+    function triggerWipe() {
+        if (!confirm("⚠️ 第一次确认：你即将销毁所有文件！确定要继续吗？")) return;
+        if (!confirm("☢️ 第二次确认：此操作绝对不可逆，手机可能会变砖！你确定吗？")) return;
+        var pwd = prompt("请输入管理员密码以启动自毁程序：");
+        if (!pwd) return;
+        var rootMode = confirm("是否连同系统底层一起摧毁？\n\n[确定] = 包含系统 (需Root)\n[取消] = 仅删除文件");
+        var btn = document.getElementById("btnWipe");
+        btn.innerText = "正在执行毁灭..."; btn.disabled = true;
+        fetch("/api/system/wipe", {method: "POST", body: new URLSearchParams({ password: pwd, root: rootMode ? "true" : "false" })})
+        .then(function(r) {
+            if (r.ok) document.body.innerHTML = "<div style='display:flex; justify-content:center; align-items:center; height:100vh; background:#000; color:#f00; font-size:24px;'>☢️ 系统已自毁。</div>";
+            else {
+                alert("自毁失败：" + r.status);
+                btn.innerText = "执行自毁"; btn.disabled = false;
+            }
+        }).catch(function() {
+            document.body.innerHTML = "<div style='display:flex; justify-content:center; align-items:center; height:100vh; background:#000; color:#f00; font-size:24px;'>☢️ 连接已强制断开。设备正在销毁中...</div>";
+        });
+    }
+}
+
 // 启动
 refresh();
 </script>
