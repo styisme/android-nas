@@ -1,6 +1,7 @@
 package com.androidnas;
 
 import android.app.Notification;
+import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
@@ -10,6 +11,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.Environment;
+import java.io.File;
 import javax.net.ssl.SSLServerSocketFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -39,7 +41,7 @@ public class HttpServerService extends Service {
         running = false;
         startedServices.clear();
         lastError = "";
-        
+
         try {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AndroidNAS::CpuLock");
@@ -54,7 +56,7 @@ public class HttpServerService extends Service {
 
         try {
             serverHttp = new NasHttpServer(SettingsManager.getWebPort(), this);
-            
+
             if (SettingsManager.isHttpsEnabled()) {
                 SSLServerSocketFactory ssl = CertificateUtils.getSSLFactory();
                 if (ssl != null) {
@@ -67,24 +69,27 @@ public class HttpServerService extends Service {
             } else {
                 startedServices.add("Web(HTTP)");
             }
-            
+
             serverHttp.start();
-            // 启动 WebSocket
             RemoteDesktopManager.init(this);
-            
-        } catch (Exception e) { 
-            lastError += "Web: " + e.getMessage() + "\n"; 
-            ok = false; 
+
+        } catch (Exception e) {
+            lastError += "Web: " + e.getMessage() + "\n";
+            ok = false;
         }
 
         if (SettingsManager.isWebDavEnabled()) try {
-            webDavHttp = new WebDavServer(root); webDavHttp.startServer(SettingsManager.getWebDavPort()); startedServices.add("WebDAV");
+            webDavHttp = new WebDavServer(root);
+            webDavHttp.startServer(SettingsManager.getWebDavPort());
+            startedServices.add("WebDAV");
         } catch (Exception e) { lastError += "WebDAV: " + e.getMessage() + "\n"; ok = false; }
-        
+
         if (SettingsManager.isFtpEnabled()) try {
-            ftpServer = new FtpServer(SettingsManager.getFtpPort(), this); ftpServer.start(); startedServices.add("FTP");
+            ftpServer = new FtpServer(SettingsManager.getFtpPort(), this);
+            ftpServer.start();
+            startedServices.add("FTP");
         } catch (Exception e) { lastError += "FTP: " + e.getMessage() + "\n"; ok = false; }
-        
+
         running = ok || startedServices.contains("Web(HTTP)") || startedServices.contains("Web(HTTPS)");
         startCleanupTask();
     }
@@ -96,20 +101,27 @@ public class HttpServerService extends Service {
             PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), flags);
             Notification n;
             if (Build.VERSION.SDK_INT >= 26) {
-                android.app.NotificationChannel ch = new android.app.NotificationChannel("nas_service_channel", "NAS 后台服务", android.app.NotificationManager.IMPORTANCE_LOW);
+                android.app.NotificationChannel ch = new android.app.NotificationChannel(
+                        "nas_service_channel", "NAS 后台服务", android.app.NotificationManager.IMPORTANCE_LOW);
                 android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
                 if (nm != null) nm.createNotificationChannel(ch);
-                n = new Notification.Builder(this, "nas_service_channel").setContentTitle("Android NAS")
-                        .setContentText("文件服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done)
+                n = new Notification.Builder(this, "nas_service_channel")
+                        .setContentTitle("Android NAS")
+                        .setContentText("文件服务运行中")
+                        .setSmallIcon(android.R.drawable.stat_sys_download_done)
                         .setContentIntent(pi).setOngoing(true).build();
             } else if (Build.VERSION.SDK_INT >= 16) {
-                n = new Notification.Builder(this).setContentTitle("Android NAS")
-                        .setContentText("文件服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done)
+                n = new Notification.Builder(this)
+                        .setContentTitle("Android NAS")
+                        .setContentText("文件服务运行中")
+                        .setSmallIcon(android.R.drawable.stat_sys_download_done)
                         .setContentIntent(pi).setOngoing(true).build();
             } else {
-                n = new Notification(android.R.drawable.stat_sys_download_done, "Android NAS", System.currentTimeMillis());
+                n = new Notification(android.R.drawable.stat_sys_download_done,
+                        "Android NAS", System.currentTimeMillis());
                 try {
-                    java.lang.reflect.Method m = n.getClass().getMethod("setLatestEventInfo", android.content.Context.class, CharSequence.class, CharSequence.class, PendingIntent.class);
+                    java.lang.reflect.Method m = n.getClass().getMethod("setLatestEventInfo",
+                            android.content.Context.class, CharSequence.class, CharSequence.class, PendingIntent.class);
                     m.invoke(n, this, "Android NAS", "运行中", pi);
                 } catch (Exception ignored) {}
                 n.flags |= Notification.FLAG_ONGOING_EVENT;
@@ -118,13 +130,12 @@ public class HttpServerService extends Service {
         } catch (Throwable t) { t.printStackTrace(); }
     }
 
-
     private void startCleanupTask() {
         new Thread(new Runnable() {
             @Override public void run() {
                 while (true) {
                     try {
-                        Thread.sleep(6 * 60 * 60 * 1000L); // 每 6 小时清理一次
+                        Thread.sleep(6 * 60 * 60 * 1000L);
                         File root = Environment.getExternalStorageDirectory();
                         cleanOldParts(root, 0);
                     } catch (Exception ignored) {}
