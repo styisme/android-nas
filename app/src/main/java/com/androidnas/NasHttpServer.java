@@ -116,6 +116,42 @@ public class NasHttpServer extends NanoHTTPD {
                 return newFixedLengthResponse(Response.Status.OK, "text/html; charset=utf-8", getClass().getClassLoader().getResourceAsStream("assets/index.html"), -1);
             }
 
+            if ("/api/ports".equals(uri)) {
+                final int[] ports = {8080, 8081, 2121, 8082, 53317, 8090, 445, 8096, 5244, 3000, 53};
+                final String[] names = {"Web 控制台", "WebDAV", "FTP 服务", "WebSocket 远控", "LocalSend", "协同发现", "SMB", "Jellyfin", "Alist", "AdGuard Web", "AdGuard DNS"};
+                
+                java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(10);
+                java.util.List<java.util.concurrent.Future<String>> futures = new java.util.ArrayList<>();
+                
+                for (int i = 0; i < ports.length; i++) {
+                    final int p = ports[i];
+                    final String n = names[i];
+                    futures.add(pool.submit(new java.util.concurrent.Callable<String>() {
+                        @Override public String call() {
+                            long start = System.currentTimeMillis();
+                            boolean open = false;
+                            java.net.Socket socket = new java.net.Socket();
+                            try {
+                                socket.connect(new java.net.InetSocketAddress("127.0.0.1", p), 300);
+                                open = true;
+                            } catch (Exception ignored) {} finally {
+                                try { socket.close(); } catch (Exception ignored) {}
+                            }
+                            long latency = System.currentTimeMillis() - start;
+                            return "{\"name\":\"" + n + "\",\"port\":" + p + ",\"status\":" + open + ",\"latency\":" + (open ? latency : 0) + "}";
+                        }
+                    }));
+                }
+                
+                StringBuilder resJson = new StringBuilder("[");
+                for (int i = 0; i < futures.size(); i++) {
+                    if (i > 0) resJson.append(",");
+                    try { resJson.append(futures.get(i).get()); } catch (Exception ignored) {}
+                }
+                resJson.append("]");
+                pool.shutdown();
+                return newFixedLengthResponse(Response.Status.OK, "application/json", resJson.toString());
+            }
             if ("/api/status".equals(uri)) {
                 return newFixedLengthResponse(Response.Status.OK, "application/json", "{\"lowPower\":" + SettingsManager.isLowPowerMode() + ",\"clipboardEnabled\":" + SettingsManager.isClipboardEnabled() + ",\"globalMode\":" + SettingsManager.isGlobalMode() + ",\"httpsEnabled\":" + SettingsManager.isHttpsEnabled() + ",\"isDefaultPwd\":" + DatabaseManager.isDefaultPwd + ",\"fail2ban\":" + SettingsManager.isFail2BanEnabled() + ",\"pinRequired\":" + SettingsManager.isPinRequired() + ",\"auditEnabled\":" + SettingsManager.isAuditEnabled() + ",\"ipWhitelistEnabled\":" + SettingsManager.isIpWhitelistEnabled() + ",\"ipWhitelist\":\"" + SettingsManager.getIpWhitelist() + "\"}");
             }
