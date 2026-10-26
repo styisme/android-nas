@@ -49,7 +49,12 @@ public class AdvancedKeepAliveManager {
             os.writeBytes(cmd + "\n");
             os.writeBytes("exit\n");
             os.flush();
-            if (p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) { p.destroy(); }
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                if (p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)) { p.destroy(); }
+            } else {
+                Thread.sleep(1000); // API 8 降级兼容
+                p.destroy();
+            }
         } catch (Exception ignored) {
         } finally {
             if (os != null) try { os.close(); } catch (Exception ignored) {}

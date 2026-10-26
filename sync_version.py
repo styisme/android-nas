@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     # 5. CLI 端 (如果没有版本号则跳过)
     # 6. 苹果端 NetworkManager.swift
-    update_file("apple/NASClient/NetworkManager.swift", r'let appVersion = "[^"]+"', f'let appVersion = "{version_name}"')
+    # Apple 端版本一般在 xcode 配置中，此处无需更新源码
     
     # 7. 鸿蒙端 ApiClient.ets
     update_file("harmony/entry/src/main/ets/utils/ApiClient.ets", r'static appVersion = "[^"]+"', f'static appVersion = "{version_name}"')

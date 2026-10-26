@@ -9,7 +9,6 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 
 public class DatabaseManager extends SQLiteOpenHelper {
-    public static boolean isDefaultPwd = true; // 用于前端提示
     private static final String DB_NAME = "nas_core.db";
     private static final int DB_VERSION = 2;
     private static DatabaseManager instance;
@@ -40,10 +39,9 @@ public class DatabaseManager extends SQLiteOpenHelper {
             try {
                 db.execSQL("ALTER TABLE users ADD COLUMN salt TEXT");
                 db.execSQL("ALTER TABLE users ADD COLUMN pin TEXT");
-                // 重置旧密码为加盐状态
-                db.execSQL("UPDATE users SET salt='', password='admin' WHERE username='admin'");
-                db.execSQL("UPDATE users SET salt='', password='guest' WHERE username='guest'");
-                db.execSQL("UPDATE users SET pin='1234' WHERE username='admin'");
+                // 🔥 修复 11: 绝不在升级时覆盖已有密码！给没盐的加上空盐即可。
+                db.execSQL("UPDATE users SET salt='' WHERE salt IS NULL");
+                db.execSQL("UPDATE users SET pin='1234' WHERE username='admin' AND pin IS NULL");
             } catch (Exception ignored) {}
         }
     }
@@ -75,11 +73,9 @@ public class DatabaseManager extends SQLiteOpenHelper {
             String storedHash = c.getString(1);
             String salt = c.getString(2);
             c.close();
-            if (salt == null) salt = ""; // 兼容旧版
+            if (salt == null) salt = "";
             if (storedHash.equals(hash(pass, salt))) return role;
-        } else {
-            c.close();
-        }
+        } else { c.close(); }
         return 0;
     }
 
@@ -111,8 +107,7 @@ public class DatabaseManager extends SQLiteOpenHelper {
     public void saveHash(String hash, String path) {
         if (hash == null || path == null) return;
         ContentValues cv = new ContentValues();
-        cv.put("hash", hash);
-        cv.put("path", path);
+        cv.put("hash", hash); cv.put("path", path);
         getWritableDatabase().insertWithOnConflict("file_hashes", null, cv, SQLiteDatabase.CONFLICT_REPLACE);
     }
 
@@ -122,11 +117,9 @@ public class DatabaseManager extends SQLiteOpenHelper {
         String query = "SELECT path FROM file_hashes WHERE hash=?";
         String[] args;
         if (userRoot == null || userRoot.isEmpty()) {
-            query += " AND path NOT LIKE '/Public/%'";
-            args = new String[]{hash};
+            query += " AND path NOT LIKE '/Public/%'"; args = new String[]{hash};
         } else {
-            query += " AND path LIKE ?";
-            args = new String[]{hash, "%/" + userRoot + "/%"};
+            query += " AND path LIKE ?"; args = new String[]{hash, "%/" + userRoot + "/%"};
         }
         Cursor c = db.rawQuery(query, args);
         String path = null;
@@ -146,7 +139,6 @@ public class DatabaseManager extends SQLiteOpenHelper {
     }
 
     public void changePassword(String user, String newPass) {
-        isDefaultPwd = false;
         String salt = genSalt();
         ContentValues cv = new ContentValues();
         cv.put("password", hash(newPass, salt));
@@ -160,28 +152,22 @@ public class DatabaseManager extends SQLiteOpenHelper {
         boolean first = true;
         while (c.moveToNext()) {
             if (!first) sb.append(",");
-            sb.append("{\"id\":").append(c.getInt(0))
-              .append(",\"user\":\"").append(esc(c.getString(1))).append("\"")
-              .append(",\"role\":").append(c.getInt(2))
-              .append(",\"root\":\"").append(esc(c.getString(3))).append("\"}");
+            sb.append("{\"id\":").append(c.getInt(0)).append(",\"user\":\"").append(esc(c.getString(1))).append("\",\"role\":").append(c.getInt(2)).append(",\"root\":\"").append(esc(c.getString(3))).append("\"}");
             first = false;
         }
-        c.close();
-        sb.append("]");
+        c.close(); sb.append("]");
         return sb.toString();
     }
     
     private String esc(String s) { 
         if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;");
+        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("<", "&lt;").replace(">", "&gt;").replace("&", "&amp;");
     }
 
     public static String md5(String input) {
         try {
             MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] digest = md.digest(input.getBytes());
-            return bytesToHex(digest);
+            return bytesToHex(md.digest(input.getBytes()));
         } catch (Exception e) { return ""; }
     }
 }

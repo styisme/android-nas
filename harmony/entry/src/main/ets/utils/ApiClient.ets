@@ -1,8 +1,14 @@
 import http from '@ohos.net.http';
+import util from '@ohos.util';
 
 export class ApiClient {
   static baseUrl = "http://192.168.1.100:8080";
-  static auth = "Basic " + btoa("admin:admin");
+  static auth = (() => {
+    let base64 = new util.Base64Helper();
+    let textEncoder = new util.TextEncoder();
+    let data = textEncoder.encodeInto("admin:admin");
+    return "Basic " + base64.encodeToStringSync(data);
+  })();
 
   static async request(path: string, method: http.RequestMethod = http.RequestMethod.GET, body?: string): Promise<any> {
     let httpRequest = http.createHttp();

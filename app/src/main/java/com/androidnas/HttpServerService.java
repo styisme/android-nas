@@ -1,13 +1,11 @@
 package com.androidnas;
 
 import android.app.Notification;
-import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.net.wifi.WifiManager;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.Environment;
@@ -30,6 +28,7 @@ public class HttpServerService extends Service {
     private FtpServer ftpServer;
     private DlnaServer dlnaServer;
     private LocalSendServer lsServer;
+    private SilentPlayer silentPlayer;
     private PowerManager.WakeLock wakeLock;
     private WifiManager.WifiLock wifiLock;
 
@@ -51,47 +50,50 @@ public class HttpServerService extends Service {
             wifiLock.acquire();
         } catch (Exception ignored) {}
 
-        String root = Environment.getExternalStorageDirectory().getAbsolutePath();
-        boolean ok = true;
+        // 初始化底层监听器 (解决 6, 29)
+        RemoteDesktopManager.init(this);
+        BatteryProtector.init(this);
+        SmsManager.init(this);
+        if (SettingsManager.isSilentKeepAlive()) {
+            silentPlayer = new SilentPlayer(); silentPlayer.start();
+        }
 
+        boolean ok = true;
         try {
             serverHttp = new NasHttpServer(SettingsManager.getWebPort(), this);
-
             if (SettingsManager.isHttpsEnabled()) {
                 SSLServerSocketFactory ssl = CertificateUtils.getSSLFactory();
-                if (ssl != null) {
-                    serverHttp.makeSecure(ssl, null);
-                    startedServices.add("Web(HTTPS)");
-                } else {
-                    lastError += "HTTPS: 设备过旧不支持加密，已降级为 HTTP\n";
-                    startedServices.add("Web(HTTP)");
-                }
-            } else {
-                startedServices.add("Web(HTTP)");
-            }
-
+                if (ssl != null) { serverHttp.makeSecure(ssl, null); startedServices.add("Web(HTTPS)"); }
+                else { lastError += "HTTPS 降级为 HTTP\n"; startedServices.add("Web(HTTP)"); }
+            } else { startedServices.add("Web(HTTP)"); }
+            
             serverHttp.start();
-            RemoteDesktopManager.init(this);
-        BatteryProtector.init(this);
-
-        } catch (Exception e) {
-            lastError += "Web: " + e.getMessage() + "\n";
-            ok = false;
+            // 解决 16: 只有 start 不抛异常，才算真正启动
+        } catch (Exception e) { 
+            lastError += "Web: " + e.getMessage() + "\n"; 
+            ok = false; 
+            startedServices.remove("Web(HTTP)"); startedServices.remove("Web(HTTPS)");
         }
 
         if (SettingsManager.isWebDavEnabled()) try {
-            webDavHttp = new WebDavServer(root);
-            webDavHttp.startServer(SettingsManager.getWebDavPort());
-            startedServices.add("WebDAV");
+            webDavHttp = new WebDavServer(Environment.getExternalStorageDirectory().getAbsolutePath());
+            webDavHttp.startServer(SettingsManager.getWebDavPort()); startedServices.add("WebDAV");
         } catch (Exception e) { lastError += "WebDAV: " + e.getMessage() + "\n"; ok = false; }
-
+        
         if (SettingsManager.isFtpEnabled()) try {
-            ftpServer = new FtpServer(SettingsManager.getFtpPort(), this);
-            ftpServer.start();
-            startedServices.add("FTP");
+            ftpServer = new FtpServer(SettingsManager.getFtpPort(), this); ftpServer.start(); startedServices.add("FTP");
         } catch (Exception e) { lastError += "FTP: " + e.getMessage() + "\n"; ok = false; }
 
-        running = ok || startedServices.contains("Web(HTTP)") || startedServices.contains("Web(HTTPS)");
+        // 解决 7: 真正启动 DLNA 与 LocalSend
+        if (SettingsManager.isDlnaEnabled()) try {
+            dlnaServer = new DlnaServer(this); dlnaServer.start(); startedServices.add("DLNA");
+        } catch (Exception e) { lastError += "DLNA: " + e.getMessage() + "\n"; ok = false; }
+
+        if (SettingsManager.isLocalSendEnabled()) try {
+            lsServer = new LocalSendServer(53317); lsServer.start(); startedServices.add("LocalSend");
+        } catch (Exception e) { lastError += "LocalSend: " + e.getMessage() + "\n"; ok = false; }
+
+        running = ok;
         startCleanupTask();
     }
 
@@ -102,29 +104,15 @@ public class HttpServerService extends Service {
             PendingIntent pi = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), flags);
             Notification n;
             if (Build.VERSION.SDK_INT >= 26) {
-                android.app.NotificationChannel ch = new android.app.NotificationChannel(
-                        "nas_service_channel", "NAS 后台服务", android.app.NotificationManager.IMPORTANCE_LOW);
+                android.app.NotificationChannel ch = new android.app.NotificationChannel("nas_service_channel", "NAS 后台服务", android.app.NotificationManager.IMPORTANCE_LOW);
                 android.app.NotificationManager nm = (android.app.NotificationManager) getSystemService(NOTIFICATION_SERVICE);
                 if (nm != null) nm.createNotificationChannel(ch);
-                n = new Notification.Builder(this, "nas_service_channel")
-                        .setContentTitle("Android NAS")
-                        .setContentText("文件服务运行中")
-                        .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                        .setContentIntent(pi).setOngoing(true).build();
+                n = new Notification.Builder(this, "nas_service_channel").setContentTitle("Android NAS").setContentText("文件服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(pi).setOngoing(true).build();
             } else if (Build.VERSION.SDK_INT >= 16) {
-                n = new Notification.Builder(this)
-                        .setContentTitle("Android NAS")
-                        .setContentText("文件服务运行中")
-                        .setSmallIcon(android.R.drawable.stat_sys_download_done)
-                        .setContentIntent(pi).setOngoing(true).build();
+                n = new Notification.Builder(this).setContentTitle("Android NAS").setContentText("文件服务运行中").setSmallIcon(android.R.drawable.stat_sys_download_done).setContentIntent(pi).setOngoing(true).build();
             } else {
-                n = new Notification(android.R.drawable.stat_sys_download_done,
-                        "Android NAS", System.currentTimeMillis());
-                try {
-                    java.lang.reflect.Method m = n.getClass().getMethod("setLatestEventInfo",
-                            android.content.Context.class, CharSequence.class, CharSequence.class, PendingIntent.class);
-                    m.invoke(n, this, "Android NAS", "运行中", pi);
-                } catch (Exception ignored) {}
+                n = new Notification(android.R.drawable.stat_sys_download_done, "Android NAS", System.currentTimeMillis());
+                try { java.lang.reflect.Method m = n.getClass().getMethod("setLatestEventInfo", android.content.Context.class, CharSequence.class, CharSequence.class, PendingIntent.class); m.invoke(n, this, "Android NAS", "运行中", pi); } catch (Exception ignored) {}
                 n.flags |= Notification.FLAG_ONGOING_EVENT;
             }
             startForeground(NOTIFICATION_ID, n);
@@ -135,11 +123,7 @@ public class HttpServerService extends Service {
         new Thread(new Runnable() {
             @Override public void run() {
                 while (true) {
-                    try {
-                        Thread.sleep(6 * 60 * 60 * 1000L);
-                        File root = Environment.getExternalStorageDirectory();
-                        cleanOldParts(root, 0);
-                    } catch (Exception ignored) {}
+                    try { Thread.sleep(6 * 60 * 60 * 1000L); cleanOldParts(Environment.getExternalStorageDirectory(), 0); } catch (Exception ignored) {}
                 }
             }
         }).start();
@@ -151,13 +135,8 @@ public class HttpServerService extends Service {
         if (files == null) return;
         long now = System.currentTimeMillis();
         for (File f : files) {
-            if (f.isDirectory()) {
-                if (!f.getName().startsWith(".")) cleanOldParts(f, depth + 1);
-            } else if (f.getName().endsWith(".part")) {
-                if (now - f.lastModified() > 24 * 60 * 60 * 1000L) {
-                    f.delete();
-                }
-            }
+            if (f.isDirectory()) { if (!f.getName().startsWith(".")) cleanOldParts(f, depth + 1); } 
+            else if (f.getName().endsWith(".part") && now - f.lastModified() > 24 * 60 * 60 * 1000L) f.delete();
         }
     }
 
@@ -169,6 +148,9 @@ public class HttpServerService extends Service {
         if (ftpServer != null) ftpServer.stopServer();
         if (dlnaServer != null) dlnaServer.stopServer();
         if (lsServer != null) lsServer.stop();
+        if (silentPlayer != null) silentPlayer.stopPlayer();
+        
+        RemoteDesktopManager.stopStream(); // 解决 17: 关闭 WS
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         running = false;

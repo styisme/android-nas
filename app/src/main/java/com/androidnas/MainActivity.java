@@ -451,6 +451,9 @@ public class MainActivity extends Activity {
                     SettingsManager.setCaptchaEnabled(cbCaptcha.isChecked());
                     SettingsManager.setLanOnlyStrict(cbLanOnly.isChecked());
                     SettingsManager.setHideHeaderEnabled(cbHideHeader.isChecked());
+                    if (cb2FA.isChecked() && SettingsManager.get2FASecret().isEmpty()) {
+                        SettingsManager.set2FASecret(TotpManager.generateSecret());
+                    }
                     SettingsManager.set2FAEnabled(cb2FA.isChecked());
                     SettingsManager.setSecretPath(etSecret.getText().toString().trim());
                     try { SettingsManager.setSessionTimeout(Integer.parseInt(etTimeout.getText().toString())); } catch (Exception ignored) {}
