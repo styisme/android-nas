@@ -103,7 +103,7 @@ public class WebDavServer extends Thread {
                     // 🔥 83: 支持 Range
                     String range = headers.get("range");
                     if (range != null && range.startsWith("bytes=")) {
-                        String[] parts = range.substring(6).split("-");
+                        String[] rangeParts = range.substring(6).split("-");
                         long start = 0; long end = target.length() - 1;
                         try {
                             if (parts.length > 0 && !parts[0].isEmpty()) start = Long.parseLong(parts[0]);

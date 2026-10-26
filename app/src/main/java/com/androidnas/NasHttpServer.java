@@ -59,8 +59,11 @@ public class NasHttpServer extends NanoHTTPD {
 
     @Override public Response serve(IHTTPSession session) {
         String uri = session.getUri();
-        String clientIp = session.getRemoteIpAddress(); // 🔥 解决 2: 绝对准确的 IP
+        // 🔥 NanoHTTPD 2.2.0 没有 getRemoteIpAddress()，从 Header 中回退获取
+        String clientIp = session.getHeaders().get("x-forwarded-for");
+        if (clientIp == null) clientIp = session.getHeaders().get("remote-addr");
         if (clientIp == null) clientIp = "127.0.0.1";
+        if (clientIp != null && clientIp.contains(",")) clientIp = clientIp.split(",")[0].trim();
 
         try {
             if (uri.startsWith("/share/")) return handleSecureShare(session, uri.substring(7));
