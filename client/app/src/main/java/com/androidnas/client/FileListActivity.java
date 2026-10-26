@@ -390,7 +390,8 @@ public class FileListActivity extends AppCompatActivity {
                         mainHandler.post(() -> prog.setProgressCompat(pct, true));
                         
                         String url = baseUrl + "/api/upload/chunk?hash=" + hash + "&index=" + i + "&total=" + totalChunks + "&name=" + java.net.URLEncoder.encode(fname, "UTF-8") + "&path=" + java.net.URLEncoder.encode(currentPath, "UTF-8");
-                        RequestBody chunkBody = RequestBody.create(buffer, MediaType.parse("application/octet-stream"));
+                        byte[] finalBuffer = java.util.Arrays.copyOf(buffer, read);
+                        RequestBody chunkBody = RequestBody.create(finalBuffer, MediaType.parse("application/octet-stream"));
                         Request req = new Request.Builder().url(url).post(chunkBody).header("Authorization", authHeader).build();
                         client.newCall(req).execute().close();
                     }

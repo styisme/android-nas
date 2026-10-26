@@ -48,6 +48,11 @@ public class SecurityFilter {
         return false;
     }
 
+
+    public static int getFailCount(String ip) {
+        FailInfo info = failMap.get(ip);
+        return info == null ? 0 : info.count;
+    }
     public static void recordFail(String ip) {
         FailInfo info = failMap.get(ip);
         if (info == null) {

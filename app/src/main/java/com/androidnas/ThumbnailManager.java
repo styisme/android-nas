@@ -24,7 +24,7 @@ public class ThumbnailManager {
             
             int scale = 1;
             int targetSize = 300;
-            while (options.outWidth / scale > targetSize && options.outHeight / scale > targetSize) {
+            while (options.outWidth / scale > targetSize || options.outHeight / scale > targetSize) {
                 scale *= 2;
             }
 

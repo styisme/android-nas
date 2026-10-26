@@ -39,7 +39,9 @@ public class WebhookManager {
             @Override
             public void run() {
                 try {
-                    String payload = "{\"event\":\"" + event + "\",\"detail\":\"" + detail + "\",\"device\":\"" + SettingsManager.getDeviceAlias() + "\"}";
+                    String safeDetail = detail.replace("\\", "\\\\").replace("\"", "\\\"");
+                    String safeEvent = event.replace("\"", "\\\"");
+                    String payload = "{\"event\":\"" + safeEvent + "\",\"detail\":\"" + safeDetail + "\",\"device\":\"" + SettingsManager.getDeviceAlias() + "\"}";
                     // 针对 Telegram 和企业微信做简单适配
                     if (url.contains("telegram.org")) {
                         payload = "chat_id=" + SettingsManager.getWebhookChatId() + "&text=" + URLEncoder.encode("【NAS通知】\n事件: " + event + "\n详情: " + detail, "UTF-8");

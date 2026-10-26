@@ -555,7 +555,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onResume() { super.onResume(); updateServiceStatus(); refresh(); }
-    @Override protected void onDestroy() { super.onDestroy(); RemoteDesktopManager.stopStream(); }
+    @Override protected void onDestroy() { super.onDestroy(); }
 
     private void updateServiceStatus() {
         boolean running = HttpServerService.isRunning();

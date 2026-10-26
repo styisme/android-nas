@@ -9,10 +9,12 @@ import android.os.BatteryManager;
 public class BatteryProtector {
     private static float lastTemp = 0;
     private static boolean isCoolingDown = false;
+    private static BroadcastReceiver receiver = null;
 
     public static void init(final Context context) {
         IntentFilter filter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
-        context.registerReceiver(new BroadcastReceiver() {
+        if (receiver != null) return;
+        receiver = new BroadcastReceiver() {
             @Override public void onReceive(Context c, Intent intent) {
                 int temp = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0);
                 lastTemp = temp / 10.0f;
@@ -31,7 +33,8 @@ public class BatteryProtector {
                     }
                 }
             }
-        }, filter);
+        };
+        context.registerReceiver(receiver, filter);
     }
     public static float getTemp() { return lastTemp; }
 }

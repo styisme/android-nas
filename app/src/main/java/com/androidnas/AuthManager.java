@@ -73,8 +73,9 @@ public class AuthManager {
     }
     
     // 单参数兼容版（供 FTP 等无法传 TOTP 的内部服务使用）
+    // 🔥 修复 36: WebDAV/FTP 使用此方法，跳过 2FA 验证（因为客户端无法输入）
     public static int verifyRole(String authHeader) { 
-        return verifyRole(authHeader, null); 
+        return verifyPasswordOnly(authHeader); 
     }
     
     public static boolean verify(String authHeader) { 

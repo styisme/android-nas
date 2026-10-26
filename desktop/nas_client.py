@@ -432,7 +432,7 @@ class DesktopNasClient:
                     # 分片上传
                     chunk_size = 2 * 1024 * 1024
                     total_chunks = (fsize + chunk_size - 1) // chunk_size
-                    self.ui(lambda: self.progress.configure(maximum=total_chunks, value=0))
+                    self.ui(lambda tc=total_chunks: self.progress.configure(maximum=tc, value=0))
                     
                     with open(p, 'rb') as f:
                         for i in range(total_chunks):

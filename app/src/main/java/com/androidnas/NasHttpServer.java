@@ -111,11 +111,11 @@ public class NasHttpServer extends NanoHTTPD {
 
             int role = 1;
             if (!Method.OPTIONS.equals(session.getMethod())) {
-                if (SettingsManager.isCaptchaEnabled()) {
+                if (SettingsManager.isCaptchaEnabled() && SecurityFilter.getFailCount(clientIp) >= 3) {
                     String reqCap = session.getHeaders().get("x-captcha");
                     String expected = captchaMap.get(clientIp);
-                    if (expected != null && (reqCap == null || !reqCap.equals(expected))) {
-                        SecurityFilter.recordFail(clientIp);
+                    // 如果第一次来，或者验证码不正确，都直接返回 CAPTCHA_FAILED 让前端去请求
+                    if (expected == null || reqCap == null || !reqCap.equals(expected)) {
                         return text(Response.Status.UNAUTHORIZED, "CAPTCHA_FAILED");
                     }
                     captchaMap.remove(clientIp);

@@ -808,7 +808,7 @@ function previewFile(f, ext) {
     showModal("previewModal");
     
     // 先获取免密 Token
-    fetch("/api/share", { method: "POST", body: new URLSearchParams({path: f.path}) })
+    fetch("/api/share", { method: "POST", body: new URLSearchParams({path: f.path || currentFileToMenu.path}) })
     .then(function(r) { return r.text(); })
     .then(function(token) {
         var url = "/share/" + token;
@@ -885,7 +885,8 @@ document.getElementById("fileInput").onchange = function() {
     var progress = document.getElementById("uploadProgress");
     progress.style.width = "0%";
     
-    var file = files[0]; // 简化为一次处理一个文件
+    for (var fi = 0; fi < files.length; fi++) {
+    var file = files[fi];
     if (file.size < 2 * 1024 * 1024) {
         // 小文件直接走原有的表单上传
         var fd = new FormData();
@@ -931,6 +932,7 @@ document.getElementById("fileInput").onchange = function() {
         }
     };
     loadNext();
+    }
     document.getElementById("fileInput").value = "";
 };
 
@@ -1430,7 +1432,7 @@ function showRemote() {
     
     if (wsRemote == null) {
         var wsToken = (localStorage.getItem("nas_auth") || "").replace("Basic ", "");
-        var wsProto = location.protocol === "https:" ? "wss://" : "ws://";
+        var wsProto = "ws://"; // 🔥 强制 ws，因为服务端未开启 WSS
         wsRemote = new WebSocket(wsProto + location.hostname + ":8082/?token=" + encodeURIComponent(wsToken));
         wsRemote.binaryType = "arraybuffer";
         

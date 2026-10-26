@@ -117,7 +117,7 @@ public class DatabaseManager extends SQLiteOpenHelper {
         String query = "SELECT path FROM file_hashes WHERE hash=?";
         String[] args;
         if (userRoot == null || userRoot.isEmpty()) {
-            query += " AND path NOT LIKE '/Public/%'"; args = new String[]{hash};
+            query += " AND path NOT LIKE '%/Public/%'"; args = new String[]{hash};
         } else {
             query += " AND path LIKE ?"; args = new String[]{hash, "%/" + userRoot + "/%"};
         }
@@ -131,6 +131,7 @@ public class DatabaseManager extends SQLiteOpenHelper {
     public boolean addUser(String user, String pass, int role, String root) {
         try {
             root = root.replaceAll("^/+", "");
+            if (root.contains("..")) return false; // 🔥 修复 33
             String salt = genSalt();
             getWritableDatabase().execSQL("INSERT INTO users (username, password, salt, pin, role, root_dir) VALUES (?, ?, ?, '', ?, ?)", 
                                           new Object[]{user, hash(pass, salt), salt, role, root});

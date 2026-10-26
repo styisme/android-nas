@@ -9,7 +9,11 @@ public class BootReceiver extends BroadcastReceiver {
     public void onReceive(Context context, Intent intent) {
         if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
             Intent service = new Intent(context, HttpServerService.class);
-            context.startService(service);
+            if (android.os.Build.VERSION.SDK_INT >= 26) {
+                context.startForegroundService(service);
+            } else {
+                context.startService(service);
+            }
         }
     }
 }
