@@ -42,7 +42,7 @@
 - 🤖 **[AI 生成声明 (AI_DISCLOSURE.md)](docs/AI_DISCLOSURE.md)**：
   关于本项目 99% 代码由大模型生成的真实开发流程与局限性声明。
 - 📝 **[版本更新日志 (CHANGELOG.md)](CHANGELOG.md)**：
-  追溯项目从 v1.0.0 到 v4.5.0 的完整演进史。
+  追溯项目从 v1.0.0 到 v4.5.1 的完整演进史。
 
 ---
 
