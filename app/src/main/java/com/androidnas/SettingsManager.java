@@ -18,15 +18,15 @@ public class SettingsManager {
     public static void setLowPowerMode(boolean enabled) { sp.edit().putBoolean("low_power_mode", enabled).apply(); }
     public static boolean isWebDavEnabled() { return sp.getBoolean("webdav_enabled", true); }
     public static void setWebDavEnabled(boolean enabled) { sp.edit().putBoolean("webdav_enabled", enabled).apply(); }
-    public static boolean isFtpEnabled() { return sp.getBoolean("ftp_enabled", true) && !isLowPowerMode(); }
+    public static boolean isFtpEnabled() { return sp.getBoolean("ftp_enabled", true); }
     public static void setFtpEnabled(boolean enabled) { sp.edit().putBoolean("ftp_enabled", enabled).apply(); }
-    public static boolean isDlnaEnabled() { return sp.getBoolean("dlna_enabled", true) && !isLowPowerMode(); }
+    public static boolean isDlnaEnabled() { return sp.getBoolean("dlna_enabled", true); }
     public static void setDlnaEnabled(boolean enabled) { sp.edit().putBoolean("dlna_enabled", enabled).apply(); }
-    public static boolean isLocalSendEnabled() { return sp.getBoolean("localsend_enabled", true) && !isLowPowerMode(); }
+    public static boolean isLocalSendEnabled() { return sp.getBoolean("localsend_enabled", true); }
     public static void setLocalSendEnabled(boolean enabled) { sp.edit().putBoolean("localsend_enabled", enabled).apply(); }
-    public static boolean isStreamEnabled() { return sp.getBoolean("stream_enabled", true) && !isLowPowerMode(); }
+    public static boolean isStreamEnabled() { return sp.getBoolean("stream_enabled", true); }
     public static void setStreamEnabled(boolean enabled) { sp.edit().putBoolean("stream_enabled", enabled).apply(); }
-    public static boolean isClipboardEnabled() { return sp.getBoolean("clipboard_enabled", true) && !isLowPowerMode(); }
+    public static boolean isClipboardEnabled() { return sp.getBoolean("clipboard_enabled", true); }
     public static void setClipboardEnabled(boolean enabled) { sp.edit().putBoolean("clipboard_enabled", enabled).apply(); }
     public static int getWebPort() { return sp.getInt("web_port", 8080); }
     public static void setWebPort(int port) { sp.edit().putInt("web_port", port).apply(); }

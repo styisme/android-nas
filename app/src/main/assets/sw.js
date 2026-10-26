@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nas-cache-v4.5.0';
+const CACHE_NAME = 'nas-cache-v4.5.0-final';
 const urlsToCache = ['/', '/index.html'];
 
 self.addEventListener('install', event => {
@@ -15,6 +15,6 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-  if (event.request.headers.has('range')) return; // 🔥 放行 Range 请求
+  if (event.request.headers.has('range')) return;
   event.respondWith(caches.match(event.request).then(response => response || fetch(event.request)));
 });

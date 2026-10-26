@@ -39,10 +39,20 @@ public class FtpServer extends Thread {
 
     private String getLocalIp() {
         try {
-            WifiManager wm = (WifiManager) context.getSystemService(Context.WIFI_SERVICE);
-            int ip = wm.getConnectionInfo().getIpAddress();
-            return String.format("%d.%d.%d.%d", (ip & 0xff), (ip >> 8 & 0xff), (ip >> 16 & 0xff), (ip >> 24 & 0xff));
-        } catch (Exception e) { return "127.0.0.1"; }
+            java.util.Enumeration<java.net.NetworkInterface> interfaces = java.net.NetworkInterface.getNetworkInterfaces();
+            while (interfaces.hasMoreElements()) {
+                java.net.NetworkInterface ni = interfaces.nextElement();
+                if (ni.isLoopback() || !ni.isUp()) continue;
+                java.util.Enumeration<java.net.InetAddress> addrs = ni.getInetAddresses();
+                while (addrs.hasMoreElements()) {
+                    java.net.InetAddress addr = addrs.nextElement();
+                    if (!addr.isLoopbackAddress() && addr instanceof java.net.Inet4Address) {
+                        return addr.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return "127.0.0.1";
     }
 
     private class FtpSession implements Runnable {
@@ -123,7 +133,7 @@ public class FtpServer extends Thread {
 
         private void enterPassiveMode() {
             try {
-                closeDataConnection(); dataServerSocket = new ServerSocket(0);
+                closeDataConnection(); dataServerSocket = new ServerSocket(0, 50, java.net.InetAddress.getByName(getLocalIp()));
                 int p = dataServerSocket.getLocalPort();
                 reply("227 Entering Passive Mode (" + getLocalIp().replace('.', ',') + "," + (p / 256) + "," + (p % 256) + ")");
             } catch (Exception e) { reply("425 Fail"); }

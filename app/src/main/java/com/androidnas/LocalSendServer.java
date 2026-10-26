@@ -114,7 +114,7 @@ public class LocalSendServer extends NanoHTTPD {
             try {
                 File dir = new File(SAVE_DIR);
                 if (!dir.exists()) dir.mkdirs();
-                String fileName = s.fileNames.get(fileId);
+                String fileName = new java.io.File(s.fileNames.get(fileId)).getName();
                 if (fileName == null || fileName.isEmpty()) fileName = "LS_" + System.currentTimeMillis();
                 fileName = new java.io.File(fileName).getName(); // 🔥 解决路径穿越
                 File destFile = new File(dir, fileName);

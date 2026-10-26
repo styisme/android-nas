@@ -57,7 +57,7 @@ public class MainActivity extends Activity {
                     stopService(new Intent(MainActivity.this, HttpServerService.class));
                     new Handler().postDelayed(new Runnable() {
                         @Override public void run() { startService(new Intent(MainActivity.this, HttpServerService.class)); }
-                    }, 500);
+                    }, 1500);
                     Toast.makeText(MainActivity.this, "账号验证已切换，服务正在重启…", Toast.LENGTH_SHORT).show();
                 }
                 updateServiceStatus();
@@ -105,10 +105,10 @@ public class MainActivity extends Activity {
         findViewById(R.id.refreshBtn).setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { refresh(); }
         });
+        checkAllFilesPermission();
+        checkBatteryOptimization();
         if (!HttpServerService.isRunning()) {
             startService(new Intent(this, HttpServerService.class));
-            checkAllFilesPermission();
-            checkBatteryOptimization();
         }
     }
 
@@ -350,9 +350,9 @@ public class MainActivity extends Activity {
         // --- 分页选择器 (不使用硬编码 ID 防止与系统冲突) ---
         RadioGroup tabGroup = new RadioGroup(this);
         tabGroup.setOrientation(RadioGroup.HORIZONTAL);
-        RadioButton rbBasic = new RadioButton(this); rbBasic.setText("基础"); rbBasic.setChecked(true);
-        RadioButton rbServices = new RadioButton(this); rbServices.setText("服务");
-        RadioButton rbAdvanced = new RadioButton(this); rbAdvanced.setText("高级");
+        RadioButton rbBasic = new RadioButton(this); rbBasic.setText("基础"); rbBasic.setId(101); rbBasic.setChecked(true);
+        RadioButton rbServices = new RadioButton(this); rbServices.setText("服务"); rbServices.setId(102);
+        RadioButton rbAdvanced = new RadioButton(this); rbAdvanced.setText("高级"); rbAdvanced.setId(103);
         tabGroup.addView(rbBasic); tabGroup.addView(rbServices); tabGroup.addView(rbAdvanced);
         layout.addView(tabGroup);
 
@@ -409,7 +409,7 @@ public class MainActivity extends Activity {
         tabGroup.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(RadioGroup group, int checkedId) {
                 View v = group.findViewById(checkedId);
-                if (v == null) return;
+                if (v == null || checkedId == -1) return;
                 String text = ((RadioButton) v).getText().toString();
                 groupBasic.setVisibility(text.equals("基础") ? View.VISIBLE : View.GONE);
                 groupServices.setVisibility(text.equals("服务") ? View.VISIBLE : View.GONE);

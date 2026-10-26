@@ -40,7 +40,7 @@ public class WebDavServer extends Thread {
                 if (parts.length < 2) return;
                 String method = parts[0], uri = parts[1];
                 if (uri.contains("?")) uri = uri.substring(0, uri.indexOf("?"));
-                uri = URLDecoder.decode(uri.replace("+", "%2B"), "UTF-8"); // 修复 + 变空格
+                uri = URLDecoder.decode(uri.replace("+", "%2B"), "UTF-8");
                 if (!uri.startsWith("/")) uri = "/" + uri;
 
                 Map<String, String> headers = new HashMap<>();
@@ -84,7 +84,6 @@ public class WebDavServer extends Thread {
                 File activeRootFile = new File(activeRoot);
                 if (!activeRootFile.exists()) activeRootFile.mkdirs();
 
-                // 核心修复：移除 uri 前导斜杠，防止 new File(parent, child) 忽略 parent
                 File target = new File(activeRootFile, uri.replaceAll("^/+", ""));
                 if (!(SettingsManager.isGlobalMode() && user.equals("admin"))) {
                     String tc = target.getCanonicalPath(); String rc = activeRootFile.getCanonicalPath();
@@ -93,12 +92,37 @@ public class WebDavServer extends Thread {
 
                 if ("OPTIONS".equalsIgnoreCase(method)) out.write("HTTP/1.1 200 OK\r\nDAV: 1\r\nAllow: OPTIONS,GET,HEAD,PUT,DELETE,PROPFIND,MKCOL\r\nContent-Length: 0\r\n\r\n".getBytes());
                 else if ("PROPFIND".equalsIgnoreCase(method)) {
+                    if ("infinity".equals(headers.get("depth"))) { out.write("HTTP/1.1 403 Forbidden\r\n\r\n".getBytes()); return; } // 🔥 84
                     if (!target.exists()) { out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes()); return; }
                     String xml = buildXml(target, uri, "0".equals(headers.get("depth")));
                     byte[] xb = xml.getBytes("UTF-8");
                     out.write(("HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml; charset=\"utf-8\"\r\nContent-Length: " + xb.length + "\r\n\r\n").getBytes()); out.write(xb);
                 } else if ("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method)) {
                     if (!target.exists() || target.isDirectory()) { out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes()); return; }
+                    
+                    // 🔥 83: 支持 Range
+                    String range = headers.get("range");
+                    if (range != null && range.startsWith("bytes=")) {
+                        String[] parts = range.substring(6).split("-");
+                        long start = 0; long end = target.length() - 1;
+                        try {
+                            if (parts.length > 0 && !parts[0].isEmpty()) start = Long.parseLong(parts[0]);
+                            if (parts.length > 1 && !parts[1].isEmpty()) end = Long.parseLong(parts[1]);
+                        } catch (Exception ignored) {}
+                        if (start < 0) start = target.length() - 1;
+                        if (end >= target.length()) end = target.length() - 1;
+                        if (start > end) { out.write("HTTP/1.1 400 Bad Request\r\n\r\n".getBytes()); return; }
+                        long len = end - start + 1;
+                        out.write(("HTTP/1.1 206 Partial Content\r\nContent-Length: " + len + "\r\nContent-Range: bytes " + start + "-" + end + "/" + target.length() + "\r\n\r\n").getBytes());
+                        if (method.equalsIgnoreCase("GET")) {
+                            java.io.RandomAccessFile raf = new java.io.RandomAccessFile(target, "r");
+                            raf.seek(start); byte[] buf = new byte[8192]; long left = len; int n;
+                            while (left > 0 && (n = raf.read(buf, 0, (int)Math.min(buf.length, left))) > 0) { out.write(buf, 0, n); left -= n; }
+                            raf.close();
+                        }
+                        return;
+                    }
+                    
                     out.write(("HTTP/1.1 200 OK\r\nContent-Length: " + target.length() + "\r\n\r\n").getBytes());
                     if (method.equalsIgnoreCase("GET")) try (FileInputStream fis = new FileInputStream(target)) { byte[] buf = new byte[8192]; int len; while ((len = fis.read(buf)) > 0) out.write(buf, 0, len); }
                 } else if ("PUT".equalsIgnoreCase(method)) {
@@ -113,6 +137,8 @@ public class WebDavServer extends Thread {
                     if (target.exists()) out.write("HTTP/1.1 405 Method Not Allowed\r\n\r\n".getBytes());
                     else if (target.mkdirs()) out.write("HTTP/1.1 201 Created\r\n\r\n".getBytes()); else out.write("HTTP/1.1 403 Forbidden\r\n\r\n".getBytes());
                 } else if ("DELETE".equalsIgnoreCase(method)) {
+                    // 🔥 82: 禁止删除根目录
+                    if (target.getAbsolutePath().equals(activeRootFile.getAbsolutePath())) { out.write("HTTP/1.1 403 Forbidden\r\n\r\n".getBytes()); return; }
                     if (deleteRec(target)) out.write("HTTP/1.1 204 No Content\r\n\r\n".getBytes()); else out.write("HTTP/1.1 404 Not Found\r\n\r\n".getBytes());
                 } else out.write("HTTP/1.1 405 Method Not Allowed\r\n\r\n".getBytes());
             } catch (Exception ignored) {
