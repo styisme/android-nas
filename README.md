@@ -6,6 +6,12 @@
 [![Min SDK TV](https://img.shields.io/badge/TV_Min_SDK-API_19-blue.svg)]()
 [![License](https://img.shields.io/badge/License-MIT-orange.svg)](LICENSE)
 
+> **⏸️ 临时停更通知**
+>
+> **本项目自 2026-11-18 起进入临时停更状态。** 停更期间暂停新功能开发、版本发布与常规维护；已有代码、文档与构建产物保持可用，仍可正常克隆与使用。恢复更新时间待定，恢复时会更新本 README 与 Releases。
+>
+> **Temporarily paused:** this project has been paused since 2026-11-18. No new features, releases, or routine maintenance during this period; the existing code, docs and builds remain available. The resumption date is TBD and will be announced here.
+
 > **把吃灰的 Android 手机变成全平台私有云控制中枢。**
 > 本项目不仅是一个轻量级的文件服务器，而是一个包含了服务端、网页端、手机客户端、电视盒子端、智能手表端、桌面 GUI、极客 CLI，甚至涵盖了苹果原生、鸿蒙原生与微信小程序的**十端全平台生态闭环**。
 > 
